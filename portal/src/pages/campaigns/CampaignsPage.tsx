@@ -98,7 +98,7 @@ export function CampaignsPage() {
                 disabled={!productId}
               >
                 <option value="">
-                  {(firmware ?? []).length === 0 ? 'No firmware for this product' : 'Choose…'}
+                  {(firmware ?? []).length === 0 ? 'None registered' : 'Choose…'}
                 </option>
                 {(firmware ?? []).map((f) => (
                   <option key={f.id} value={f.id}>
@@ -120,12 +120,15 @@ export function CampaignsPage() {
               />
             </label>
 
-            <button
-              className="btn btn--primary"
-              disabled={!productId || !firmwareId || create.isPending}
-            >
-              {create.isPending ? 'Creating…' : 'Create draft'}
-            </button>
+            <div className="field" style={{ flex: 0 }}>
+              <span aria-hidden="true">&nbsp;</span>
+              <button
+                className="btn btn--primary"
+                disabled={!productId || !firmwareId || create.isPending}
+              >
+                {create.isPending ? 'Creating…' : 'Create draft'}
+              </button>
+            </div>
           </div>
         </form>
       ) : null}
@@ -143,7 +146,7 @@ export function CampaignsPage() {
                 <th>Rollout</th>
                 <th>State</th>
                 <th>Progress</th>
-                <th />
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -160,7 +163,16 @@ export function CampaignsPage() {
                       </span>
                     </td>
                     <td>
-                      <div className="progress" title={`${done}%`}>
+                      <div
+                        className={`progress ${
+                          row.progress.failed > 0
+                            ? 'progress--failed'
+                            : row.complete
+                              ? 'progress--clean'
+                              : ''
+                        }`}
+                        title={`${done}% of ${row.progress.total}`}
+                      >
                         <span style={{ width: `${done}%` }} />
                       </div>
                       <span className="muted" style={{ fontSize: 12 }}>

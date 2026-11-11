@@ -68,7 +68,7 @@ export function FirmwarePage() {
           </p>
         </div>
         <div className="row">
-          <button className="btn" onClick={() => setOpen((v) => !v)}>
+          <button className="btn btn--primary" onClick={() => setOpen((v) => !v)}>
             Register image
           </button>
           <Link className="btn" to="/campaigns">

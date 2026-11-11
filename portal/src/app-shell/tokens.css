@@ -169,6 +169,16 @@ button {
   background: var(--accent);
 }
 
+/* A bar is a fact; its colour is the judgement. Blue means "moving", green
+   means "done cleanly", red means "some of these failed". */
+.progress--clean span {
+  background: var(--success);
+}
+
+.progress--failed span {
+  background: var(--danger);
+}
+
 select.input {
   appearance: none;
   cursor: pointer;
@@ -180,6 +190,8 @@ select.input {
   background: var(--elevated);
   padding: 10px 16px;
   font-weight: 600;
+  /* A button label that wraps onto two lines reads as broken, not compact. */
+  white-space: nowrap;
 }
 
 .btn--primary {
