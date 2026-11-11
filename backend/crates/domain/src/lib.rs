@@ -5,3 +5,7 @@
 //! `model.rs`, `repo.rs` (trait), `service.rs`, `error.rs`.
 
 #![forbid(unsafe_code)]
+
+pub mod homes;
+pub mod identity;
+

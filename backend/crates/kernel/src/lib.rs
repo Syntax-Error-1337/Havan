@@ -14,4 +14,4 @@ pub mod telemetry;
 pub use config::Config;
 pub use context::{Actor, TenantCtx};
 pub use error::{AppError, ErrorCode};
-pub use ids::new_id;
+pub use ids::{new_id, now, now_ms, now_s};
