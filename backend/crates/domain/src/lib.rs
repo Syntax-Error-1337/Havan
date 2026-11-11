@@ -10,6 +10,7 @@ pub mod api_key;
 pub mod automation;
 pub mod catalog;
 pub mod devices;
+pub mod history;
 pub mod homes;
 pub mod identity;
 pub mod ota;

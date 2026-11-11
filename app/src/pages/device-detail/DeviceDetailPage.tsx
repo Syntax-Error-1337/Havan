@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, Switch } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Box, Screen, AppText } from '../../shared/ui';
-import { useDevice, useSetPoint, useSetRoom } from '../../entities/device';
+import { Box, Screen, AppText, Sparkline } from '../../shared/ui';
+import { useDevice, useHistory, useSetPoint, useSetRoom } from '../../entities/device';
 import type { DevicePoint } from '../../entities/device';
 import { useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -79,6 +79,12 @@ export function DeviceDetailPage() {
             </AppText>
           ) : null}
         </Box>
+
+        <HistoryChart
+          deviceId={device.id}
+          code={device.points.find((p) => typeof p.value === 'number')?.code ?? device.points[0]?.code}
+          isBoolean={typeof device.points.find((p) => typeof p.value === 'boolean')?.value === 'boolean'}
+        />
 
         {device.points.map((point) => (
           <Box
@@ -200,4 +206,52 @@ function formatValue(value: boolean | number | string | null): string {
   if (typeof value === 'boolean') return value ? 'On' : 'Off';
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(1);
   return String(value);
+}
+
+/**
+ * A day of one datapoint, or an honest sentence about why there is no chart.
+ */
+function HistoryChart({
+  deviceId,
+  code,
+  isBoolean,
+}: {
+  deviceId: string;
+  code: string | undefined;
+  isBoolean: boolean;
+}) {
+  const { data, isPending, isError } = useHistory(deviceId, code, '1d');
+
+  if (!code) return null;
+
+  const samples = (data?.buckets ?? []).reduce((sum, b) => sum + b.n, 0);
+
+  return (
+    <Box gap="xs">
+      <AppText variant="caption" tone="muted">
+        {code} · last 24h
+      </AppText>
+
+      {isPending ? (
+        <AppText variant="caption" tone="muted">
+          Loading history…
+        </AppText>
+      ) : isError ? (
+        <AppText variant="caption" tone="muted">
+          History is unavailable right now.
+        </AppText>
+      ) : samples === 0 ? (
+        <AppText variant="caption" tone="muted">
+          No readings yet. History starts after the device reports for a while.
+        </AppText>
+      ) : (
+        <>
+          <Sparkline buckets={data?.buckets ?? []} isBoolean={isBoolean} />
+          <AppText variant="caption" tone="muted">
+            {samples} reading{samples === 1 ? '' : 's'} · {data?.buckets.length} bars
+          </AppText>
+        </>
+      )}
+    </Box>
+  );
 }

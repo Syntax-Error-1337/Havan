@@ -5,6 +5,7 @@ pub mod auth;
 pub mod automations;
 pub mod catalog;
 pub mod devices;
+pub mod history;
 pub mod homes;
 pub mod ota;
 pub mod pairing;

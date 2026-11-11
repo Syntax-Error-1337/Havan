@@ -113,6 +113,17 @@ topic; it never moves bytes.
 pct`, so a device cannot drift in and out of a wave between scans, and raising the
 percentage only ever adds devices (`domain::ota`).
 
+### History
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/devices/{id}/history?code=&range=` | downsampled to ≤60 buckets; `range` is `1h\|1d\|7d\|30d` |
+
+One bucket per slice, each carrying the **average** and the sample count. For a
+boolean the average is the fraction of the window it was true, which is what a
+"when is the light on" chart should draw. A bucket with no samples is drawn as a
+gap, never as zero — silence is not a reading.
+
 ### Misc
 
 | Method | Path |
