@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::pg::Pg;
-use domain::automation::{Automation, AutomationDef, AutomationRepo, RunLog, Trigger};
+use domain::automation::{Automation, AutomationDef, AutomationRepo, RunLog, RunRecord, Trigger};
 use kernel::{AppError, TenantCtx};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
@@ -126,6 +126,75 @@ impl AutomationRepo for PgAutomation {
             return Err(AppError::not_found("automation"));
         }
         Ok(())
+    }
+
+    async fn set_enabled(&self, id: Uuid, enabled: bool) -> Result<Automation, AppError> {
+        let mut tx = self.tx().await?;
+
+        // Arming a schedule means `next_run_at = now()`: the scheduler picks it
+        // up on its next tick and computes the real next run itself.
+        let row = sqlx::query_as::<_, Row>(&format!(
+            r#"UPDATE automations
+                  SET enabled = $2,
+                      next_run_at = CASE
+                        WHEN $2 AND definition #>> '{{trigger,type}}' = 'schedule' THEN now()
+                        ELSE NULL
+                      END
+                WHERE id = $1
+            RETURNING {COLUMNS}"#
+        ))
+        .bind(id)
+        .bind(enabled)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        row.map(map)
+            .transpose()?
+            .ok_or_else(|| AppError::not_found("automation"))
+    }
+
+    async fn runs(&self, automation_id: Uuid, limit: i64) -> Result<Vec<RunRecord>, AppError> {
+        let mut tx = self.tx().await?;
+        let rows = sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                String,
+                String,
+                time::OffsetDateTime,
+                serde_json::Value,
+            ),
+        >(
+            r#"SELECT id, trigger_kind, status, started_at, log
+                 FROM automation_runs
+                WHERE automation_id = $1
+                ORDER BY started_at DESC
+                LIMIT $2"#,
+        )
+        .bind(automation_id)
+        .bind(limit.clamp(1, 100))
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        rows.into_iter()
+            .map(|(id, trigger_kind, status, started_at, log)| {
+                // The column holds the steps array, not the RunLog wrapper.
+                let steps: Vec<domain::automation::RunStep> = serde_json::from_value(log)
+                    .map_err(|e| AppError::Internal(format!("stored run log: {e}")))?;
+                let log = RunLog { steps };
+                Ok(RunRecord {
+                    id,
+                    trigger_kind,
+                    status,
+                    started_at,
+                    log,
+                })
+            })
+            .collect()
     }
 
     async fn triggered_by(&self, device_id: Uuid, code: &str) -> Result<Vec<Automation>, AppError> {

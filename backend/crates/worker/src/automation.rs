@@ -61,9 +61,13 @@ impl Runner {
             }
 
             let (mut log, status) = self.execute(&automation).await;
-            log.push(RunStep::Trigger {
-                detail: format!("{code} = {value}"),
-            });
+            // The trigger leads: a log is read top-down, and "why" comes first.
+            log.steps.insert(
+                0,
+                RunStep::Trigger {
+                    detail: format!("{code} = {value}"),
+                },
+            );
 
             if let Err(e) = self
                 .repo
@@ -99,9 +103,12 @@ impl Runner {
 
         for automation in due {
             let (mut log, status) = self.execute(&automation).await;
-            log.push(RunStep::Trigger {
-                detail: format!("{:?}", automation.definition.trigger),
-            });
+            log.steps.insert(
+                0,
+                RunStep::Trigger {
+                    detail: automation.definition.trigger.describe(),
+                },
+            );
 
             if let Err(e) = self
                 .repo

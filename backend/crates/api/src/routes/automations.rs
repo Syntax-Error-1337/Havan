@@ -1,9 +1,9 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get};
-use domain::automation::{Automation, AutomationDef};
+use domain::automation::{Automation, AutomationDef, RunRecord};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -14,7 +14,8 @@ use crate::error::{ApiError, ApiResult};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/homes/{id}/automations", get(list).post(create))
-        .route("/automations/{automation_id}", delete(remove))
+        .route("/automations/{automation_id}", delete(remove).patch(update))
+        .route("/automations/{automation_id}/runs", get(runs))
 }
 
 #[derive(Deserialize)]
@@ -96,4 +97,78 @@ async fn remove(
         .await
         .map_err(ApiError)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct UpdateBody {
+    enabled: bool,
+}
+
+/// On or off. The home check is the same one `remove` makes: an automation id
+/// is not a capability, membership of its home is.
+async fn update(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(automation_id): Path<Uuid>,
+    Json(body): Json<UpdateBody>,
+) -> ApiResult<Json<Automation>> {
+    let home_id = state
+        .automations
+        .home_of(automation_id)
+        .await
+        .map_err(ApiError)?
+        .ok_or_else(|| ApiError(kernel::AppError::not_found("automation")))?;
+
+    let home = state
+        .homes
+        .require(home_id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+    if !home.role.can_manage() {
+        return Err(ApiError(kernel::AppError::forbidden(
+            "only an admin can change an automation",
+        )));
+    }
+
+    Ok(Json(
+        state
+            .automations
+            .set_enabled(automation_id, body.enabled)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+/// The last runs, newest first. `?limit=` is clamped server-side.
+#[derive(Deserialize)]
+struct RunsQuery {
+    limit: Option<i64>,
+}
+
+async fn runs(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(automation_id): Path<Uuid>,
+    Query(q): Query<RunsQuery>,
+) -> ApiResult<Json<Vec<RunRecord>>> {
+    let home_id = state
+        .automations
+        .home_of(automation_id)
+        .await
+        .map_err(ApiError)?
+        .ok_or_else(|| ApiError(kernel::AppError::not_found("automation")))?;
+
+    state
+        .homes
+        .require(home_id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(
+        state
+            .automations
+            .runs(automation_id, q.limit.unwrap_or(20))
+            .await
+            .map_err(ApiError)?,
+    ))
 }

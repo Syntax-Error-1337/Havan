@@ -73,6 +73,19 @@ pub enum CompareOp {
     Lte,
 }
 
+impl CompareOp {
+    /// The symbol a person reads, not the variant name.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CompareOp::Eq => "is",
+            CompareOp::Gt => ">",
+            CompareOp::Lt => "<",
+            CompareOp::Gte => ">=",
+            CompareOp::Lte => "<=",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PointEvent {
     pub device_id: Uuid,
@@ -82,12 +95,12 @@ pub struct PointEvent {
 
 /// What one run did, step by step. This is what a user sees when they ask why
 /// the light came on at 3 a.m.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunLog {
     pub steps: Vec<RunStep>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RunStep {
     Trigger { detail: String },
@@ -119,7 +132,36 @@ impl Default for RunLog {
     }
 }
 
+fn render(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => format!("\"{s}\""),
+        other => other.to_string(),
+    }
+}
+
 impl Trigger {
+    /// A phrase a person can read in a run log. The Debug form is for panic
+    /// messages; this is what the app shows.
+    pub fn describe(&self) -> String {
+        match self {
+            Trigger::Schedule { every_secs } => {
+                if *every_secs % 3600 == 0 {
+                    format!("every {} hour(s)", every_secs / 3600)
+                } else if *every_secs % 60 == 0 {
+                    format!("every {} minute(s)", every_secs / 60)
+                } else {
+                    format!("every {every_secs} seconds")
+                }
+            }
+            Trigger::DeviceState {
+                code, op, value, ..
+            } => {
+                format!("when {code} {} {}", op.as_str(), render(value))
+            }
+            Trigger::Manual => "when you press run".to_string(),
+        }
+    }
+
     /// Does this event fire the trigger?
     pub fn matches(&self, event: &PointEvent) -> bool {
         match self {
@@ -241,6 +283,17 @@ pub fn next_run(every_secs: u32, now: time::OffsetDateTime) -> time::OffsetDateT
     now + time::Duration::seconds(i64::from(every_secs.clamp(5, 86_400)))
 }
 
+/// One recorded execution: what fired it, whether it finished, and the steps.
+#[derive(Debug, Clone, Serialize)]
+pub struct RunRecord {
+    pub id: Uuid,
+    pub trigger_kind: String,
+    pub status: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub started_at: time::OffsetDateTime,
+    pub log: RunLog,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Automation {
     pub id: Uuid,
@@ -267,6 +320,21 @@ pub trait AutomationRepo {
     fn home_of(&self, id: Uuid) -> impl Future<Output = Result<Option<Uuid>, AppError>> + Send;
 
     fn delete(&self, id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Turn a rule on or off. Re-enabling a scheduled rule arms it immediately:
+    /// a rule that is switched on and then does nothing for an interval looks
+    /// broken, and users report it as broken.
+    fn set_enabled(
+        &self,
+        id: Uuid,
+        enabled: bool,
+    ) -> impl Future<Output = Result<Automation, AppError>> + Send;
+
+    fn runs(
+        &self,
+        automation_id: Uuid,
+        limit: i64,
+    ) -> impl Future<Output = Result<Vec<RunRecord>, AppError>> + Send;
 
     /// Lease every due automation to `owner` for `ttl_secs` and return them.
     /// Two workers racing this must never both win a row.
@@ -333,6 +401,14 @@ impl<R: AutomationRepo + Send + Sync> AutomationService<R> {
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         self.repo.delete(id).await
+    }
+
+    pub async fn set_enabled(&self, id: Uuid, enabled: bool) -> Result<Automation, AppError> {
+        self.repo.set_enabled(id, enabled).await
+    }
+
+    pub async fn runs(&self, id: Uuid, limit: i64) -> Result<Vec<RunRecord>, AppError> {
+        self.repo.runs(id, limit).await
     }
 
     pub async fn home_of(&self, id: Uuid) -> Result<Option<Uuid>, AppError> {
@@ -561,6 +637,12 @@ mod tests {
             unimplemented!()
         }
         async fn delete(&self, _: Uuid) -> Result<(), AppError> {
+            unimplemented!()
+        }
+        async fn set_enabled(&self, _: Uuid, _: bool) -> Result<Automation, AppError> {
+            unimplemented!()
+        }
+        async fn runs(&self, _: Uuid, _: i64) -> Result<Vec<RunRecord>, AppError> {
             unimplemented!()
         }
         async fn triggered_by(&self, _: Uuid, _: &str) -> Result<Vec<Automation>, AppError> {

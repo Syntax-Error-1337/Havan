@@ -78,7 +78,11 @@ export function DashboardPage() {
             {home.device_count} device{home.device_count === 1 ? '' : 's'}
           </AppText>
         </Box>
-        <Button label="Add" onPress={() => router.push('/add-device')} />
+        <Box row gap="sm" style={{ alignItems: 'center' }}>
+          <Button label="Automatic" variant="ghost" onPress={() => router.push('/automations')} />
+          <Button label="Add" onPress={() => router.push('/add-device')} />
+        </Box>
+
       </Box>
 
       {isPending ? (

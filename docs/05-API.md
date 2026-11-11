@@ -56,16 +56,21 @@ Every mutating request accepts `Idempotency-Key`.
 | GET | `/pairing-sessions/{id}` | progress |
 | POST | `/provision/claim` | **device-facing**, no user auth, secret + ticket |
 
-### Automations & scenes
+### Automations
 
 | Method | Path | Notes |
 |---|---|---|
-| GET/POST | `/homes/{id}/automations` | |
-| GET/PATCH/DELETE | `/automations/{id}` | |
-| POST | `/automations/{id}/run` | manual trigger |
-| GET | `/automations/{id}/runs` | last 50 runs with per-step log |
+| GET/POST | `/homes/{id}/automations` | create: `{name, definition}`; admin only |
+| PATCH | `/automations/{id}` | `{enabled}` — re-enabling arms a scheduled rule immediately |
+| DELETE | `/automations/{id}` | admin only |
+| GET | `/automations/{id}/runs?limit=` | newest first, `limit` clamped to 100; the step log is the audit trail |
 | GET/POST | `/homes/{id}/scenes` | named action bundles |
 | POST | `/scenes/{id}/activate` | |
+
+**Not built yet:** `POST /automations/{id}/run` (run now). The scheduler can
+already run any rule whose `next_run_at` is due, so this is a small endpoint —
+it is held back because a manual run would be recorded as a `schedule` run, and
+a mislabelled audit trail is worse than no button.
 
 ### Misc
 
