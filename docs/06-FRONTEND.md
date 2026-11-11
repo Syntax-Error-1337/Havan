@@ -68,6 +68,29 @@ Route files stay under 30 lines: parse params, render the page. A route that
 contains a query is a bug. The auth gate lives in `app/_layout.tsx`, not in a
 screen, so a new screen cannot forget it.
 
+### Testing the app
+
+There is no simulator here and no Xcode, so the screens are verified by
+rendering them: `jest-expo` + `@testing-library/react-native`, with the network
+stubbed at `globalThis.fetch`. `npm test`.
+
+Setup gotchas, all learned the hard way:
+
+- `jest-expo` needs `@react-native/jest-preset` installed explicitly — the RN
+  preset moved out of it and it fails with a validation error until it is there.
+- RNTL 14's `render` is **async**: `const view = await render(...)`. The global
+  `screen` export is not populated by it, so use the returned `view`.
+- Prefer `await view.findByText(...)` over `waitFor(...) + getByText(...)`; the
+  latter races the query and passes or fails by timing.
+- The suite needs `--forceExit` (the `npm test` script has it): something keeps
+  a handle alive after the run and jest waits for it.
+- `src/test/setup.ts` mocks the keychain, expo-router, safe-area and WebSocket.
+  Add a mock there rather than in a test file, so no test can quietly reach a
+  real network.
+
+These catch what typechecking cannot: the `{data}` bug (a bare array read as an
+envelope) typechecked fine and left every home rendering "no devices yet".
+
 ### The radar, as built
 
 `shared/lib/ble` is the only place that knows the wire format, and it is split
