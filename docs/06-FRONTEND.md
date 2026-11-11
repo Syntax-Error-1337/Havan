@@ -247,3 +247,28 @@ route-level code splitting on the portal.
   portal for publish-product and start-campaign.
 
 `renderScreen()` helper wraps providers once so a page test is three lines.
+
+### Looking at a screen without a simulator
+
+`make app-web` serves the customer app at `:8082`. It exists because there is no
+Xcode on the machine this was built on, and because the cheapest way to catch a
+broken layout is to look at one.
+
+Two things had to change for it to be usable, and both were bugs rather than
+configuration:
+
+- `expo-secure-store` throws on web instead of degrading, and the app hydrated
+  the session eagerly — so the web build was a **blank page**. `shared/lib/secure.ts`
+  now owns the choice: keychain on a phone, `localStorage` on web. One module
+  knows; the rest of the app asks it.
+- the API sends no CORS headers, so a browser client could not call it. The dev
+  build now allows any origin (behind `cfg!(debug_assertions)`); a release build
+  emits none. A native app sends no `Origin`, so this costs production nothing,
+  but a deployment that wants a browser client must set its own origin.
+
+What the browser showed that no test did: the dashboard header read **"0
+devices"** above a list of one. `homes.device_count` is a `count(*)` over
+`devices`, which carries an RLS policy keyed on `haven_user()` — and the homes
+query never set it, so the count was not *wrong*, it was zero by policy. The
+homes repo now opens the transaction with the caller's identity.
+

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
+import { secureStore } from '../../../shared/lib/secure';
 import { setAccessToken, setRefreshHandler } from '../../../shared/api/client';
 import { request } from '../../../shared/api/client';
 
@@ -32,9 +32,9 @@ export const useSession = create<SessionState>((set, get) => ({
 
   hydrate: async () => {
     const [access, refresh, homeId] = await Promise.all([
-      SecureStore.getItemAsync(KEY_ACCESS),
-      SecureStore.getItemAsync(KEY_REFRESH),
-      SecureStore.getItemAsync(KEY_HOME),
+      secureStore.get(KEY_ACCESS),
+      secureStore.get(KEY_REFRESH),
+      secureStore.get(KEY_HOME),
     ]);
     setAccessToken(access);
     set({ access, refresh, homeId, hydrated: true });
@@ -42,8 +42,8 @@ export const useSession = create<SessionState>((set, get) => ({
 
   signIn: async (tokens) => {
     await Promise.all([
-      SecureStore.setItemAsync(KEY_ACCESS, tokens.access),
-      SecureStore.setItemAsync(KEY_REFRESH, tokens.refresh),
+      secureStore.set(KEY_ACCESS, tokens.access),
+      secureStore.set(KEY_REFRESH, tokens.refresh),
     ]);
     setAccessToken(tokens.access);
     set({ access: tokens.access, refresh: tokens.refresh });
@@ -59,16 +59,16 @@ export const useSession = create<SessionState>((set, get) => ({
       }).catch(() => undefined);
     }
     await Promise.all([
-      SecureStore.deleteItemAsync(KEY_ACCESS),
-      SecureStore.deleteItemAsync(KEY_REFRESH),
-      SecureStore.deleteItemAsync(KEY_HOME),
+      secureStore.remove(KEY_ACCESS),
+      secureStore.remove(KEY_REFRESH),
+      secureStore.remove(KEY_HOME),
     ]);
     setAccessToken(null);
     set({ access: null, refresh: null, homeId: null });
   },
 
   setHome: async (homeId) => {
-    await SecureStore.setItemAsync(KEY_HOME, homeId);
+    await secureStore.set(KEY_HOME, homeId);
     set({ homeId });
   },
 }));

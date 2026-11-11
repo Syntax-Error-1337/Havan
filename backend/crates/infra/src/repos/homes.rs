@@ -11,6 +11,25 @@ impl PgHomes {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+
+    /// Run a homes query with the caller's identity in place.
+    ///
+    /// `devices` carries a row-level policy keyed on `haven_user()`, and this
+    /// query counts them. Without the setting the count is not an error — RLS
+    /// simply returns zero rows — so a home with nine devices reported "0
+    /// devices" while the device list beside it drew all nine.
+    async fn as_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<sqlx::Transaction<'static, sqlx::Postgres>, AppError> {
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        sqlx::query("SELECT set_config('haven.user_id', $1, true)")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        Ok(tx)
+    }
 }
 
 fn db(e: sqlx::Error) -> AppError {
@@ -50,6 +69,7 @@ impl HomeRepo for PgHomes {
     }
 
     async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<Home>, AppError> {
+        let mut tx = self.as_user(user_id).await?;
         let rows = sqlx::query_as::<
             _,
             (
@@ -72,9 +92,10 @@ impl HomeRepo for PgHomes {
                ORDER BY h.created_at"#,
         )
         .bind(user_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(db)?;
+        tx.commit().await.map_err(db)?;
 
         Ok(rows
             .into_iter()
@@ -96,7 +117,8 @@ impl HomeRepo for PgHomes {
     }
 
     async fn get(&self, home_id: Uuid, user_id: Uuid) -> Result<Option<Home>, AppError> {
-        sqlx::query_as::<
+        let mut tx = self.as_user(user_id).await?;
+        let row = sqlx::query_as::<
             _,
             (
                 Uuid,
@@ -119,25 +141,24 @@ impl HomeRepo for PgHomes {
         )
         .bind(home_id)
         .bind(user_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
-        .map_err(db)
-        .map(|row| {
-            row.map(
-                |(id, owner_id, name, timezone, role, member_count, device_count, created_at)| {
-                    Home {
-                        id,
-                        owner_id,
-                        name,
-                        timezone,
-                        role: role_of(&role),
-                        member_count,
-                        device_count,
-                        created_at,
-                    }
-                },
-            )
-        })
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(row.map(
+            |(id, owner_id, name, timezone, role, member_count, device_count, created_at)| Home {
+                id,
+                owner_id,
+                name,
+                timezone,
+                role: role_of(&role),
+                member_count,
+                device_count,
+                created_at,
+            },
+        ))
     }
 
     async fn rename(&self, home_id: Uuid, name: &str) -> Result<(), AppError> {

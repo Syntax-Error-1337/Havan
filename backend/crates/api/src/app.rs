@@ -107,15 +107,30 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/stream", get(routes::stream::ws));
 
-    Router::new()
+    let app = Router::new()
         .route("/healthz", get(health::health))
         .route("/livez", get(health::live))
-        .nest("/v1", v1)
-        .with_state(state)
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(tower_http::trace::DefaultMakeSpan::new().include_headers(false)),
+        .nest("/v1", v1);
+
+    // CORS exists for one reason: the customer app has a web build used to check
+    // layout and flows without a simulator. A native app sends no Origin, so this
+    // changes nothing for production traffic — but it is dev-only on purpose, and
+    // a deployment that needs a browser client should put its own origin here.
+    if cfg!(debug_assertions) {
+        app.layer(
+            tower_http::cors::CorsLayer::new()
+                .allow_origin(tower_http::cors::Any)
+                .allow_methods(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any),
         )
-        .layer(PropagateRequestIdLayer::x_request_id())
-        .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+    } else {
+        app
+    }
+    .with_state(state)
+    .layer(
+        TraceLayer::new_for_http()
+            .make_span_with(tower_http::trace::DefaultMakeSpan::new().include_headers(false)),
+    )
+    .layer(PropagateRequestIdLayer::x_request_id())
+    .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
 }
