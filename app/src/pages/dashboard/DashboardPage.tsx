@@ -1,13 +1,14 @@
-import { useEffect, useMemo } from 'react';
-import { FlatList } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, SectionList, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Box, Button, Screen, AppText } from '../../shared/ui';
 import { DeviceCard, useDevices } from '../../entities/device';
-import { useCreateHome, useHomes } from '../../entities/home';
+import { useCreateHome, useCreateRoom, useHomes, useRooms } from '../../entities/home';
 import { useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
 import { useTheme } from '../../app-shell/theme';
+import { groupByRoom } from './sections';
 
 /**
  * Home screen. Four honest states: no home yet, loading, empty, list. Errors are
@@ -32,6 +33,13 @@ export function DashboardPage() {
 
   const { data, isPending, refetch } = useDevices(homeId ?? undefined);
   const devices = useMemo(() => data ?? [], [data]);
+
+  const { data: rooms } = useRooms(homeId ?? undefined);
+  const createRoom = useCreateRoom(homeId ?? undefined);
+  const [addingRoom, setAddingRoom] = useState(false);
+  const [roomName, setRoomName] = useState('');
+
+  const sections = useMemo(() => groupByRoom(devices, rooms), [devices, rooms]);
 
   if (homesPending) return <Screen>{null}</Screen>;
 
@@ -79,11 +87,51 @@ export function DashboardPage() {
           </AppText>
         </Box>
         <Box row gap="sm" style={{ alignItems: 'center' }}>
+          <Button
+            label="Room"
+            variant="ghost"
+            onPress={() => setAddingRoom((v) => !v)}
+          />
           <Button label="Automatic" variant="ghost" onPress={() => router.push('/automations')} />
           <Button label="Add" onPress={() => router.push('/add-device')} />
         </Box>
-
       </Box>
+
+      {addingRoom ? (
+        <Box row gap="sm" px="lg" style={{ alignItems: 'center' }}>
+          <TextInput
+            placeholder="Room name"
+            placeholderTextColor={color.muted}
+            value={roomName}
+            onChangeText={setRoomName}
+            autoFocus
+            style={{
+              flex: 1,
+              backgroundColor: color.surface,
+              borderWidth: 1,
+              borderColor: color.border,
+              borderRadius: tokens.radius.md,
+              padding: tokens.space.md,
+              color: color.text,
+            }}
+          />
+          <Button
+            label={createRoom.isPending ? 'Saving…' : 'Create'}
+            disabled={roomName.trim().length === 0 || createRoom.isPending}
+            onPress={() =>
+              createRoom.mutate(
+                { name: roomName.trim() },
+                {
+                  onSuccess: () => {
+                    setRoomName('');
+                    setAddingRoom(false);
+                  },
+                },
+              )
+            }
+          />
+        </Box>
+      ) : null}
 
       {isPending ? (
         <Box p="lg" gap="md">
@@ -105,14 +153,34 @@ export function DashboardPage() {
           <Button label="Try again" variant="ghost" onPress={() => refetch()} />
         </Box>
       ) : (
-        <FlatList
-          data={devices}
+        <SectionList
+          sections={sections}
           keyExtractor={(d) => d.id}
-          numColumns={2}
-          columnWrapperStyle={{ gap: tokens.space.md, paddingHorizontal: tokens.space.lg }}
-          contentContainerStyle={{ gap: tokens.space.md, paddingBottom: tokens.space.xxl }}
+          contentContainerStyle={{
+            gap: tokens.space.sm,
+            paddingBottom: tokens.space.xxl,
+            paddingTop: tokens.space.sm,
+          }}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => (
+            <AppText
+              variant="caption"
+              tone="muted"
+              style={{
+                paddingHorizontal: tokens.space.lg,
+                paddingTop: tokens.space.md,
+                paddingBottom: tokens.space.xs,
+                textTransform: 'uppercase',
+                letterSpacing: 0.6,
+              }}
+            >
+              {section.title}
+            </AppText>
+          )}
           renderItem={({ item }) => (
-            <DeviceCard device={item} onPress={() => router.push(`/device/${item.id}`)} />
+            <Box style={{ paddingHorizontal: tokens.space.lg }}>
+              <DeviceCard device={item} onPress={() => router.push(`/device/${item.id}`)} />
+            </Box>
           )}
         />
       )}

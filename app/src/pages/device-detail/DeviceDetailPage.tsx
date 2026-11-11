@@ -1,8 +1,9 @@
 import { ActivityIndicator, Pressable, Switch } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Box, Screen, AppText } from '../../shared/ui';
-import { useDevice, useSetPoint } from '../../entities/device';
+import { useDevice, useSetPoint, useSetRoom } from '../../entities/device';
 import type { DevicePoint } from '../../entities/device';
+import { useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
 
 export function DeviceDetailPage() {
@@ -10,6 +11,8 @@ export function DeviceDetailPage() {
   const { color } = useTheme();
   const { data: device, isPending, isError } = useDevice(id);
   const setPoint = useSetPoint(id ?? '');
+  const setRoom = useSetRoom();
+  const { data: rooms } = useRooms(device?.home_id ?? undefined);
 
   if (isPending) {
     return (
@@ -44,6 +47,37 @@ export function DeviceDetailPage() {
           <AppText variant="caption" tone="muted">
             {device.online ? 'Online' : 'Offline'} · {device.product_key}
           </AppText>
+        </Box>
+
+        <Box gap="sm">
+          <AppText variant="caption" tone="muted">
+            Room
+          </AppText>
+          <Box row gap="sm" style={{ flexWrap: 'wrap' }}>
+            {[{ id: null as string | null, name: 'None' }, ...(rooms ?? [])].map((room) => {
+              const active = (device.room_id ?? null) === room.id;
+              return (
+                <Pressable
+                  key={room.id ?? 'none'}
+                  disabled={setRoom.isPending}
+                  onPress={() => setRoom.mutate({ deviceId: device.id, roomId: room.id })}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Box px="md" py="sm" radius="pill" bg={active ? 'accent' : 'surface'} border>
+                    <AppText variant="caption" tone={active ? 'text' : 'muted'}>
+                      {room.name}
+                    </AppText>
+                  </Box>
+                </Pressable>
+              );
+            })}
+          </Box>
+          {setRoom.error ? (
+            <AppText variant="caption" tone="danger">
+              {setRoom.error.message}
+            </AppText>
+          ) : null}
         </Box>
 
         {device.points.map((point) => (

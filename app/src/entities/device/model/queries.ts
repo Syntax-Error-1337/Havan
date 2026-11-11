@@ -7,7 +7,10 @@ export function useDevices(homeId: string | undefined) {
   return useQuery({
     queryKey: qk.devices(homeId ?? 'none'),
     enabled: Boolean(homeId),
-    queryFn: () => request<{ data: Device[] }>(`/devices?home_id=${homeId}`).then((r) => r.data),
+    // The API returns a bare array. It does not wrap in `{data}` — an earlier
+    // version of this line assumed it did, and the dashboard silently rendered
+    // "no devices" for every home.
+    queryFn: () => request<Device[]>(`/devices?home_id=${homeId}`),
     // The dashboard is the app's home screen; keep it fresh without hammering.
     staleTime: 15_000,
   });
@@ -54,6 +57,28 @@ export function useSetPoint(deviceId: string) {
     onSettled: () => {
       // The websocket settles it; a refetch here covers the socket-missed case.
       qc.invalidateQueries({ queryKey: qk.device(deviceId) });
+    },
+  });
+}
+
+/**
+ * Move a device into a room, or out of one (`roomId: null`).
+ *
+ * The API distinguishes "field absent" from "field null" so clearing a room is
+ * expressible; this sends the field explicitly, always.
+ */
+export function useSetRoom() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { deviceId: string; roomId: string | null }) =>
+      request<Device>(`/devices/${input.deviceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ room_id: input.roomId }),
+      }),
+    onSuccess: (device) => {
+      qc.setQueryData(qk.device(device.id), device);
+      void qc.invalidateQueries({ queryKey: qk.devices(device.home_id ?? 'none') });
     },
   });
 }

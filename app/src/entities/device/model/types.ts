@@ -18,6 +18,9 @@ export type DevicePoint = {
 
 export type Device = {
   id: string;
+  home_id?: string | null;
+  /** Printed on the box and advertised over BLE — how a radar finds it again. */
+  serial: string;
   name: string;
   room_id?: string | null;
   room_name?: string | null;
