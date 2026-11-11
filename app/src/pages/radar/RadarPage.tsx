@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing } from 'react-native';
 import { Box, AppText, Button, Screen } from '../../shared/ui';
-import { useTheme, tokens } from '../../app/theme';
+import { useTheme, tokens } from '../../app-shell/theme';
 
 /**
  * The radar. Phase 4 wires `react-native-ble-plx` here; the animation and the

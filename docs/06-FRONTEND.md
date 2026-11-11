@@ -47,7 +47,9 @@ app/                          expo-router routes — thin, no logic
   scene/[id].tsx              → <ScenePage />
 
 src/
-  app/            providers.tsx, theme.tsx, queryClient.ts, styles/
+  app-shell/      providers.tsx, theme.tsx, queryClient.ts, styles/
+                  (NOT `src/app`: expo-router treats `src/app` as its route root
+                   and would serve providers.tsx as a screen)
   pages/          login, dashboard, devices, device-detail, radar, scene-editor, settings
   widgets/        home-header, room-section, device-grid, radar-scanner,
                   device-control-panel, scene-canvas, activity-feed
@@ -63,7 +65,8 @@ src/
 ```
 
 Route files stay under 30 lines: parse params, render the page. A route that
-contains a query is a bug.
+contains a query is a bug. The auth gate lives in `app/_layout.tsx`, not in a
+screen, so a new screen cannot forget it.
 
 ## Portal (React)
 

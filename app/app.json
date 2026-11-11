@@ -23,7 +23,9 @@
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "blockedPermissions": ["android.permission.BLUETOOTH_ADVERTISE"],
+      "blockedPermissions": [
+        "android.permission.BLUETOOTH_ADVERTISE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#0B0D10",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -41,8 +43,6 @@
       "expo-localization",
       "react-native-ble-plx"
     ],
-    "experiments": {
-      "typedRoutes": true
-    }
+    "experiments": {}
   }
 }

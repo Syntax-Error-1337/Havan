@@ -1,6 +1,6 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ReactNode } from 'react';
-import { useTheme } from '../../app/theme';
+import { useTheme } from '../../app-shell/theme';
 
 /** Screen shell: safe area, background, and nothing else. */
 export function Screen({ children }: { children: ReactNode }) {

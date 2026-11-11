@@ -24,15 +24,25 @@ export class ApiError extends Error {
   }
 }
 
-const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080/v1';
+export const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080/v1';
 
 let accessToken: string | null = null;
+let refreshHandler: (() => Promise<string | null>) | null = null;
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
 }
 
-export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** Installed by the session slice; kept out of here so this file has no policy. */
+export function setRefreshHandler(fn: () => Promise<string | null>) {
+  refreshHandler = fn;
+}
+
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  retried = false,
+): Promise<T> {
   const headers: Record<string, string> = {
     accept: 'application/json',
     ...(init.body ? { 'content-type': 'application/json' } : {}),
@@ -46,6 +56,13 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   } catch (cause) {
     // Offline is a distinct state in a smart-home app, not a generic failure.
     throw new ApiError(0, 'network', 'You appear to be offline.');
+  }
+
+  // An expired access token is a retry, not a logout. One attempt only: a
+  // refresh loop would hammer the server on a revoked family.
+  if (res.status === 401 && !retried && refreshHandler) {
+    const fresh = await refreshHandler();
+    if (fresh) return request<T>(path, init, true);
   }
 
   if (res.status === 204) return undefined as T;

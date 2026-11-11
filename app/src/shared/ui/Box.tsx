@@ -1,5 +1,5 @@
 import { Platform, StyleSheet, Text, View, type TextProps, type ViewProps } from 'react-native';
-import { useTheme, tokens } from '../../app/theme';
+import { useTheme, tokens } from '../../app-shell/theme';
 
 type Space = keyof typeof tokens.space;
 

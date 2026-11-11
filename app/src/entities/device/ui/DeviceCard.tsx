@@ -1,6 +1,6 @@
 import { Pressable } from 'react-native';
 import { Box, AppText } from '../../../shared/ui';
-import { useTheme, tokens } from '../../../app/theme';
+import { useTheme, tokens } from '../../../app-shell/theme';
 import { useSetPoint } from '../model/queries';
 import { primaryPoint, type Device } from '../model/types';
 

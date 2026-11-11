@@ -1,29 +1,83 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Box, Button, Screen, AppText } from '../../shared/ui';
 import { DeviceCard, useDevices } from '../../entities/device';
+import { useCreateHome, useHomes } from '../../entities/home';
+import { useSession } from '../../entities/session';
+import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
-import { useTheme } from '../../app/theme';
+import { useTheme } from '../../app-shell/theme';
 
 /**
- * Home screen. Three honest states: loading, empty, list. An error is the
- * empty state with a different sentence — the user cannot act on a stack trace.
+ * Home screen. Four honest states: no home yet, loading, empty, list. Errors are
+ * the empty state with a different sentence — a user cannot act on a stack trace.
  */
 export function DashboardPage() {
   const router = useRouter();
   const { color } = useTheme();
-  const homeId = process.env.EXPO_PUBLIC_HOME_ID ?? 'demo';
-  const { data, isPending, refetch } = useDevices(homeId);
 
+  const homeId = useSession((s) => s.homeId);
+  const setHome = useSession((s) => s.setHome);
+  const { data: homes, isPending: homesPending } = useHomes();
+  const createHome = useCreateHome();
+
+  // First run on a new account: adopt the only home there is.
+  useEffect(() => {
+    if (!homeId && homes && homes.length > 0) setHome(homes[0]!.id);
+  }, [homeId, homes, setHome]);
+
+  // Live state for whichever home is open.
+  useHomeStream(homeId);
+
+  const { data, isPending, refetch } = useDevices(homeId ?? undefined);
   const devices = useMemo(() => data ?? [], [data]);
+
+  if (homesPending) return <Screen>{null}</Screen>;
+
+  if (!homes || homes.length === 0) {
+    return (
+      <Screen>
+        <Box p="xl" gap="md" center flex={1}>
+          <AppText variant="title" weight="600">
+            Create your first home
+          </AppText>
+          <AppText tone="muted" style={{ textAlign: 'center' }}>
+            A home holds your rooms and devices. You can add more later.
+          </AppText>
+          <Button
+            label="Create home"
+            loading={createHome.isPending}
+            onPress={() =>
+              createHome.mutate(
+                { name: 'My home', timezone: 'UTC' },
+                { onSuccess: (home) => setHome(home.id) },
+              )
+            }
+          />
+          {createHome.error ? (
+            <AppText tone="danger" variant="caption">
+              {createHome.error.message}
+            </AppText>
+          ) : null}
+        </Box>
+      </Screen>
+    );
+  }
+
+  const home = homes.find((h) => h.id === homeId) ?? homes[0]!;
 
   return (
     <Screen>
       <Box px="lg" py="md" row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <AppText variant="display" weight="700">
-          Home
-        </AppText>
+        <Box gap="xs">
+          <AppText variant="display" weight="700">
+            {home.name}
+          </AppText>
+          <AppText variant="caption" tone="muted">
+            {home.device_count} device{home.device_count === 1 ? '' : 's'}
+          </AppText>
+        </Box>
         <Button label="Add" onPress={() => router.push('/add-device')} />
       </Box>
 

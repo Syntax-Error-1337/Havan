@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, type PressableProps } from 'react-native';
-import { useTheme, tokens } from '../../app/theme';
+import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText } from './Box';
 
 export type ButtonProps = Omit<PressableProps, 'children'> & {
