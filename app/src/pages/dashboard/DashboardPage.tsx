@@ -10,6 +10,7 @@ import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
 import { useTheme } from '../../app-shell/theme';
 import { groupByRoom } from './sections';
+import { SceneStrip } from '../../widgets/scene-strip/SceneStrip';
 
 /**
  * Home screen. Four honest states: no home yet, loading, empty, list. Errors are
@@ -103,6 +104,8 @@ export function DashboardPage() {
           <Button label="Add" onPress={() => router.push('/add-device')} />
         </Box>
       </Box>
+
+      {homeId ? <SceneStrip homeId={homeId} /> : null}
 
       {addingRoom ? (
         <Box row gap="sm" px="lg" style={{ alignItems: 'center' }}>

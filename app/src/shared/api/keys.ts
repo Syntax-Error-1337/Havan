@@ -14,5 +14,6 @@ export const qk = {
   automations: (homeId: string) => ['home', homeId, 'automations'] as const,
   capabilities: ['catalog', 'capabilities'] as const,
   notifications: ['notifications'] as const,
+  scenes: (homeId: string) => ['home', homeId, 'scenes'] as const,
   unread: ['notifications', 'unread'] as const,
 };

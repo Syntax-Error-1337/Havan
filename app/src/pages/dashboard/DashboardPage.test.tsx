@@ -38,6 +38,7 @@ beforeEach(() => {
 describe('dashboard', () => {
   it('shows devices grouped by room, and the unassigned ones apart', async () => {
     stubApi((url) => {
+      if (url.includes('/scenes')) return [];
       if (url.endsWith('/homes')) {
         return [
           {
@@ -55,6 +56,7 @@ describe('dashboard', () => {
       if (url.includes('/rooms')) {
         return [{ id: 'room-1', home_id: 'home-1', name: 'Living room', sort_order: 0 }];
       }
+      if (url.includes('/scenes')) return [];
       return [
         { id: 'd1', name: 'Lamp', room_id: 'room-1', serial: 'S1', product_key: 'k', category: 'light', online: true, points: [] },
         { id: 'd2', name: 'Plug', room_id: null, serial: 'S2', product_key: 'k', category: 'plug', online: true, points: [] },
@@ -74,6 +76,7 @@ describe('dashboard', () => {
 
   it('says so plainly when there are no devices', async () => {
     stubApi((url) => {
+      if (url.includes('/scenes')) return [];
       if (url.endsWith('/homes')) {
         return [
           {
