@@ -74,6 +74,29 @@ pub struct EventMsg {
     pub rssi: Option<i16>,
 }
 
+/// `.../ota` from the device: how far it has got with an offer.
+///
+/// The device speaks first here. A cloud that only sends offers and never
+/// listens cannot tell a fleet that failed to download from one still working.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OtaReport {
+    #[serde(default = "wire_v")]
+    pub v: u8,
+    /// Epoch seconds, device clock.
+    pub ts: i64,
+    /// The contract document calls this `rollout_id`; both names are accepted so
+    /// firmware written against either one works.
+    #[serde(alias = "rollout_id")]
+    pub campaign_id: Uuid,
+    /// `downloading` | `verified` | `rebooting` | `success` | `failed` | `skipped`.
+    pub state: String,
+    /// 0–100 while downloading. Optional: `success` has no percentage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pct: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+}
+
 /// `.../shadow` — retained full state, and the Last-Will target.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShadowMsg {

@@ -1,4 +1,6 @@
-use domain::ota::{Campaign, CampaignStatus, Firmware, JobStatus, OtaJob, OtaRepo};
+use domain::ota::{
+    Campaign, CampaignProgress, CampaignStatus, Firmware, JobStatus, OtaJob, OtaRepo,
+};
 use kernel::{AppError, TenantCtx};
 use sqlx::Transaction;
 use sqlx::postgres::Postgres;
@@ -360,19 +362,63 @@ impl OtaRepo for PgOta {
             .collect())
     }
 
+    async fn progress(
+        &self,
+        vendor_id: Uuid,
+        campaign_id: Uuid,
+    ) -> Result<CampaignProgress, AppError> {
+        let mut tx = self.tx(vendor_id).await?;
+
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT state, count(*) FROM ota_jobs WHERE campaign_id = $1 GROUP BY state",
+        )
+        .bind(campaign_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        let mut progress = CampaignProgress::default();
+        for (state, count) in rows {
+            progress.total += count;
+            match state.as_str() {
+                "pending" => progress.pending = count,
+                "sent" => progress.sent = count,
+                "downloading" => progress.downloading = count,
+                "verified" => progress.verified = count,
+                "rebooting" => progress.rebooting = count,
+                "success" => progress.success = count,
+                "failed" => progress.failed = count,
+                "skipped" => progress.skipped = count,
+                other => return Err(AppError::Internal(format!("unknown job state {other}"))),
+            }
+        }
+
+        Ok(progress)
+    }
+
     async fn mark_job(
         &self,
         campaign_id: Uuid,
         device_id: Uuid,
         status: JobStatus,
+        pct: Option<u8>,
     ) -> Result<(), AppError> {
         let mut tx = self.system_tx().await?;
+        // `pct` is kept when the device sends one and left alone when it does
+        // not: a `success` report must not reset the bar to zero.
+        // `success` is final: a duplicated or replayed report must not drag a
+        // finished device back into `downloading` and make the campaign look
+        // worse than it is. `failed` is not final — a retry is legitimate.
         sqlx::query(
-            "UPDATE ota_jobs SET state = $3, updated_at = now() WHERE campaign_id = $1 AND device_id = $2",
+            "UPDATE ota_jobs SET state = $3, pct = COALESCE($4, pct), updated_at = now()
+              WHERE campaign_id = $1 AND device_id = $2
+                AND (state <> 'success' OR $3 = 'success')",
         )
         .bind(campaign_id)
         .bind(device_id)
         .bind(status.as_str())
+        .bind(pct.map(i16::from))
         .execute(&mut *tx)
         .await
         .map_err(db)?;

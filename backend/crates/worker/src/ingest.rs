@@ -5,14 +5,15 @@
 //! dropped: one bad device must never stall the lane for the rest of the fleet.
 
 use domain::devices::{CommandRepo, Settled};
+use domain::ota::{JobStatus, OtaRepo};
 use std::sync::Arc;
 
 use crate::automation::Runner;
 use infra::Cache;
-use infra::PgDevices;
 use infra::repos::ingest::PgIngest;
+use infra::{PgDevices, PgOta};
 use kernel::AppError;
-use protocol::envelope::{AckMsg, EventMsg, ShadowMsg};
+use protocol::envelope::{AckMsg, EventMsg, OtaReport, ShadowMsg};
 use protocol::topics::{DeviceTopic, Lane};
 use serde_json::json;
 use uuid::Uuid;
@@ -22,6 +23,7 @@ pub struct Ingest {
     commands: PgDevices,
     cache: Cache,
     automations: Arc<Runner>,
+    ota: PgOta,
 }
 
 impl Ingest {
@@ -30,12 +32,14 @@ impl Ingest {
         commands: PgDevices,
         cache: Cache,
         automations: Arc<Runner>,
+        ota: PgOta,
     ) -> Self {
         Self {
             writer,
             commands,
             cache,
             automations,
+            ota,
         }
     }
 
@@ -59,7 +63,11 @@ impl Ingest {
                 Ok(msg) => self.handle_ack(msg).await,
                 Err(e) => tracing::warn!(%device_id, error = %e, "ack rejected"),
             },
-            Lane::Ota | Lane::Cmd => {}
+            Lane::Ota => match serde_json::from_slice::<OtaReport>(payload) {
+                Ok(report) => self.handle_ota(device_id, &report).await,
+                Err(e) => tracing::warn!(%device_id, error = %e, "ota report rejected"),
+            },
+            Lane::Cmd => {}
         }
     }
 
@@ -83,6 +91,41 @@ impl Ingest {
             // resurrect a command that timed out.
             Ok(None) => tracing::debug!(command = %ack.id, "ack for a settled or unknown command"),
             Err(e) => tracing::warn!(error = ?e, "could not settle ack"),
+        }
+    }
+
+    /// The device is telling us how the update is going.
+    pub async fn handle_ota(&self, device_id: Uuid, report: &OtaReport) {
+        let Some(state) = JobStatus::parse(&report.state) else {
+            // Guessing would let a typo mark a fleet `success`.
+            tracing::warn!(
+                device = %device_id,
+                state = %report.state,
+                "unknown OTA state reported by a device"
+            );
+            return;
+        };
+
+        // `pending` and `sent` are the cloud's states. A device that reports one
+        // is either confused or replaying an old message; either way, letting it
+        // through would requeue a job that is already in flight.
+        if matches!(state, JobStatus::Pending | JobStatus::Sent) {
+            tracing::debug!(device = %device_id, "ignoring a cloud-owned OTA state");
+            return;
+        }
+
+        match self
+            .ota
+            .mark_job(report.campaign_id, device_id, state, report.pct)
+            .await
+        {
+            Ok(()) => tracing::info!(
+                campaign = %report.campaign_id,
+                device = %device_id,
+                state = %report.state,
+                "OTA progress"
+            ),
+            Err(e) => tracing::warn!(error = ?e, "could not record OTA progress"),
         }
     }
 

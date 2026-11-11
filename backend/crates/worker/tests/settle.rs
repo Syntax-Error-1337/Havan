@@ -168,9 +168,10 @@ async fn boot() -> Option<Fixture> {
 
     let ingest = Ingest::new(
         infra::PgIngest::new(infra_pg.clone()),
-        infra::PgDevices::new(infra_pg),
+        infra::PgDevices::new(infra_pg.clone()),
         cache.clone(),
         automation,
+        infra::PgOta::new(infra_pg),
     );
 
     Some(Fixture {

@@ -43,7 +43,7 @@ impl Dispatcher {
                     );
                     let _ = self
                         .repo
-                        .mark_job(job.campaign_id, job.device_id, JobStatus::Skipped)
+                        .mark_job(job.campaign_id, job.device_id, JobStatus::Skipped, None)
                         .await;
                     continue;
                 }
@@ -86,7 +86,7 @@ impl Dispatcher {
                     tracing::warn!(error = ?e, device = %job.device_id, "OTA offer failed");
                     let _ = self
                         .repo
-                        .mark_job(job.campaign_id, job.device_id, JobStatus::Pending)
+                        .mark_job(job.campaign_id, job.device_id, JobStatus::Pending, None)
                         .await;
                 }
             }

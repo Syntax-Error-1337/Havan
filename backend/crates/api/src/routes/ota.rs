@@ -138,14 +138,27 @@ async fn one(
     State(state): State<AppState>,
     vendor: VendorAuth,
     Path(id): Path<Uuid>,
-) -> ApiResult<Json<Campaign>> {
-    state
+) -> ApiResult<Json<serde_json::Value>> {
+    let campaign = state
         .ota
         .campaign(vendor.vendor_id, id)
         .await
         .map_err(ApiError)?
-        .map(Json)
-        .ok_or_else(|| ApiError(kernel::AppError::not_found("campaign")))
+        .ok_or_else(|| ApiError(kernel::AppError::not_found("campaign")))?;
+
+    // Counts, not just a status: "running" says nothing about whether ninety
+    // devices failed ten minutes ago.
+    let progress = state
+        .ota
+        .progress(vendor.vendor_id, id)
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(serde_json::json!({
+        "campaign": campaign,
+        "progress": progress,
+        "complete": progress.is_complete(),
+    })))
 }
 
 /// Freeze the wave and queue the jobs. Returns how many devices were queued —

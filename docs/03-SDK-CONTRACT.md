@@ -268,7 +268,11 @@ Manifest, published to `ota` or fetched from `GET /v1/ota/manifest`:
   authenticity.
 - The device MUST write to the inactive partition and MUST keep the running one
   bootable until the new image has run 60 s and published `state:"success"`.
-- Progress reports: `{"v":1,"rollout_id":"…","state":"downloading|verified|rebooting|success|failed","pct":42,"code":"…"}`.
+- Progress reports, published by the device on its own `ota` topic:
+  `{"v":1,"campaign_id":"…","state":"downloading|verified|rebooting|success|failed|skipped","pct":42,"code":"…"}`.
+  `rollout_id` is accepted as a synonym for `campaign_id`. `pct` is optional and
+  only meaningful while downloading. The cloud ignores `pending`/`sent` from a
+  device (those are its own states) and ignores anything after `success`.
 - A device that fails to boot twice MUST self-rollback and report
   `failed` with `code:"boot_failed"`.
 - The platform halts a campaign when failure exceeds 2 % of the cohort.

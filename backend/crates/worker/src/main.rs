@@ -45,11 +45,14 @@ async fn main() -> anyhow::Result<()> {
         format!("worker-{}", std::process::id()),
     ));
 
+    let ota_repo = infra::PgOta::new(pg.clone());
+
     let ingest = std::sync::Arc::new(ingest::Ingest::new(
         infra::PgIngest::new(pg.clone()),
         commands.clone(),
         cache.clone(),
         runner.clone(),
+        ota_repo.clone(),
     ));
 
     // The sweeper is the other half of a command's life: a device that never
@@ -75,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
 
     // OTA: hand a queued job to the device that has to apply it.
     {
-        let dispatcher = ota::Dispatcher::new(infra::PgOta::new(pg.clone()), client.clone());
+        let dispatcher = ota::Dispatcher::new(ota_repo.clone(), client.clone());
         dispatcher.spawn(Duration::from_secs(5));
     }
 

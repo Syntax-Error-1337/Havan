@@ -138,11 +138,18 @@ pub trait OtaRepo {
     /// Pending jobs, oldest first, with what is needed to send the offer.
     fn claim_jobs(&self, limit: i64) -> impl Future<Output = Result<Vec<OtaJob>, AppError>> + Send;
 
+    fn progress(
+        &self,
+        vendor_id: Uuid,
+        campaign_id: Uuid,
+    ) -> impl Future<Output = Result<CampaignProgress, AppError>> + Send;
+
     fn mark_job(
         &self,
         campaign_id: Uuid,
         device_id: Uuid,
         status: JobStatus,
+        pct: Option<u8>,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
 }
 
@@ -171,6 +178,60 @@ impl JobStatus {
             JobStatus::Failed => "failed",
             JobStatus::Skipped => "skipped",
         }
+    }
+}
+
+impl JobStatus {
+    /// A state reported by a device. Unknown strings are rejected rather than
+    /// guessed at: a job quietly marked `success` because the string did not
+    /// parse is how a fleet ends up half-updated and happy about it.
+    pub fn parse(raw: &str) -> Option<JobStatus> {
+        Some(match raw {
+            "pending" => JobStatus::Pending,
+            "sent" => JobStatus::Sent,
+            "downloading" => JobStatus::Downloading,
+            "verified" => JobStatus::Verified,
+            "rebooting" => JobStatus::Rebooting,
+            "success" => JobStatus::Success,
+            "failed" => JobStatus::Failed,
+            "skipped" => JobStatus::Skipped,
+            _ => return None,
+        })
+    }
+
+    /// Terminal states, so a campaign can be closed rather than watched forever.
+    pub fn is_final(self) -> bool {
+        matches!(
+            self,
+            JobStatus::Success | JobStatus::Failed | JobStatus::Skipped
+        )
+    }
+}
+
+/// How a campaign is going. Counts, not a status field: "running" says nothing
+/// about whether ninety devices failed.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CampaignProgress {
+    pub total: i64,
+    pub pending: i64,
+    pub sent: i64,
+    pub downloading: i64,
+    pub verified: i64,
+    pub rebooting: i64,
+    pub success: i64,
+    pub failed: i64,
+    pub skipped: i64,
+}
+
+impl CampaignProgress {
+    pub fn finished(&self) -> i64 {
+        self.success + self.failed + self.skipped
+    }
+
+    /// True once nothing is left in flight. A campaign with zero jobs is *not*
+    /// complete: it matched nobody, which is a mistake to look at.
+    pub fn is_complete(&self) -> bool {
+        self.total > 0 && self.finished() == self.total
     }
 }
 
