@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, Switch } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Box, Screen, AppText, Sparkline } from '../../shared/ui';
-import { useDevice, useHistory, useSetPoint, useSetRoom } from '../../entities/device';
+import { RANGES, useDevice, useHistory, useSetPoint, useSetRoom, type Range } from '../../entities/device';
 import type { DevicePoint } from '../../entities/device';
 import { useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -80,11 +81,7 @@ export function DeviceDetailPage() {
           ) : null}
         </Box>
 
-        <HistoryChart
-          deviceId={device.id}
-          code={device.points.find((p) => typeof p.value === 'number')?.code ?? device.points[0]?.code}
-          isBoolean={typeof device.points.find((p) => typeof p.value === 'boolean')?.value === 'boolean'}
-        />
+        <HistoryChart deviceId={device.id} points={device.points} />
 
         {device.points.map((point) => (
           <Box
@@ -211,16 +208,18 @@ function formatValue(value: boolean | number | string | null): string {
 /**
  * A day of one datapoint, or an honest sentence about why there is no chart.
  */
-function HistoryChart({
-  deviceId,
-  code,
-  isBoolean,
-}: {
-  deviceId: string;
-  code: string | undefined;
-  isBoolean: boolean;
-}) {
-  const { data, isPending, isError } = useHistory(deviceId, code, '1d');
+function HistoryChart({ deviceId, points }: { deviceId: string; points: DevicePoint[] }) {
+  // Chart the first numeric point: a switch's history is a square wave and is
+  // the least interesting thing on the screen. `isBoolean` must describe *that*
+  // point — deriving it from the device turned a 40–80 brightness chart into a
+  // clamped 0–1 one.
+  const charted = points.find((p) => typeof p.value === 'number') ?? points[0];
+  const code = charted?.code;
+  const isBoolean = typeof charted?.value === 'boolean';
+  // The range the chart is showing. Four options, because a phone chart with a
+  // date picker is a spreadsheet with a smaller screen.
+  const [range, setRange] = useState<Range>('1d');
+  const { data, isPending, isError } = useHistory(deviceId, code, range);
 
   if (!code) return null;
 
@@ -228,9 +227,27 @@ function HistoryChart({
 
   return (
     <Box gap="xs">
-      <AppText variant="caption" tone="muted">
-        {code} · last 24h
-      </AppText>
+      <Box row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <AppText variant="caption" tone="muted">
+          {code}
+        </AppText>
+        <Box row gap="xs">
+          {RANGES.map((option) => (
+            <Pressable
+              key={option}
+              onPress={() => setRange(option)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: range === option }}
+            >
+              <Box px="sm" py="xs" radius="pill" bg={range === option ? 'accent' : 'surface'}>
+                <AppText variant="caption" tone={range === option ? 'text' : 'muted'}>
+                  {option}
+                </AppText>
+              </Box>
+            </Pressable>
+          ))}
+        </Box>
+      </Box>
 
       {isPending ? (
         <AppText variant="caption" tone="muted">
@@ -247,8 +264,10 @@ function HistoryChart({
       ) : (
         <>
           <Sparkline buckets={data?.buckets ?? []} isBoolean={isBoolean} />
+          {/* One string, not three children: a sentence assembled from nodes is
+              also a sentence a test cannot match and a screen reader may split. */}
           <AppText variant="caption" tone="muted">
-            {samples} reading{samples === 1 ? '' : 's'} · {data?.buckets.length} bars
+            {`${samples} reading${samples === 1 ? '' : 's'} · ${data?.buckets.length ?? 0} bars`}
           </AppText>
         </>
       )}

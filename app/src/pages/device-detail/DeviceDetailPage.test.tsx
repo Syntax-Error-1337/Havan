@@ -5,6 +5,18 @@ import { DeviceDetailPage } from './DeviceDetailPage';
 import { ThemeProvider } from '../../app-shell/theme';
 import { useSession } from '../../entities/session';
 
+const history = {
+  device_id: 'device-1',
+  code: 'brightness.level',
+  from: '2026-01-01T00:00:00Z',
+  to: '2026-01-02T00:00:00Z',
+  bucket_secs: 1440,
+  buckets: [
+    { t: '2026-01-01T00:00:00Z', v: 40, n: 12 },
+    { t: '2026-01-01T01:00:00Z', v: 80, n: 9 },
+  ],
+};
+
 const device = {
   id: 'device-1',
   home_id: 'home-1',
@@ -97,6 +109,41 @@ describe('device detail', () => {
     const post = calls.find((c) => c.method === 'POST');
     expect(post?.url).toContain('/devices/device-1/commands');
     expect(JSON.parse(post?.body ?? '{}')).toEqual({ code: 'switch.power', value: true });
+  });
+
+  it('charts a day by default, and asks for another range when told', async () => {
+    const calls = stubApi((url) => {
+      if (url.includes('/history')) return history;
+      if (url.includes('/rooms')) return [];
+      return device;
+    });
+
+    const view = await renderPage();
+    await view.findByText('Desk lamp');
+
+    // The chart reports what it drew, so an empty plot is never ambiguous.
+    // 12 + 9 samples across two buckets — the count is the point.
+    expect(await view.findByText(/21 readings · 2 bars/)).toBeTruthy();
+    expect(calls.some((c) => c.url.includes('range=1d'))).toBe(true);
+
+    await fireEvent.press(view.getByRole('button', { name: '7d' }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('range=7d'))).toBe(true));
+  });
+
+  it('says so instead of drawing an empty chart', async () => {
+    stubApi((url) => {
+      if (url.includes('/history')) return { ...history, buckets: [] };
+      if (url.includes('/rooms')) return [];
+      return device;
+    });
+
+    const view = await renderPage();
+    await view.findByText('Desk lamp');
+
+    expect(
+      await view.findByText(/No readings yet\. History starts after the device reports/),
+    ).toBeTruthy();
   });
 
   it('refuses to control an offline device', async () => {
