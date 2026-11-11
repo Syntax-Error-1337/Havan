@@ -137,6 +137,10 @@ describe('thing-model editor', () => {
 
     await waitFor(() => expect(editor().readOnly).toBe(true));
     expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Published' })).toBeDisabled();
+    // Neither a fake "Published" button nor a Validate that could change nothing.
+    expect(screen.queryByRole('button', { name: 'Published' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Validate' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
   });
 });

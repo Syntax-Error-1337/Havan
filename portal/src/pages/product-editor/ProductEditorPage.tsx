@@ -103,19 +103,26 @@ export function ProductEditorPage() {
           <Link className="btn" to={`/products/${product.id}/firmware`}>
             Firmware
           </Link>
-          <button className="btn" onClick={runValidation} disabled={validate.isPending}>
+          {/* A published model is immutable, so there is nothing a check could
+              find that a save could fix. */}
+          <button
+            className="btn"
+            onClick={runValidation}
+            disabled={readOnly || validate.isPending}
+          >
             {validate.isPending ? 'Checking…' : 'Validate'}
           </button>
           <button className="btn" onClick={save} disabled={readOnly || !dirty || update.isPending}>
             {update.isPending ? 'Saving…' : 'Save draft'}
           </button>
-          <button
-            className="btn btn--primary"
-            onClick={onPublish}
-            disabled={readOnly || publish.isPending}
-          >
-            {readOnly ? 'Published' : publish.isPending ? 'Publishing…' : 'Publish'}
-          </button>
+          {/* No "Published" button: the status pill beside the key already says
+              so, and a filled blue control that cannot be pressed reads as a
+              broken button. */}
+          {readOnly ? null : (
+            <button className="btn btn--primary" onClick={onPublish} disabled={publish.isPending}>
+              {publish.isPending ? 'Publishing…' : 'Publish'}
+            </button>
+          )}
         </div>
       </div>
 

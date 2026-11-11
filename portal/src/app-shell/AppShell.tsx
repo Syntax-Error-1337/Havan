@@ -45,6 +45,10 @@ export function AppShell() {
           <Route path="/products/:id" element={<ProductEditorPage />} />
           <Route path="/products/:id/firmware" element={<FirmwarePage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
+          {/* The nav calls it Rollouts, so the URL people type should work:
+              otherwise a vendor who guesses the name lands on Products with no
+              explanation. */}
+          <Route path="/rollouts" element={<Navigate to="/campaigns" replace />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
