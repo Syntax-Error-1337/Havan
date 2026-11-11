@@ -4,4 +4,5 @@ export const qk = {
   validation: (id: string) => ['product', id, 'validation'] as const,
   firmware: (productId: string) => ['firmware', productId] as const,
   campaigns: ['campaigns'] as const,
+  apiKeys: ['api-keys'] as const,
 };

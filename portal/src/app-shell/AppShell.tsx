@@ -5,6 +5,7 @@ import { ProductsPage } from '../pages/products/ProductsPage';
 import { ProductEditorPage } from '../pages/product-editor/ProductEditorPage';
 import { FirmwarePage } from '../pages/firmware/FirmwarePage';
 import { CampaignsPage } from '../pages/campaigns/CampaignsPage';
+import { ApiKeysPage } from '../pages/api-keys/ApiKeysPage';
 
 /**
  * The gate lives here, not in each page: a new screen cannot forget it.
@@ -33,6 +34,9 @@ export function AppShell() {
           <Link to="/campaigns" className="muted">
             Rollouts
           </Link>
+          <Link to="/api-keys" className="muted">
+            API keys
+          </Link>
         </nav>
       </header>
       <main className="content">
@@ -41,6 +45,7 @@ export function AppShell() {
           <Route path="/products/:id" element={<ProductEditorPage />} />
           <Route path="/products/:id/firmware" element={<FirmwarePage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
+          <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
