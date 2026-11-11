@@ -7,30 +7,60 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::get;
-use infra::{Cache, Pg};
+use domain::devices::DeviceService;
+use domain::homes::HomeService;
+use domain::identity::IdentityService;
+use infra::{Cache, Pg, PgDevices, PgHomes, PgIdentity};
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::health;
+use crate::routes;
 
 #[derive(Clone)]
 pub struct AppState {
     pub cfg: Arc<Config>,
     pub pg: Pg,
     pub cache: Cache,
+    pub identity: Arc<IdentityService<PgIdentity>>,
+    pub homes: Arc<HomeService<PgHomes>>,
+    pub devices: Arc<DeviceService<PgDevices, PgHomes>>,
 }
 
 impl AppState {
     pub fn new(cfg: Arc<Config>, pg: Pg, cache: Cache) -> Self {
-        Self { cfg, pg, cache }
+        let pool = pg.pool().clone();
+        let identity = Arc::new(IdentityService::new(
+            Arc::new(PgIdentity::new(pool.clone())),
+            cfg.jwt_secret.expose(),
+        ));
+        let homes = Arc::new(HomeService::new(Arc::new(PgHomes::new(pool.clone()))));
+        let devices = Arc::new(DeviceService::new(
+            Arc::new(PgDevices::new(pg.clone())),
+            homes.clone(),
+        ));
+        Self {
+            cfg,
+            pg,
+            cache,
+            identity,
+            homes,
+            devices,
+        }
     }
 }
 
 pub fn router(state: AppState) -> Router {
+    let v1 = Router::new()
+        .merge(routes::auth::router())
+        .merge(routes::homes::router())
+        .merge(routes::devices::router());
+
     Router::new()
         .route("/healthz", get(health::health))
         .route("/livez", get(health::live))
+        .nest("/v1", v1)
         .with_state(state)
         .layer(
             TraceLayer::new_for_http()

@@ -12,6 +12,7 @@ path = "src/main.rs"
 kernel.workspace = true
 infra.workspace = true
 protocol.workspace = true
+domain.workspace = true
 axum.workspace = true
 tower.workspace = true
 tower-http.workspace = true

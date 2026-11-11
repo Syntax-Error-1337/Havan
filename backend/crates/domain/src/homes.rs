@@ -64,6 +64,7 @@ pub struct Home {
     pub role: Role,
     pub member_count: i64,
     pub device_count: i64,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: time::OffsetDateTime,
 }
 
@@ -87,10 +88,7 @@ pub struct Room {
 
 /// Storage the slice needs. Implemented by `infra`; faked in tests.
 pub trait HomeRepo {
-    fn create_home(
-        &self,
-        home: &Home,
-    ) -> impl Future<Output = Result<(), AppError>> + Send;
+    fn create_home(&self, home: &Home) -> impl Future<Output = Result<(), AppError>> + Send;
 
     fn list_for_user(
         &self,
@@ -111,10 +109,7 @@ pub trait HomeRepo {
 
     fn delete(&self, home_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
 
-    fn members(
-        &self,
-        home_id: Uuid,
-    ) -> impl Future<Output = Result<Vec<Member>, AppError>> + Send;
+    fn members(&self, home_id: Uuid) -> impl Future<Output = Result<Vec<Member>, AppError>> + Send;
 
     fn add_member(
         &self,
@@ -149,7 +144,11 @@ pub trait HomeRepo {
 
     fn delete_room(&self, room_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
 
-    fn room_belongs_to(&self, room_id: Uuid, home_id: Uuid) -> impl Future<Output = Result<bool, AppError>> + Send;
+    fn room_belongs_to(
+        &self,
+        room_id: Uuid,
+        home_id: Uuid,
+    ) -> impl Future<Output = Result<bool, AppError>> + Send;
 }
 
 pub struct HomeService<R> {
@@ -161,7 +160,12 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
         Self { repo }
     }
 
-    pub async fn create(&self, user_id: Uuid, name: &str, timezone: &str) -> Result<Home, AppError> {
+    pub async fn create(
+        &self,
+        user_id: Uuid,
+        name: &str,
+        timezone: &str,
+    ) -> Result<Home, AppError> {
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 60 {
             return Err(AppError::validation("home name must be 1–60 characters"));
@@ -197,12 +201,7 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
             .ok_or_else(|| AppError::not_found("home"))
     }
 
-    pub async fn rename(
-        &self,
-        home_id: Uuid,
-        user_id: Uuid,
-        name: &str,
-    ) -> Result<Home, AppError> {
+    pub async fn rename(&self, home_id: Uuid, user_id: Uuid, name: &str) -> Result<Home, AppError> {
         let home = self.require(home_id, user_id).await?;
         if !home.role.can_manage() {
             return Err(AppError::forbidden("only an admin can rename a home"));
@@ -212,7 +211,10 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
             return Err(AppError::validation("home name must be 1–60 characters"));
         }
         self.repo.rename(home_id, name).await?;
-        Ok(Home { name: name.to_string(), ..home })
+        Ok(Home {
+            name: name.to_string(),
+            ..home
+        })
     }
 
     pub async fn delete(&self, home_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
@@ -243,10 +245,14 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
             return Err(AppError::forbidden("only an admin can invite members"));
         }
         if role == Role::Owner {
-            return Err(AppError::validation("use ownership transfer to add an owner"));
+            return Err(AppError::validation(
+                "use ownership transfer to add an owner",
+            ));
         }
         if role > home.role {
-            return Err(AppError::forbidden("you cannot grant a role above your own"));
+            return Err(AppError::forbidden(
+                "you cannot grant a role above your own",
+            ));
         }
 
         let email = crate::identity::normalize_email(email);
@@ -278,7 +284,9 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
             ));
         }
         if role > home.role {
-            return Err(AppError::forbidden("you cannot grant a role above your own"));
+            return Err(AppError::forbidden(
+                "you cannot grant a role above your own",
+            ));
         }
         self.repo.set_member_role(home_id, target, role).await
     }
@@ -424,7 +432,13 @@ mod tests {
                 .map(|h| Home { role, ..h.clone() }))
         }
         async fn rename(&self, home_id: Uuid, name: &str) -> Result<(), AppError> {
-            if let Some(h) = self.homes.lock().unwrap().iter_mut().find(|h| h.id == home_id) {
+            if let Some(h) = self
+                .homes
+                .lock()
+                .unwrap()
+                .iter_mut()
+                .find(|h| h.id == home_id)
+            {
                 h.name = name.to_string();
             }
             Ok(())
@@ -453,7 +467,12 @@ mod tests {
         ) -> Result<Option<Uuid>, AppError> {
             Ok((email == "friend@example.com").then(Uuid::new_v4))
         }
-        async fn set_member_role(&self, home_id: Uuid, user_id: Uuid, role: Role) -> Result<(), AppError> {
+        async fn set_member_role(
+            &self,
+            home_id: Uuid,
+            user_id: Uuid,
+            role: Role,
+        ) -> Result<(), AppError> {
             if let Some(m) = self
                 .members
                 .lock()
@@ -582,7 +601,7 @@ mod tests {
         assert!(valid_timezone("America/Argentina/Buenos_Aires"));
         assert!(valid_timezone("UTC"));
         assert!(!valid_timezone(""));
-        assert!(!valid_timezone("kolkata"));  // no area: rejected
+        assert!(!valid_timezone("kolkata")); // no area: rejected
         assert!(!valid_timezone("Asia/"));
     }
 }

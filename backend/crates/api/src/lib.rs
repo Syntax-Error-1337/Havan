@@ -5,7 +5,9 @@
 #![forbid(unsafe_code)]
 
 pub mod app;
+pub mod auth;
 pub mod error;
 pub mod health;
+pub mod routes;
 
 pub use app::{AppState, router};

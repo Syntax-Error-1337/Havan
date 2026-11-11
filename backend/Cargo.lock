@@ -38,6 +38,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "domain",
  "http-body-util",
  "infra",
  "kernel",
@@ -946,6 +947,7 @@ name = "infra"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "domain",
  "kernel",
  "object_store",
  "protocol",

@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 kernel.workspace = true
 protocol.workspace = true
+domain.workspace = true
 sqlx.workspace = true
 redis.workspace = true
 rumqttc.workspace = true

@@ -80,10 +80,8 @@ pub trait IdentityRepo {
 
     fn insert_user(&self, user: &User) -> impl Future<Output = Result<(), AppError>> + Send;
 
-    fn insert_refresh(
-        &self,
-        row: &RefreshRow,
-    ) -> impl Future<Output = Result<(), AppError>> + Send;
+    fn insert_refresh(&self, row: &RefreshRow)
+    -> impl Future<Output = Result<(), AppError>> + Send;
 
     fn find_refresh(
         &self,
@@ -264,7 +262,10 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
 }
 
 fn invalid_credentials() -> AppError {
-    AppError::code(ErrorCode::InvalidCredentials, "email or password is incorrect")
+    AppError::code(
+        ErrorCode::InvalidCredentials,
+        "email or password is incorrect",
+    )
 }
 
 pub fn normalize_email(email: &str) -> String {
@@ -283,7 +284,9 @@ fn validate_email(email: &str) -> Result<(), AppError> {
     if ok {
         Ok(())
     } else {
-        Err(AppError::validation("that email address does not look right"))
+        Err(AppError::validation(
+            "that email address does not look right",
+        ))
     }
 }
 
@@ -366,7 +369,13 @@ mod tests {
                 .cloned())
         }
         async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, AppError> {
-            Ok(self.users.lock().unwrap().iter().find(|u| u.id == id).cloned())
+            Ok(self
+                .users
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|u| u.id == id)
+                .cloned())
         }
         async fn insert_user(&self, user: &User) -> Result<(), AppError> {
             self.users.lock().unwrap().push(user.clone());
@@ -406,7 +415,10 @@ mod tests {
     }
 
     fn service() -> IdentityService<FakeRepo> {
-        IdentityService::new(Arc::new(FakeRepo::default()), "test-secret-at-least-32-bytes-long!!")
+        IdentityService::new(
+            Arc::new(FakeRepo::default()),
+            "test-secret-at-least-32-bytes-long!!",
+        )
     }
 
     fn input(email: &str, password: &str) -> RegisterInput {
@@ -420,26 +432,44 @@ mod tests {
     #[tokio::test]
     async fn register_then_login_returns_a_working_access_token() {
         let svc = service();
-        let tokens = svc.register(input("A@Example.com ", "correct horse battery")).await.unwrap();
+        let tokens = svc
+            .register(input("A@Example.com ", "correct horse battery"))
+            .await
+            .unwrap();
 
         let claims = svc.verify_access(&tokens.access).unwrap();
         let user = svc.user(claims.sub).await.unwrap();
-        assert_eq!(user.email.as_deref(), Some("a@example.com"), "email is normalised");
+        assert_eq!(
+            user.email.as_deref(),
+            Some("a@example.com"),
+            "email is normalised"
+        );
 
-        let again = svc.login("a@example.com", "correct horse battery").await.unwrap();
-        assert_ne!(tokens.refresh, again.refresh, "each login is its own session");
+        let again = svc
+            .login("a@example.com", "correct horse battery")
+            .await
+            .unwrap();
+        assert_ne!(
+            tokens.refresh, again.refresh,
+            "each login is its own session"
+        );
     }
 
     #[tokio::test]
     async fn a_short_password_is_refused() {
-        let err = service().register(input("a@b.co", "short")).await.unwrap_err();
+        let err = service()
+            .register(input("a@b.co", "short"))
+            .await
+            .unwrap_err();
         assert_eq!(err.code_kind(), ErrorCode::ValidationFailed);
     }
 
     #[tokio::test]
     async fn a_duplicate_email_is_a_conflict() {
         let svc = service();
-        svc.register(input("a@b.co", "long enough pass")).await.unwrap();
+        svc.register(input("a@b.co", "long enough pass"))
+            .await
+            .unwrap();
         let err = svc
             .register(input("A@B.CO", "long enough pass"))
             .await
@@ -450,7 +480,9 @@ mod tests {
     #[tokio::test]
     async fn a_wrong_password_says_nothing_useful() {
         let svc = service();
-        svc.register(input("a@b.co", "long enough pass")).await.unwrap();
+        svc.register(input("a@b.co", "long enough pass"))
+            .await
+            .unwrap();
         let err = svc.login("a@b.co", "wrong password").await.unwrap_err();
         assert_eq!(err.code_kind(), ErrorCode::InvalidCredentials);
         assert_eq!(err.public_message(), "email or password is incorrect");
@@ -466,7 +498,10 @@ mod tests {
     #[tokio::test]
     async fn refresh_rotates_and_a_replayed_token_kills_the_family() {
         let svc = service();
-        let tokens = svc.register(input("a@b.co", "long enough pass")).await.unwrap();
+        let tokens = svc
+            .register(input("a@b.co", "long enough pass"))
+            .await
+            .unwrap();
 
         let rotated = svc.refresh(&tokens.refresh).await.unwrap();
         assert_ne!(rotated.refresh, tokens.refresh);
@@ -496,7 +531,10 @@ mod tests {
     #[tokio::test]
     async fn a_token_signed_with_another_key_is_rejected() {
         let svc = service();
-        let other = IdentityService::new(Arc::new(FakeRepo::default()), "another-secret-another-secret-");
+        let other = IdentityService::new(
+            Arc::new(FakeRepo::default()),
+            "another-secret-another-secret-",
+        );
         let tokens = other
             .register(input("a@b.co", "long enough pass"))
             .await

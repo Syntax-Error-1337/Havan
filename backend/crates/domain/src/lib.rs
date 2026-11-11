@@ -6,6 +6,6 @@
 
 #![forbid(unsafe_code)]
 
+pub mod devices;
 pub mod homes;
 pub mod identity;
-

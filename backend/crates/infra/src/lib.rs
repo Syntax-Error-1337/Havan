@@ -6,9 +6,11 @@
 pub mod mqtt;
 pub mod pg;
 pub mod redis;
+pub mod repos;
 pub mod store;
 
 pub use mqtt::Mqtt;
 pub use pg::Pg;
 pub use redis::Cache;
+pub use repos::{PgDevices, PgHomes, PgIdentity};
 pub use store::Objects;
