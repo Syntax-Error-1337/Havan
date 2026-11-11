@@ -1,0 +1,30 @@
+{
+  "name": "haven-portal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.7",
+    "@vitejs/plugin-react-swc": "^3.7.2"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "@swc/core@1.16.22": true,
+    "fsevents@2.3.3": true
+  }
+}
