@@ -101,6 +101,27 @@ Setup gotchas, all learned the hard way:
 These catch what typechecking cannot: the `{data}` bug (a bare array read as an
 envelope) typechecked fine and left every home rendering "no devices yet".
 
+### Testing the portal
+
+`vitest` + `@testing-library/react`, jsdom, `npm test` in `portal/`. Eleven tests
+over the three screens that matter: vendor login, the products table, and the
+thing-model editor (load, invalid JSON, save, all-rules-at-once, published is
+locked).
+
+Two gotchas specific to this setup:
+
+- **Do not add `plugins: [react()]` to `vitest.config.ts`.** The SWC plugin's
+  types disagree with vitest's bundled vite and the config fails to typecheck;
+  esbuild already handles TSX through the tsconfig's `jsx: react-jsx`.
+- **`localStorage` is missing from `globalThis` in this jsdom.** Node 22 defines
+  its own `localStorage` that is unavailable without `--localstorage-file`, and
+  it shadows jsdom's. `src/test/setup.ts` installs a small in-memory Storage so
+  the API client's module-scope read does not kill the suite before it starts.
+- Adding `types` to `tsconfig.json` replaces the default; keep `vite/client` in
+  the list or `import.meta.env` stops typechecking.
+- `userEvent.type` treats `{` and `[` as key descriptors — use `fireEvent.change`
+  when the text being typed is JSON.
+
 ### The radar, as built
 
 `shared/lib/ble` is the only place that knows the wire format, and it is split

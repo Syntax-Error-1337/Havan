@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",
@@ -16,11 +18,17 @@
     "react-router-dom": "^7.1.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.9",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react-swc": "^3.7.2",
+    "jsdom": "^31.0.0",
     "typescript": "~5.7.2",
     "vite": "^6.0.7",
-    "@vitejs/plugin-react-swc": "^3.7.2"
+    "vitest": "^2.1.9"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,

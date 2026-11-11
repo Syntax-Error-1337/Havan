@@ -84,3 +84,23 @@ jobs:
         run: npx tsc -p tsconfig.json --noEmit
       - name: test
         run: npm test
+
+  portal:
+    # The portal is what vendors judge us by; a green vite build only proves the
+    # types line up.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - name: typecheck
+        run: npx tsc --noEmit
+      - name: test
+        run: npm test
