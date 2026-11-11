@@ -12,6 +12,7 @@ use uuid::Uuid;
 /// session, so there is no tenant and no home member to scope by. Every other
 /// slice is scoped by the caller; this one narrows the exception to the five
 /// queries below, all keyed by a value the caller proved it knows.
+#[derive(Clone)]
 pub struct PgPairing {
     pg: Pg,
 }

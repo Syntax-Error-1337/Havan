@@ -18,7 +18,12 @@ async fn boot() -> Option<(String, AppState, String)> {
     let cfg = std::sync::Arc::new(kernel::Config::from_env().ok()?);
     let pg = infra::Pg::connect(&db, 4).await.ok()?;
     let cache = infra::Cache::connect(&redis).await.ok()?;
-    let state = AppState::new(cfg, pg, cache);
+    let mqtt = infra::Mqtt::connect(
+        &std::env::var("MQTT_URL").unwrap_or_else(|_| "mqtt://localhost:1883".into()),
+        "haven-api-test",
+    )
+    .ok()?;
+    let state = AppState::new(cfg, pg, cache, mqtt);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok()?;
     let addr = listener.local_addr().ok()?;

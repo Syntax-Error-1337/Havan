@@ -3291,6 +3291,7 @@ name = "worker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "domain",
  "infra",
  "kernel",
  "protocol",

@@ -11,7 +11,7 @@ use domain::devices::DeviceService;
 use domain::homes::HomeService;
 use domain::identity::IdentityService;
 use domain::pairing::PairingService;
-use infra::{Cache, Pg, PgDevices, PgHomes, PgIdentity, PgPairing};
+use infra::{Cache, Mqtt, Pg, PgDevices, PgHomes, PgIdentity, PgPairing};
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -28,10 +28,11 @@ pub struct AppState {
     pub homes: Arc<HomeService<PgHomes>>,
     pub devices: Arc<DeviceService<PgDevices, PgHomes>>,
     pub pairing: Arc<PairingService<PgPairing>>,
+    pub mqtt: Mqtt,
 }
 
 impl AppState {
-    pub fn new(cfg: Arc<Config>, pg: Pg, cache: Cache) -> Self {
+    pub fn new(cfg: Arc<Config>, pg: Pg, cache: Cache, mqtt: Mqtt) -> Self {
         let pool = pg.pool().clone();
         let identity = Arc::new(IdentityService::new(
             Arc::new(PgIdentity::new(pool.clone())),
@@ -54,6 +55,7 @@ impl AppState {
             homes,
             devices,
             pairing,
+            mqtt,
         }
     }
 }

@@ -69,7 +69,11 @@ impl PgIngest {
 
     /// Apply a state report. Unknown datapoints are counted and dropped: one
     /// misbehaving device must not stall the lane for the rest of the fleet.
-    pub async fn apply_event(&self, device_id: Uuid, msg: &EventMsg) -> Result<IngestOutcome, AppError> {
+    pub async fn apply_event(
+        &self,
+        device_id: Uuid,
+        msg: &EventMsg,
+    ) -> Result<IngestOutcome, AppError> {
         self.apply(device_id, msg.ts, None, &msg.pts).await
     }
 
@@ -92,13 +96,12 @@ impl PgIngest {
     ) -> Result<IngestOutcome, AppError> {
         let mut tx = self.tx().await?;
 
-        let row: Option<(Option<Uuid>, Uuid)> = sqlx::query_as(
-            "SELECT home_id, vendor_id FROM devices WHERE id = $1",
-        )
-        .bind(device_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(db)?;
+        let row: Option<(Option<Uuid>, Uuid)> =
+            sqlx::query_as("SELECT home_id, vendor_id FROM devices WHERE id = $1")
+                .bind(device_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
 
         let Some((home_id, vendor_id)) = row else {
             return Err(AppError::not_found("device"));
@@ -181,14 +184,12 @@ impl PgIngest {
         }
 
         let online = online.unwrap_or(true);
-        sqlx::query(
-            r#"UPDATE devices SET online = $2, last_seen_at = now() WHERE id = $1"#,
-        )
-        .bind(device_id)
-        .bind(online)
-        .execute(&mut *tx)
-        .await
-        .map_err(db)?;
+        sqlx::query(r#"UPDATE devices SET online = $2, last_seen_at = now() WHERE id = $1"#)
+            .bind(device_id)
+            .bind(online)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
 
         tx.commit().await.map_err(db)?;
 

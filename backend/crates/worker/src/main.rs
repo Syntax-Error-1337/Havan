@@ -6,6 +6,7 @@
 //! behind [`ingest`] so this binary stays a supervisor.
 
 use anyhow::Context;
+use domain::devices::CommandRepo;
 use protocol::topics;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use std::sync::Arc;
@@ -28,7 +29,33 @@ async fn main() -> anyhow::Result<()> {
     let cache = infra::Cache::connect(&cfg.redis_url)
         .await
         .context("redis")?;
-    let ingest = ingest::Ingest::new(infra::PgIngest::new(pg), cache);
+    let commands = infra::PgDevices::new(pg.clone());
+    let ingest = std::sync::Arc::new(ingest::Ingest::new(
+        infra::PgIngest::new(pg),
+        commands.clone(),
+        cache.clone(),
+    ));
+
+    // The sweeper is the other half of a command's life: a device that never
+    // answers must still reach a settled state, or the app spins forever.
+    {
+        let ingest = ingest.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                tick.tick().await;
+                match commands.sweep_timeouts(10).await {
+                    Ok(settled) => {
+                        for s in settled {
+                            tracing::info!(command = %s.command_id, "timed out");
+                            ingest.publish_settled(&s).await;
+                        }
+                    }
+                    Err(e) => tracing::warn!(error = ?e, "timeout sweep failed"),
+                }
+            }
+        });
+    }
 
     let (host, port) = split_url(&cfg.mqtt_url)?;
     let mut opts = MqttOptions::new(format!("haven-worker-{}", std::process::id()), host, port);

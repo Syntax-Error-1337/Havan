@@ -27,7 +27,8 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("redis")?;
 
-    let state = api::AppState::new(cfg.clone(), pg, cache);
+    let mqtt = infra::Mqtt::connect(&cfg.mqtt_url, "haven-api").context("mqtt")?;
+    let state = api::AppState::new(cfg.clone(), pg, cache, mqtt);
     let app = api::router(state);
 
     let listener = TcpListener::bind(cfg.bind).await.context("bind")?;

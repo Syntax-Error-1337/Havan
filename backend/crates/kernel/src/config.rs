@@ -189,9 +189,7 @@ impl Config {
             jwt_secret,
             vault_key: Secret::new(vault_raw),
             ticket_secret,
-            ops_token: get("OPS_TOKEN")
-                .filter(|v| !v.is_empty())
-                .map(Secret::new),
+            ops_token: get("OPS_TOKEN").filter(|v| !v.is_empty()).map(Secret::new),
             db_max_connections: var_or(get, "HAVEN_DB_POOL", "16")
                 .parse()
                 .unwrap_or(16)

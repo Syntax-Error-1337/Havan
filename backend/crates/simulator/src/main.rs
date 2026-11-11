@@ -46,6 +46,11 @@ async fn main() -> anyhow::Result<()> {
         .context("claim returned no device_id")?
         .parse()?;
     let home_id = claim["home_id"].as_str().unwrap_or_default().to_string();
+    // The topic's first segment is the vendor, and only the claim knows it.
+    let vendor = claim["vendor_id"]
+        .as_str()
+        .context("claim returned no vendor_id")?
+        .to_string();
 
     tracing::info!(%device_id, %home_id, points = %claim["points"], "claimed");
 
@@ -54,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
     let mut opts = MqttOptions::new(device_id.to_string(), host, port);
     opts.set_keep_alive(Duration::from_secs(30));
     opts.set_last_will(rumqttc::LastWill::new(
-        topics::shadow("sim", &home_id, &device_id.to_string()),
+        topics::shadow(&vendor, &home_id, &device_id.to_string()),
         serde_json::to_vec(&ShadowMsg {
             v: 1,
             ts: kernel::now_s(),
@@ -71,27 +76,36 @@ async fn main() -> anyhow::Result<()> {
 
     let device = device_id.to_string();
     client
-        .subscribe(topics::cmd("sim", &home_id, &device), QoS::AtLeastOnce)
+        .subscribe(topics::cmd(&vendor, &home_id, &device), QoS::AtLeastOnce)
         .await?;
 
     // The reference bulb's datapoints: 1 = power (bool), 2 = brightness (int),
     // 3 = kelvin (int). A real firmware derives these from the product model.
     let mut points: Vec<Point> = vec![
-        Point { dp: "1".into(), value: DpValue::Bool(false) },
-        Point { dp: "2".into(), value: DpValue::Int(80) },
-        Point { dp: "3".into(), value: DpValue::Int(4000) },
+        Point {
+            dp: "1".into(),
+            value: DpValue::Bool(false),
+        },
+        Point {
+            dp: "2".into(),
+            value: DpValue::Int(80),
+        },
+        Point {
+            dp: "3".into(),
+            value: DpValue::Int(4000),
+        },
     ];
     let _ = &mut points;
 
     // 3. Shadow on connect: retained, so a late subscriber sees the truth.
-    publish_shadow(&client, &home_id, &device, &points).await?;
+    publish_shadow(&client, &vendor, &home_id, &device, &points).await?;
 
     // 4. Serve commands.
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
         tokio::select! {
             _ = tick.tick() => {
-                publish_shadow(&client, &home_id, &device, &points).await?;
+                publish_shadow(&client, &vendor, &home_id, &device, &points).await?;
             }
             event = eventloop.poll() => {
                 match event {
@@ -101,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
                             continue;
                         };
                         apply(&mut points, &cmd);
-                        publish_event(&client, &home_id, &device, &points).await?;
+                        publish_event(&client, &vendor, &home_id, &device, &points).await?;
 
                         let ack = AckMsg {
                             v: 1,
@@ -115,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
                         };
                         client
                             .publish(
-                                topics::ack("sim", &home_id, &device),
+                                topics::ack(&vendor, &home_id, &device),
                                 QoS::AtLeastOnce,
                                 false,
                                 serde_json::to_vec(&ack)?,
@@ -139,20 +153,21 @@ fn apply(points: &mut [Point], cmd: &CommandMsg) {
         return;
     }
     let Some(dp) = cmd.dp.as_deref() else { return };
-    if let (Some(p), Some(v)) = (
-        points.iter_mut().find(|p| p.dp == dp),
-        cmd.value.as_ref(),
-    ) {
+    if let (Some(p), Some(v)) = (points.iter_mut().find(|p| p.dp == dp), cmd.value.as_ref()) {
         p.value = v.clone();
     }
 }
 
 fn points_for(points: &[Point]) -> BTreeMap<String, DpValue> {
-    points.iter().map(|p| (p.dp.clone(), p.value.clone())).collect()
+    points
+        .iter()
+        .map(|p| (p.dp.clone(), p.value.clone()))
+        .collect()
 }
 
 async fn publish_shadow(
     client: &AsyncClient,
+    vendor: &str,
     home: &str,
     device: &str,
     points: &[Point],
@@ -167,7 +182,7 @@ async fn publish_shadow(
     };
     client
         .publish(
-            topics::shadow("sim", home, device),
+            topics::shadow(vendor, home, device),
             QoS::AtLeastOnce,
             true,
             serde_json::to_vec(&shadow)?,
@@ -178,6 +193,7 @@ async fn publish_shadow(
 
 async fn publish_event(
     client: &AsyncClient,
+    vendor: &str,
     home: &str,
     device: &str,
     points: &[Point],
@@ -192,7 +208,7 @@ async fn publish_event(
     };
     client
         .publish(
-            topics::evt("sim", home, device),
+            topics::evt(vendor, home, device),
             QoS::AtLeastOnce,
             false,
             serde_json::to_vec(&evt)?,

@@ -25,6 +25,8 @@ pub struct Point {
     pub id: Uuid,
     /// `<capability>.<slot>`, e.g. `brightness.level`.
     pub code: String,
+    /// The vendor's datapoint id — what actually goes on the wire.
+    pub dp: String,
     pub capability: String,
     pub slot: String,
     pub kind: String,
@@ -36,8 +38,46 @@ pub struct Point {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Command {
+    pub id: Uuid,
+    pub device_id: Uuid,
+    pub point_code: String,
+    pub op: String,
+    pub status: String,
+    /// False when an idempotent replay returned the command already in flight.
+    pub created: bool,
+}
+
+/// Everything the transport needs to put a command on the wire.
+#[derive(Debug, Clone)]
+pub struct Publishable {
+    pub vendor_id: Uuid,
+    pub home_id: Uuid,
+    pub dp: String,
+    pub value: PointValue,
+}
+
+#[derive(Debug, Clone)]
+pub struct CommandOutcome {
+    pub command: Command,
+    /// `None` when an idempotent replay returned a command already in flight.
+    pub publish: Option<Publishable>,
+}
+
+/// One row of the command log, as the worker sees it after settling.
+#[derive(Debug, Clone)]
+pub struct Settled {
+    pub command_id: Uuid,
+    pub device_id: Uuid,
+    pub home_id: Option<Uuid>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Device {
     pub id: Uuid,
+    /// The vendor that made it. Public: it is the brand on the box.
+    pub vendor_id: Uuid,
     pub home_id: Option<Uuid>,
     pub room_id: Option<Uuid>,
     pub room_name: Option<String>,
@@ -94,8 +134,45 @@ pub trait DeviceRepo {
     ) -> impl Future<Output = Result<(), AppError>> + Send;
 }
 
+/// Commands live next to devices because they are authorised the same way:
+/// by the membership of the home the device belongs to.
+pub trait CommandRepo {
+    fn insert_command(
+        &self,
+        device_id: Uuid,
+        user_id: Uuid,
+        point_id: Uuid,
+        point_code: &str,
+        payload: serde_json::Value,
+        idempotency_key: Option<&str>,
+    ) -> impl Future<Output = Result<Command, AppError>> + Send;
+
+    fn find_command(
+        &self,
+        command_id: Uuid,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<Option<Command>, AppError>> + Send;
+
+    /// Settle an ack. Returns `None` for an unknown id or one already settled,
+    /// so a redelivered ack cannot resurrect a timed-out command.
+    fn settle_from_ack(
+        &self,
+        command_id: Uuid,
+        ok: bool,
+        reported: serde_json::Value,
+        code: Option<&str>,
+    ) -> impl Future<Output = Result<Option<Settled>, AppError>> + Send;
+
+    /// Anything dispatched and unanswered past the deadline becomes `timeout`.
+    fn sweep_timeouts(
+        &self,
+        older_than_secs: i64,
+    ) -> impl Future<Output = Result<Vec<Settled>, AppError>> + Send;
+}
+
 pub struct DeviceService<D, H> {
     devices: Arc<D>,
+    commands: Arc<D>,
     homes: Arc<HomeService<H>>,
 }
 
@@ -105,7 +182,11 @@ where
     H: HomeRepo + Send + Sync,
 {
     pub fn new(devices: Arc<D>, homes: Arc<HomeService<H>>) -> Self {
-        Self { devices, homes }
+        Self {
+            commands: devices.clone(),
+            devices,
+            homes,
+        }
     }
 
     pub async fn list(&self, home_id: Uuid, user_id: Uuid) -> Result<Vec<Device>, AppError> {
@@ -179,6 +260,117 @@ where
             .home_of(device_id, user_id)
             .await?
             .ok_or_else(|| AppError::not_found("device"))
+    }
+}
+
+impl<D, H> DeviceService<D, H>
+where
+    D: DeviceRepo + CommandRepo + Send + Sync,
+    H: HomeRepo + Send + Sync,
+{
+    /// Validate and record a command. Publishing happens in the API layer —
+    /// this slice must stay transport-free.
+    pub async fn command(
+        &self,
+        device_id: Uuid,
+        user_id: Uuid,
+        code: &str,
+        value: Option<PointValue>,
+        idempotency_key: Option<String>,
+    ) -> Result<CommandOutcome, AppError> {
+        let device = self.get(device_id, user_id).await?;
+
+        let home_id = device
+            .home_id
+            .ok_or_else(|| AppError::validation("this device is not in a home"))?;
+
+        let point = device
+            .points
+            .iter()
+            .find(|p| p.code == code)
+            .ok_or_else(|| {
+                AppError::code(
+                    kernel::ErrorCode::UnknownPoint,
+                    format!("unknown_point: this device has no point '{code}'"),
+                )
+            })?;
+
+        if !point.writable {
+            return Err(AppError::code(
+                kernel::ErrorCode::ValidationFailed,
+                format!("'{code}' is read-only"),
+            ));
+        }
+
+        let value = value.ok_or_else(|| AppError::validation("a set command needs a value"))?;
+        validate_value(point, &value)?;
+
+        let payload = serde_json::json!({ "dp": point.dp, "value": value });
+
+        let command = self
+            .commands
+            .insert_command(
+                device_id,
+                user_id,
+                point.id,
+                &point.code,
+                payload,
+                idempotency_key.as_deref(),
+            )
+            .await?;
+
+        let publish = command.created.then(|| Publishable {
+            vendor_id: device.vendor_id,
+            home_id,
+            dp: point.dp.clone(),
+            value,
+        });
+
+        Ok(CommandOutcome { command, publish })
+    }
+
+    pub async fn command_status(
+        &self,
+        command_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Command, AppError> {
+        self.commands
+            .find_command(command_id, user_id)
+            .await?
+            .ok_or_else(|| AppError::not_found("command"))
+    }
+}
+
+/// The kind decides what a value may be; the range decides which values.
+/// Both are checked here rather than at the device, because a firmware that
+/// trusts the cloud will happily drive a relay past its rating.
+fn validate_value(point: &Point, value: &PointValue) -> Result<(), AppError> {
+    match (point.kind.as_str(), value) {
+        ("bool", PointValue::Bool(_)) => Ok(()),
+        ("int" | "float", PointValue::Num(n)) => {
+            if let Some(min) = point.min
+                && *n < min
+            {
+                return Err(AppError::code(
+                    kernel::ErrorCode::ValueOutOfRange,
+                    format!("'{}' must be at least {min}", point.code),
+                ));
+            }
+            if let Some(max) = point.max
+                && *n > max
+            {
+                return Err(AppError::code(
+                    kernel::ErrorCode::ValueOutOfRange,
+                    format!("'{}' must be at most {max}", point.code),
+                ));
+            }
+            Ok(())
+        }
+        ("text" | "enum" | "raw", PointValue::Text(_)) => Ok(()),
+        (kind, _) => Err(AppError::validation(format!(
+            "'{}' expects a {kind} value",
+            point.code
+        ))),
     }
 }
 
@@ -349,6 +541,7 @@ mod tests {
             .extend([(home, owner, Role::Owner), (home, member, Role::Member)]);
         devices.devices.lock().unwrap().push(Device {
             id: device,
+            vendor_id: Uuid::new_v4(),
             home_id: Some(home),
             room_id: None,
             room_name: None,

@@ -4,7 +4,9 @@
 //! events for the API instances to fan out. A malformed payload is logged and
 //! dropped: one bad device must never stall the lane for the rest of the fleet.
 
+use domain::devices::{CommandRepo, Settled};
 use infra::Cache;
+use infra::PgDevices;
 use infra::repos::ingest::PgIngest;
 use kernel::AppError;
 use protocol::envelope::{AckMsg, EventMsg, ShadowMsg};
@@ -14,12 +16,17 @@ use uuid::Uuid;
 
 pub struct Ingest {
     writer: PgIngest,
+    commands: PgDevices,
     cache: Cache,
 }
 
 impl Ingest {
-    pub fn new(writer: PgIngest, cache: Cache) -> Self {
-        Self { writer, cache }
+    pub fn new(writer: PgIngest, commands: PgDevices, cache: Cache) -> Self {
+        Self {
+            writer,
+            commands,
+            cache,
+        }
     }
 
     pub async fn on_message(&self, topic: &DeviceTopic<'_>, payload: &[u8]) {
@@ -39,15 +46,47 @@ impl Ingest {
                 Err(e) => tracing::warn!(%device_id, error = %e, "shadow rejected"),
             },
             Lane::Ack => match serde_json::from_slice::<AckMsg>(payload) {
-                Ok(msg) => {
-                    // Commands are settled by the command slice; until it lands,
-                    // log it so the round trip is observable in a demo.
-                    tracing::info!(%device_id, ok = msg.ok, id = %msg.id, "ack");
-                }
+                Ok(msg) => self.settle(msg).await,
                 Err(e) => tracing::warn!(%device_id, error = %e, "ack rejected"),
             },
             Lane::Ota | Lane::Cmd => {}
         }
+    }
+
+    /// The device has spoken: close the command, then tell every open app.
+    async fn settle(&self, ack: AckMsg) {
+        let reported = serde_json::json!({ "dp": ack.dp, "value": ack.value });
+
+        match self
+            .commands
+            .settle_from_ack(ack.id, ack.ok, reported, ack.code.as_deref())
+            .await
+        {
+            Ok(Some(settled)) => {
+                tracing::info!(command = %settled.command_id, status = %settled.status, "settled");
+                self.publish_settled(&settled).await;
+            }
+            // Unknown id or already settled: a redelivered ack must not
+            // resurrect a command that timed out.
+            Ok(None) => tracing::debug!(command = %ack.id, "ack for a settled or unknown command"),
+            Err(e) => tracing::warn!(error = ?e, "could not settle ack"),
+        }
+    }
+
+    pub async fn publish_settled(&self, settled: &Settled) {
+        let Some(home_id) = settled.home_id else {
+            return;
+        };
+        let event = serde_json::json!({
+            "t": "command.settled",
+            "home_id": home_id,
+            "device_id": settled.device_id,
+            "command_id": settled.command_id,
+            "status": settled.status,
+            "ts": kernel::now_s(),
+        });
+        let channel = format!("home:{home_id}");
+        let _ = self.cache.publish_event(&channel, &event.to_string()).await;
     }
 
     async fn apply_event(&self, device_id: Uuid, msg: &EventMsg) {

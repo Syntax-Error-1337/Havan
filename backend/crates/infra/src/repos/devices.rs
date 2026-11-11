@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use crate::pg::Pg;
-use domain::devices::{Device, DeviceRepo, Point, PointValue};
+use domain::devices::{Command, CommandRepo, Device, DeviceRepo, Point, PointValue, Settled};
 use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct PgDevices {
     pg: Pg,
 }
@@ -25,6 +26,7 @@ fn ctx_for(user_id: Uuid) -> TenantCtx {
 
 type DeviceRow = (
     Uuid,
+    Uuid,
     Option<Uuid>,
     Option<Uuid>,
     Option<String>,
@@ -43,6 +45,7 @@ type PointRow = (
     String,
     String,
     String,
+    String,
     bool,
     Option<String>,
     Option<f64>,
@@ -55,13 +58,14 @@ type PointRow = (
 // No join to `products`: that table is vendor-scoped, and a customer request
 // carries no vendor. The product's identity is copied onto the device at claim.
 const DEVICE_COLUMNS: &str = r#"
-    d.id, d.home_id, d.room_id, r.name AS room_name, d.name,
+    d.id, d.vendor_id, d.home_id, d.room_id, r.name AS room_name, d.name,
     d.product_key, d.category, d.online, d.fw_version, d.last_seen_at
 "#;
 
 fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
     let (
         id,
+        vendor_id,
         home_id,
         room_id,
         room_name,
@@ -74,6 +78,7 @@ fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
     ) = row;
     Device {
         id,
+        vendor_id,
         home_id,
         room_id,
         room_name,
@@ -88,8 +93,22 @@ fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
 }
 
 fn map_point(row: PointRow) -> (Uuid, Point) {
-    let (device_id, id, code, capability, slot, kind, writable, unit, min, max, num, boolean, text) =
-        row;
+    let (
+        device_id,
+        id,
+        code,
+        dp,
+        capability,
+        slot,
+        kind,
+        writable,
+        unit,
+        min,
+        max,
+        num,
+        boolean,
+        text,
+    ) = row;
 
     // Exactly one of the value columns is populated by the writer.
     let value = if let Some(b) = boolean {
@@ -105,6 +124,7 @@ fn map_point(row: PointRow) -> (Uuid, Point) {
         Point {
             id,
             code,
+            dp,
             capability,
             slot,
             kind,
@@ -134,7 +154,7 @@ impl DeviceRepo for PgDevices {
         .map_err(db)?;
 
         let point_rows = sqlx::query_as::<_, PointRow>(
-            r#"SELECT dp.device_id, dp.id, dp.code, dp.capability, dp.slot, dp.kind,
+            r#"SELECT dp.device_id, dp.id, dp.code, dp.dp, dp.capability, dp.slot, dp.kind,
                       dp.writable, dp.unit, dp.min_val, dp.max_val,
                       dp.value_num, dp.value_bool, dp.value_text
                FROM device_points dp
@@ -183,7 +203,7 @@ impl DeviceRepo for PgDevices {
         };
 
         let points = sqlx::query_as::<_, PointRow>(
-            r#"SELECT device_id, id, code, capability, slot, kind, writable, unit,
+            r#"SELECT device_id, id, code, dp, capability, slot, kind, writable, unit,
                       min_val, max_val, value_num, value_bool, value_text
                FROM device_points WHERE device_id = $1 ORDER BY code"#,
         )
@@ -287,5 +307,194 @@ impl DeviceRepo for PgDevices {
             return Err(AppError::not_found("device"));
         }
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Commands. The row is the record of intent; publishing it is the API's job.
+// ---------------------------------------------------------------------------
+
+impl CommandRepo for PgDevices {
+    async fn insert_command(
+        &self,
+        device_id: Uuid,
+        user_id: Uuid,
+        point_id: Uuid,
+        point_code: &str,
+        payload: serde_json::Value,
+        idempotency_key: Option<&str>,
+    ) -> Result<Command, AppError> {
+        let mut tx = self.pg.scoped(&ctx_for(user_id)).await?;
+
+        // An idempotent replay returns the command already in flight instead of
+        // dispatching a second one — the app's retry must not blink the light.
+        if let Some(key) = idempotency_key {
+            let existing: Option<(Uuid, String)> = sqlx::query_as(
+                "SELECT id, status FROM commands WHERE device_id = $1 AND idempotency_key = $2",
+            )
+            .bind(device_id)
+            .bind(key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db)?;
+
+            if let Some((id, status)) = existing {
+                tx.commit().await.map_err(db)?;
+                return Ok(Command {
+                    id,
+                    device_id,
+                    point_code: point_code.to_string(),
+                    op: "set".into(),
+                    status,
+                    created: false,
+                });
+            }
+        }
+
+        let vendor_id: Uuid = sqlx::query_scalar("SELECT vendor_id FROM devices WHERE id = $1")
+            .bind(device_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db)?
+            .ok_or_else(|| AppError::not_found("device"))?;
+
+        let id = kernel::new_id();
+        sqlx::query(
+            r#"INSERT INTO commands
+                 (id, vendor_id, device_id, point_id, op, payload, status,
+                  idempotency_key, requested_by, requested_at, dispatched_at)
+               VALUES ($1, $2, $3, $4, 'set', $5, 'queued', $6, $7, now(), now())"#,
+        )
+        .bind(id)
+        .bind(vendor_id)
+        .bind(device_id)
+        .bind(point_id)
+        .bind(&payload)
+        .bind(idempotency_key)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(Command {
+            id,
+            device_id,
+            point_code: point_code.to_string(),
+            op: "set".into(),
+            status: "queued".into(),
+            created: true,
+        })
+    }
+
+    async fn find_command(
+        &self,
+        command_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<Command>, AppError> {
+        let mut tx = self.pg.scoped(&ctx_for(user_id)).await?;
+        let row = sqlx::query_as::<_, (Uuid, Uuid, String, String)>(
+            r#"SELECT c.id, c.device_id, COALESCE(dp.code, ''), c.status
+               FROM commands c LEFT JOIN device_points dp ON dp.id = c.point_id
+               WHERE c.id = $1"#,
+        )
+        .bind(command_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(row.map(|(id, device_id, point_code, status)| Command {
+            id,
+            device_id,
+            point_code,
+            op: "set".into(),
+            status,
+            created: false,
+        }))
+    }
+
+    async fn settle_from_ack(
+        &self,
+        command_id: Uuid,
+        ok: bool,
+        reported: serde_json::Value,
+        code: Option<&str>,
+    ) -> Result<Option<Settled>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("settle-ack")).await?;
+
+        let row: Option<(Uuid, Uuid, String)> = sqlx::query_as(
+            r#"UPDATE commands
+                  SET status = CASE WHEN $2 THEN 'applied' ELSE 'rejected' END,
+                      reported = $3,
+                      error_code = $4,
+                      acked_at = now()
+                WHERE id = $1 AND status IN ('queued','dispatched')
+            RETURNING id, device_id, status"#,
+        )
+        .bind(command_id)
+        .bind(ok)
+        .bind(&reported)
+        .bind(code)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let Some((command_id, device_id, status)) = row else {
+            return Ok(None);
+        };
+
+        let home_id: Option<Uuid> = sqlx::query_scalar("SELECT home_id FROM devices WHERE id = $1")
+            .bind(device_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db)?
+            .flatten();
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(Some(Settled {
+            command_id,
+            device_id,
+            home_id,
+            status,
+        }))
+    }
+
+    async fn sweep_timeouts(&self, older_than_secs: i64) -> Result<Vec<Settled>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("sweep-timeouts")).await?;
+
+        let rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
+            r#"UPDATE commands
+                  SET status = 'timeout'
+                WHERE status IN ('queued','dispatched')
+                  AND COALESCE(dispatched_at, requested_at) < now() - make_interval(secs => $1)
+            RETURNING id, device_id"#,
+        )
+        .bind(older_than_secs as f64)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for (command_id, device_id) in rows {
+            let home_id: Option<Uuid> =
+                sqlx::query_scalar("SELECT home_id FROM devices WHERE id = $1")
+                    .bind(device_id)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(db)?
+                    .flatten();
+            out.push(Settled {
+                command_id,
+                device_id,
+                home_id,
+                status: "timeout".into(),
+            });
+        }
+
+        tx.commit().await.map_err(db)?;
+        Ok(out)
     }
 }

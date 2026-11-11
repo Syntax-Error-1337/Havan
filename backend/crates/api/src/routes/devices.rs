@@ -2,8 +2,8 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::get;
-use domain::devices::Device;
+use axum::routing::{get, post};
+use domain::devices::{Command, Device, PointValue};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -15,6 +15,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/devices", get(list))
         .route("/devices/{id}", get(one).patch(update).delete(remove))
+        .route("/devices/{id}/commands", post(command))
+        .route("/devices/{id}/commands/{command_id}", get(command_status))
 }
 
 #[derive(Deserialize)]
@@ -106,4 +108,119 @@ async fn remove(
         .await
         .map_err(ApiError)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct CommandBody {
+    code: String,
+    value: Option<serde_json::Value>,
+    #[serde(default)]
+    action: Option<String>,
+}
+
+/// `202 Accepted`, never `200`: the command is recorded and dispatched, not
+/// applied. Only the device's ack settles it.
+async fn command(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<CommandBody>,
+) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    if body.action.is_some() {
+        return Err(ApiError(kernel::AppError::validation(
+            "actions are not implemented yet; send a point value",
+        )));
+    }
+
+    let value = body.value.map(to_point_value).transpose()?;
+    let idempotency = headers
+        .get("idempotency-key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+
+    let outcome = state
+        .devices
+        .command(id, auth.user.id, &body.code, value, idempotency)
+        .await
+        .map_err(ApiError)?;
+
+    // Publish only a command we actually created: a replay is already on the wire.
+    if let Some(publishable) = outcome.publish {
+        let msg = protocol::envelope::CommandMsg {
+            v: protocol::WIRE_VERSION,
+            id: outcome.command.id,
+            ts: kernel::now_s(),
+            op: protocol::envelope::CommandOp::Set,
+            dp: Some(publishable.dp),
+            value: Some(to_dp_value(publishable.value)),
+            action: None,
+        };
+
+        state
+            .mqtt
+            .publish(
+                &protocol::topics::cmd(
+                    &publishable.vendor_id.to_string(),
+                    &publishable.home_id.to_string(),
+                    &id.to_string(),
+                ),
+                serde_json::to_vec(&msg)
+                    .map_err(|e| ApiError(kernel::AppError::Internal(e.to_string())))?,
+            )
+            .await
+            .map_err(ApiError)?;
+    }
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "command_id": outcome.command.id,
+            "status": outcome.command.status,
+        })),
+    ))
+}
+
+async fn command_status(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path((_id, command_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<Json<Command>> {
+    Ok(Json(
+        state
+            .devices
+            .command_status(command_id, auth.user.id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+fn to_point_value(v: serde_json::Value) -> ApiResult<PointValue> {
+    match v {
+        serde_json::Value::Bool(b) => Ok(PointValue::Bool(b)),
+        serde_json::Value::Number(n) => n
+            .as_f64()
+            .map(PointValue::Num)
+            .ok_or_else(|| ApiError(kernel::AppError::validation("value must be a number"))),
+        serde_json::Value::String(s) => Ok(PointValue::Text(s)),
+        _ => Err(ApiError(kernel::AppError::validation(
+            "value must be a boolean, number or string",
+        ))),
+    }
+}
+
+/// The wire type is owned by `protocol`; the domain type is not, so the crossing
+/// happens here and nowhere else.
+fn to_dp_value(v: PointValue) -> protocol::envelope::DpValue {
+    match v {
+        PointValue::Bool(b) => protocol::envelope::DpValue::Bool(b),
+        PointValue::Num(n) => {
+            if n.fract() == 0.0 && n.abs() < i64::MAX as f64 {
+                protocol::envelope::DpValue::Int(n as i64)
+            } else {
+                protocol::envelope::DpValue::Float(n)
+            }
+        }
+        PointValue::Text(s) => protocol::envelope::DpValue::Text(s),
+    }
 }

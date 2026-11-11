@@ -43,14 +43,18 @@ async fn handle(mut socket: WebSocket, state: AppState) {
     };
     if frame.kind != "auth" {
         let _ = socket
-            .send(Message::Text(r#"{"t":"error","code":"auth_required"}"#.into()))
+            .send(Message::Text(
+                r#"{"t":"error","code":"auth_required"}"#.into(),
+            ))
             .await;
         return;
     }
 
     let Some(token) = frame.token else {
         let _ = socket
-            .send(Message::Text(r#"{"t":"error","code":"auth_required"}"#.into()))
+            .send(Message::Text(
+                r#"{"t":"error","code":"auth_required"}"#.into(),
+            ))
             .await;
         return;
     };

@@ -70,6 +70,7 @@ struct ClaimBody {
 #[derive(Serialize)]
 struct ClaimResponse {
     device_id: Uuid,
+    vendor_id: Uuid,
     home_id: Uuid,
     name: String,
     points: usize,
@@ -109,6 +110,7 @@ async fn claim(
         StatusCode::CREATED,
         Json(ClaimResponse {
             device_id: claimed.device_id,
+            vendor_id: claimed.vendor_id,
             home_id: claimed.home_id,
             name: claimed.name,
             points: claimed.points,

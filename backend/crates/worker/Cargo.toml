@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 kernel.workspace = true
 infra.workspace = true
+domain.workspace = true
 protocol.workspace = true
 tokio.workspace = true
 tracing.workspace = true

@@ -56,6 +56,7 @@ pub struct ClaimRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct ClaimedDevice {
     pub device_id: Uuid,
+    pub vendor_id: Uuid,
     pub home_id: Uuid,
     pub name: String,
     pub points: usize,
@@ -274,6 +275,7 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
                 let device_id = ticket.device_id.expect("checked above");
                 return Ok(ClaimedDevice {
                     device_id,
+                    vendor_id: product.vendor_id,
                     home_id: claims.home_id,
                     name: device_name,
                     points: product.thing_model.resolve_points().len(),
@@ -312,6 +314,7 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
 
         Ok(ClaimedDevice {
             device_id,
+            vendor_id: product.vendor_id,
             home_id: claims.home_id,
             name: device_name,
             points: written,
