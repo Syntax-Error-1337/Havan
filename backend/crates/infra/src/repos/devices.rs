@@ -33,6 +33,7 @@ type DeviceRow = (
     String,
     String,
     String,
+    String,
     bool,
     Option<String>,
     Option<time::OffsetDateTime>,
@@ -59,7 +60,7 @@ type PointRow = (
 // carries no vendor. The product's identity is copied onto the device at claim.
 const DEVICE_COLUMNS: &str = r#"
     d.id, d.vendor_id, d.home_id, d.room_id, r.name AS room_name, d.name,
-    d.product_key, d.category, d.online, d.fw_version, d.last_seen_at
+    d.product_key, d.category, d.serial, d.online, d.fw_version, d.last_seen_at
 "#;
 
 fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
@@ -72,6 +73,7 @@ fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
         name,
         product_key,
         category,
+        serial,
         online,
         fw_version,
         last_seen_at,
@@ -85,6 +87,7 @@ fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
         name,
         product_key,
         category,
+        serial,
         online,
         fw_version,
         last_seen_at,

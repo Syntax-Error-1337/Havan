@@ -78,6 +78,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::vendor::router())
         .merge(routes::pairing::router())
         .merge(routes::automations::router())
+        .merge(routes::catalog::router())
         .route("/stream", get(routes::stream::ws));
 
     Router::new()

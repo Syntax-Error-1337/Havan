@@ -84,6 +84,9 @@ pub struct Device {
     pub name: String,
     pub product_key: String,
     pub category: String,
+    /// Printed on the box and advertised over BLE: how a phone recognises the
+    /// device it is looking at, and how it tells twenty identical boxes apart.
+    pub serial: String,
     pub online: bool,
     pub fw_version: Option<String>,
     pub last_seen_at: Option<time::OffsetDateTime>,
@@ -540,6 +543,7 @@ mod tests {
             .unwrap()
             .extend([(home, owner, Role::Owner), (home, member, Role::Member)]);
         devices.devices.lock().unwrap().push(Device {
+            serial: "TEST-0001".into(),
             id: device,
             vendor_id: Uuid::new_v4(),
             home_id: Some(home),

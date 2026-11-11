@@ -20,3 +20,4 @@ uuid.workspace = true
 time.workspace = true
 thiserror.workspace = true
 bytes.workspace = true
+sha2.workspace = true

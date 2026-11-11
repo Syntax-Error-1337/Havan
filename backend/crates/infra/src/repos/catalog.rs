@@ -1,7 +1,8 @@
 use crate::pg::Pg;
-use domain::catalog::{CatalogRepo, Product};
+use domain::catalog::{CatalogRepo, Product, PublicProduct};
 use kernel::{AppError, TenantCtx};
 use protocol::thing_model::ThingModel;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -24,6 +25,13 @@ impl PgCatalog {
             request_id: "catalog".into(),
         }
     }
+}
+
+/// The 4 bytes a device advertises: the first half of SHA-256(product_key), hex.
+/// Both ends must agree on this, so it lives next to the query that serves it.
+pub fn advertisement_hash(product_key: &str) -> String {
+    let digest = Sha256::digest(product_key.as_bytes());
+    digest[..4].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn db(e: sqlx::Error) -> AppError {
@@ -174,5 +182,35 @@ impl CatalogRepo for PgCatalog {
             return Err(AppError::not_found("product"));
         }
         Ok(())
+    }
+    /// Runs system-scoped: a published product is public, and the caller is a
+    /// phone with no vendor. Terms are exact matches, so this cannot enumerate
+    /// a catalogue it was not asked about.
+    async fn public_lookup(&self, terms: &[String]) -> Result<Vec<PublicProduct>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("catalog-public")).await?;
+
+        let rows = sqlx::query_as::<_, (String, String, String, Option<String>)>(
+            r#"SELECT product_key, name, category, icon
+                 FROM products
+                WHERE status = 'published'"#,
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        let wanted: Vec<String> = terms.iter().map(|t| t.to_lowercase()).collect();
+
+        Ok(rows
+            .into_iter()
+            .map(|(product_key, name, category, icon)| PublicProduct {
+                hash: advertisement_hash(&product_key),
+                product_key,
+                name,
+                category,
+                icon,
+            })
+            .filter(|p| wanted.contains(&p.hash) || wanted.contains(&p.product_key.to_lowercase()))
+            .collect())
     }
 }

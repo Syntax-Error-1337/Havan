@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod automations;
+pub mod catalog;
 pub mod devices;
 pub mod homes;
 pub mod pairing;

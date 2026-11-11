@@ -28,6 +28,17 @@ pub struct Product {
 
 /// Every method carries the vendor: the repository opens a transaction scoped to
 /// that tenant, so RLS — not this code — decides what a vendor may see.
+/// What the radar needs to draw a device it just heard: a name, a category and
+/// an icon, keyed by the hash the advertisement carries.
+#[derive(Debug, Clone, Serialize)]
+pub struct PublicProduct {
+    pub product_key: String,
+    pub name: String,
+    pub category: String,
+    pub icon: Option<String>,
+    pub hash: String,
+}
+
 pub trait CatalogRepo {
     fn insert(
         &self,
@@ -54,6 +65,14 @@ pub trait CatalogRepo {
         vendor_id: Uuid,
         id: Uuid,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Published products by advertisement hash or key. Cross-tenant by design:
+    /// a published product is public, and a radar does not know which vendor it
+    /// is looking at.
+    fn public_lookup(
+        &self,
+        terms: &[String],
+    ) -> impl Future<Output = Result<Vec<PublicProduct>, AppError>> + Send;
 }
 
 pub struct CatalogService<R> {
@@ -148,6 +167,15 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
         Ok(product.thing_model.validate().err().unwrap_or_default())
     }
 
+    pub async fn public_lookup(&self, terms: &[String]) -> Result<Vec<PublicProduct>, AppError> {
+        if terms.is_empty() || terms.len() > 50 {
+            return Err(AppError::validation(
+                "ask for between 1 and 50 products at a time",
+            ));
+        }
+        self.repo.public_lookup(terms).await
+    }
+
     pub async fn publish(&self, vendor_id: Uuid, id: Uuid) -> Result<Product, AppError> {
         let product = self.get(vendor_id, id).await?;
         if product.status == "published" {
@@ -237,6 +265,9 @@ mod tests {
                 *p = product.clone();
             }
             Ok(())
+        }
+        async fn public_lookup(&self, _terms: &[String]) -> Result<Vec<PublicProduct>, AppError> {
+            Ok(vec![])
         }
         async fn publish(&self, _vendor: Uuid, id: Uuid) -> Result<(), AppError> {
             let mut all = self.products.lock().unwrap();

@@ -68,6 +68,36 @@ Route files stay under 30 lines: parse params, render the page. A route that
 contains a query is a bug. The auth gate lives in `app/_layout.tsx`, not in a
 screen, so a new screen cannot forget it.
 
+### The radar, as built
+
+`shared/lib/ble` is the only place that knows the wire format, and it is split
+so the interesting half can be tested without a radio:
+
+| file | does |
+|---|---|
+| `protocol.ts` | pure: decode the advertisement, chunk a JSON message, map RSSI to bars |
+| `radio.ts` | the `Radio` interface the screens use |
+| `plx-radio.ts` | `react-native-ble-plx`: scan, connect, read Info, write Rx, watch Tx |
+| `mock-radio.ts` | advertises the seeded products and drifts their signal |
+
+`EXPO_PUBLIC_BLE_MOCK=1` swaps in the mock at import time, in `index.ts` and
+nowhere else. The pairing screens are then developed and reviewed on a laptop;
+they run the same state machine the phone runs.
+
+Three decisions worth knowing:
+
+- **The ticket comes from the phone, not the device.** `usePairDevice` mints one
+  through `/homes/{id}/pairing-tickets` and writes it over BLE with the Wi-Fi
+  credentials and the device's nonce. The device holds the secret; the ticket is
+  just permission to claim once.
+- **The result frame is authoritative, polling is the fallback.** The device
+  sends `{"t":"result"}` on Tx when it has claimed itself; `plx-radio` waits up
+  to 25 s for it. If it never arrives the device is still joining, so the screen
+  reports success and watches `/devices` for a minute before saying it failed.
+- **Ads are folded, not listed.** A device re-advertises several times a second;
+  packets go into a ref keyed by `productHash:serialTail` and are flushed on a
+  timer, so the list re-renders twice a second instead of forty times.
+
 ## Portal (React)
 
 ```
