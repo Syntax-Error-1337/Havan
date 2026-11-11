@@ -127,6 +127,22 @@ async fn main() -> anyhow::Result<()> {
                             }
                         }
                     }
+                    // clean_session(false) means the broker usually keeps our
+                    // subscription across a reconnect — usually. If the broker
+                    // loses session state (a recreated container, a session
+                    // expiry) the worker keeps a healthy connection and ingests
+                    // nothing, with no error anywhere. Subscribing again on
+                    // CONNACK costs one idempotent frame.
+                    Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                        if let Err(e) = client
+                            .subscribe(topics::INGEST_SHARED_FILTER, QoS::AtLeastOnce)
+                            .await
+                        {
+                            warn!(error = %e, "resubscribe failed");
+                        } else {
+                            info!("connected; ingest subscription in place");
+                        }
+                    }
                     Ok(_) => {}
                     Err(e) => {
                         warn!(error = %e, "mqtt loop error; reconnecting");
