@@ -3,7 +3,7 @@ use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
-use domain::devices::{Command, Device, PointValue};
+use domain::devices::{Command, CommandOutcome, Device, PointValue};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -120,6 +120,46 @@ struct CommandBody {
 
 /// `202 Accepted`, never `200`: the command is recorded and dispatched, not
 /// applied. Only the device's ack settles it.
+/// Send a freshly created command to its device.
+///
+/// Shared with scene activation on purpose: a scene must not grow a second way
+/// for a device to be told something.
+pub(crate) async fn publish_command(
+    state: &AppState,
+    device_id: Uuid,
+    outcome: &CommandOutcome,
+) -> Result<(), ApiError> {
+    // A replay is already on the wire; publishing again would make the device
+    // act twice on one press.
+    let Some(publishable) = outcome.publish.as_ref() else {
+        return Ok(());
+    };
+
+    let msg = protocol::envelope::CommandMsg {
+        v: protocol::WIRE_VERSION,
+        id: outcome.command.id,
+        ts: kernel::now_s(),
+        op: protocol::envelope::CommandOp::Set,
+        dp: Some(publishable.dp.clone()),
+        value: Some(to_dp_value(publishable.value.clone())),
+        action: None,
+    };
+
+    state
+        .mqtt
+        .publish(
+            &protocol::topics::cmd(
+                &publishable.vendor_id.to_string(),
+                &publishable.home_id.to_string(),
+                &device_id.to_string(),
+            ),
+            serde_json::to_vec(&msg)
+                .map_err(|e| ApiError(kernel::AppError::Internal(e.to_string())))?,
+        )
+        .await
+        .map_err(ApiError)
+}
+
 async fn command(
     State(state): State<AppState>,
     auth: Auth,
@@ -145,32 +185,7 @@ async fn command(
         .await
         .map_err(ApiError)?;
 
-    // Publish only a command we actually created: a replay is already on the wire.
-    if let Some(publishable) = outcome.publish {
-        let msg = protocol::envelope::CommandMsg {
-            v: protocol::WIRE_VERSION,
-            id: outcome.command.id,
-            ts: kernel::now_s(),
-            op: protocol::envelope::CommandOp::Set,
-            dp: Some(publishable.dp),
-            value: Some(to_dp_value(publishable.value)),
-            action: None,
-        };
-
-        state
-            .mqtt
-            .publish(
-                &protocol::topics::cmd(
-                    &publishable.vendor_id.to_string(),
-                    &publishable.home_id.to_string(),
-                    &id.to_string(),
-                ),
-                serde_json::to_vec(&msg)
-                    .map_err(|e| ApiError(kernel::AppError::Internal(e.to_string())))?,
-            )
-            .await
-            .map_err(ApiError)?;
-    }
+    publish_command(&state, id, &outcome).await?;
 
     Ok((
         StatusCode::ACCEPTED,

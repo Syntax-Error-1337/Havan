@@ -10,5 +10,6 @@ pub mod homes;
 pub mod notifications;
 pub mod ota;
 pub mod pairing;
+pub mod scenes;
 pub mod stream;
 pub mod vendor;

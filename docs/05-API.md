@@ -136,6 +136,21 @@ gap, never as zero — silence is not a reading.
 `notifications` has no vendor column and no RLS: the only thing keeping one
 person's alerts apart is the `user_id` predicate, so it is never optional.
 
+### Scenes
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/homes/{id}/scenes` | create: `{name, icon?, actions}`; admin only |
+| DELETE | `/scenes/{id}` | |
+| POST | `/scenes/{id}/activate` | runs every action, returns `{dispatched, failed}` |
+
+A scene has **no trigger and no conditions** — that is the distinction from an
+automation. "Good night" is a button; adding a trigger would mean two engines
+that overlap. Every action goes through the same command path a manual press
+uses, so a scene cannot invent a second way for a device to be told something.
+One dead device does not stop the rest: failures come back per action rather than
+aborting the burst.
+
 ### Misc
 
 | Method | Path |
