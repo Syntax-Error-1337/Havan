@@ -17,3 +17,4 @@ pub mod notification;
 pub mod ota;
 pub mod pairing;
 pub mod scenes;
+pub mod serials;

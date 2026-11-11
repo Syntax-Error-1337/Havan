@@ -63,6 +63,18 @@ pub struct ClaimedDevice {
 }
 
 /// Storage the slice needs.
+/// What the manufacturing manifest says about a serial.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SerialTake {
+    /// It was in the manifest and is now spoken for, by this claim.
+    Taken,
+    /// It was in the manifest and someone else already claimed it.
+    AlreadyClaimed,
+    /// The product has no manifest entry for it.
+    #[default]
+    Unknown,
+}
+
 pub trait PairingRepo {
     fn mint_ticket(
         &self,
@@ -82,6 +94,16 @@ pub trait PairingRepo {
         product_id: Uuid,
         serial: &str,
     ) -> impl Future<Output = Result<Option<DeviceRecord>, AppError>> + Send;
+
+    /// Claim a serial from the vendor's manifest, atomically.
+    ///
+    /// Two devices presenting the same serial must not both win, so this is a
+    /// conditional update rather than a select followed by an insert.
+    fn take_serial(
+        &self,
+        product_id: Uuid,
+        serial: &str,
+    ) -> impl Future<Output = Result<SerialTake, AppError>> + Send;
 
     /// Atomically: put the device in the home, write its points from the model,
     /// and burn the ticket. Returns the device id and how many points landed.
@@ -240,15 +262,31 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
                         .unwrap_or_else(|| default_name(&product)),
                 )
             }
-            None if allow_unknown => (
-                crate::identity::hash_password(&req.secret)?,
-                default_name(&product),
-            ),
             None => {
-                return Err(AppError::code(
-                    ErrorCode::NotFound,
-                    "unknown_serial: this serial is not in the vendor's manifest",
-                ));
+                // No device row yet: the manifest decides whether this serial may
+                // exist at all.
+                match self.repo.take_serial(product.id, &req.serial).await? {
+                    SerialTake::Taken => (
+                        crate::identity::hash_password(&req.secret)?,
+                        default_name(&product),
+                    ),
+                    SerialTake::AlreadyClaimed => {
+                        return Err(AppError::code(
+                            ErrorCode::AlreadyClaimed,
+                            "serial_already_claimed: another device has this serial",
+                        ));
+                    }
+                    SerialTake::Unknown if allow_unknown => (
+                        crate::identity::hash_password(&req.secret)?,
+                        default_name(&product),
+                    ),
+                    SerialTake::Unknown => {
+                        return Err(AppError::code(
+                            ErrorCode::NotFound,
+                            "unknown_serial: this serial is not in the vendor's manifest",
+                        ));
+                    }
+                }
             }
         };
 
@@ -340,6 +378,8 @@ mod tests {
         tickets: Mutex<Vec<TicketRow>>,
         device: Mutex<Option<DeviceRecord>>,
         claims: Mutex<Vec<ClaimPlan>>,
+        /// What the manifest says about the serial in the request.
+        serial_take: Mutex<SerialTake>,
     }
 
     impl PairingRepo for Fake {
@@ -364,17 +404,18 @@ mod tests {
                 .cloned())
         }
         async fn product_by_key(&self, key: &str) -> Result<Option<ProductRecord>, AppError> {
-            if key != "hv_test_bulb" {
+            if key != "hv_test_bulb" && key != "hv_test_strict" {
                 return Ok(None);
             }
+            let strict = key == "hv_test_strict";
             let model: ThingModel = serde_json::from_value(serde_json::json!({
-                "product_key": "hv_test_bulb",
+                "product_key": key,
                 "name": "Test Bulb",
                 "category": "light",
                 "capabilities": [
                     { "name": "switch", "points": { "power": { "dp": "1", "kind": "bool" } } }
                 ],
-                "constraints": { "allow_unknown_serial": true }
+                "constraints": { "allow_unknown_serial": !strict }
             }))
             .unwrap();
             Ok(Some(ProductRecord {
@@ -390,6 +431,14 @@ mod tests {
         ) -> Result<Option<DeviceRecord>, AppError> {
             Ok(self.device.lock().unwrap().clone())
         }
+        async fn take_serial(
+            &self,
+            _product_id: Uuid,
+            _serial: &str,
+        ) -> Result<SerialTake, AppError> {
+            Ok(*self.serial_take.lock().unwrap())
+        }
+
         async fn claim(&self, plan: ClaimPlan) -> Result<(Uuid, usize), AppError> {
             let id = Uuid::from_u128(9);
             let n = plan.points.len();
@@ -463,6 +512,37 @@ mod tests {
         let out = svc.claim(req).await.unwrap();
         assert_eq!(out.points, 1);
         assert_eq!(out.home_id, home);
+    }
+
+    /// A claim against a strict product, with the manifest saying `take`.
+    async fn strict_claim(take: SerialTake) -> Result<ClaimedDevice, AppError> {
+        let svc = svc();
+        *svc.repo.serial_take.lock().unwrap() = take;
+        let mut req = request(&svc, Uuid::new_v4());
+        req.product_key = "hv_test_strict".into();
+        svc.claim(req).await
+    }
+
+    #[tokio::test]
+    async fn a_strict_product_refuses_a_serial_it_never_manufactured() {
+        // Trust-on-first-use is the default the product opted out of; without the
+        // manifest an attacker holding a ticket can invent a device.
+        let err = strict_claim(SerialTake::Unknown).await.unwrap_err();
+        assert_eq!(err.error_code(), kernel::ErrorCode::NotFound);
+        assert!(err.to_string().contains("unknown_serial"));
+    }
+
+    #[tokio::test]
+    async fn a_strict_product_accepts_a_serial_from_the_manifest() {
+        let out = strict_claim(SerialTake::Taken).await.expect("claims");
+        assert_eq!(out.points, 1);
+    }
+
+    #[tokio::test]
+    async fn a_serial_someone_already_claimed_is_conflict_not_a_second_device() {
+        let err = strict_claim(SerialTake::AlreadyClaimed).await.unwrap_err();
+        assert_eq!(err.error_code(), kernel::ErrorCode::AlreadyClaimed);
+        assert!(err.to_string().contains("serial_already_claimed"));
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 use crate::pg::Pg;
 use domain::pairing::{
-    ClaimPlan, DeviceRecord, PairingRepo, ProductRecord, TicketClaims, TicketRow,
+    ClaimPlan, DeviceRecord, PairingRepo, ProductRecord, SerialTake, TicketClaims, TicketRow,
 };
 use kernel::{AppError, TenantCtx};
 use sqlx::{Postgres, Transaction};
@@ -32,6 +32,47 @@ fn db(e: sqlx::Error) -> AppError {
 }
 
 impl PairingRepo for PgPairing {
+    async fn take_serial(&self, product_id: Uuid, serial: &str) -> Result<SerialTake, AppError> {
+        let mut tx = self.tx().await?;
+
+        // One statement, so two devices presenting the same serial cannot both
+        // win: the row is only taken if nobody took it first.
+        // No device_id here: the device row does not exist yet, and inventing an
+        // id would leave a pointer to nothing. `claim` fills it in once the device
+        // is actually written, in the same transaction as the insert.
+        let taken: Option<(Uuid,)> = sqlx::query_as(
+            r#"UPDATE product_serials
+                  SET claimed_at = now()
+                WHERE product_id = $1 AND serial = $2 AND claimed_at IS NULL
+            RETURNING product_id"#,
+        )
+        .bind(product_id)
+        .bind(serial)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        if taken.is_some() {
+            tx.commit().await.map_err(db)?;
+            return Ok(SerialTake::Taken);
+        }
+
+        let exists: Option<(i32,)> =
+            sqlx::query_as("SELECT 1 FROM product_serials WHERE product_id = $1 AND serial = $2")
+                .bind(product_id)
+                .bind(serial)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(if exists.is_some() {
+            SerialTake::AlreadyClaimed
+        } else {
+            SerialTake::Unknown
+        })
+    }
+
     async fn mint_ticket(&self, claims: &TicketClaims) -> Result<(), AppError> {
         let mut tx = self.tx().await?;
         sqlx::query(
@@ -227,6 +268,19 @@ impl PairingRepo for PgPairing {
             .execute(&mut *tx)
             .await
             .map_err(db)?;
+
+        // Point the manifest row at the device that now owns it. Harmless when
+        // the product has no manifest: the UPDATE matches nothing.
+        sqlx::query(
+            r#"UPDATE product_serials SET device_id = $3
+                WHERE product_id = $1 AND serial = $2 AND device_id IS NULL"#,
+        )
+        .bind(plan.product_id)
+        .bind(&plan.serial)
+        .bind(device_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
 
         tx.commit().await.map_err(db)?;
         Ok((device_id, plan.points.len()))

@@ -17,5 +17,6 @@ pub use repos::history::PgHistory;
 pub use repos::notification::PgNotifications;
 pub use repos::ota::PgOta;
 pub use repos::scenes::PgScenes;
+pub use repos::serials::PgSerials;
 pub use repos::{PgAutomation, PgCatalog, PgDevices, PgHomes, PgIdentity, PgIngest, PgPairing};
 pub use store::Objects;

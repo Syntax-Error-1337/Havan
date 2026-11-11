@@ -15,6 +15,7 @@ pub mod notification;
 pub mod ota;
 pub mod pairing;
 pub mod scenes;
+pub mod serials;
 
 pub use automation::PgAutomation;
 pub use catalog::PgCatalog;

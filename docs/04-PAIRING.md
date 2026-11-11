@@ -132,3 +132,28 @@ on demand (one per device, no user tap) for 2 hours, bound to an installer
 account and audited per device. The app's installer screen scans continuously
 and assigns rooms from a floor plan. Rate limit: 60 devices per 10 minutes per
 session; above that, the session is paused and emailed to the home owner.
+
+## The manufacturing manifest
+
+`allow_unknown_serial: true` means "trust the first claim for any serial". That is
+a prototype default and it is what makes a device row something a caller can
+invent, so a product that ships should say **false** and upload the serials it
+built.
+
+- `POST /v1/vendor/products/{id}/serials {"serials": ["SN-1", "SN-2"]}` — one
+  batch, idempotent, returns `{added, already_listed, summary}`. Serials are
+  trimmed, blanks dropped and duplicates folded, because a manifest pasted out of
+  a spreadsheet has all three.
+- `GET /v1/vendor/products/{id}/serials` → `{total, claimed, open}`. `open` is
+  what is still on the shelf.
+- Claiming takes a serial in a single conditional `UPDATE … WHERE claimed_at IS
+  NULL`, so two devices presenting the same serial cannot both win.
+- A serial that is not in the manifest is `404 unknown_serial`. A serial already
+  taken is `409 serial_already_claimed`. A serial whose device row exists with a
+  different secret is `401 bad_secret` — two devices claiming one serial with
+  different secrets is indistinguishable from a stolen serial, and the second one
+  loses either way.
+
+Not built yet: uploading a manifest from the portal. Today it is an API call, and
+a vendor with 20,000 serials would want a CSV drop.
+

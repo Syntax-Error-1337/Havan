@@ -78,6 +78,13 @@ already run any rule whose `next_run_at` is due, so this is a small endpoint —
 it is held back because a manual run would be recorded as a `schedule` run, and
 a mislabelled audit trail is worse than no button.
 
+### Manufacturing manifest
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/vendor/products/{id}/serials` | `{serials:[…]}` → `{added, already_listed, summary}` |
+| GET | `/vendor/products/{id}/serials` | `{total, claimed, open}` |
+
 ### Vendor API keys
 
 | Method | Path | Notes |

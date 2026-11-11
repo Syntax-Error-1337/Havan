@@ -15,7 +15,7 @@ use domain::identity::IdentityService;
 use domain::pairing::PairingService;
 use infra::{
     Cache, Mqtt, Pg, PgApiKeys, PgAutomation, PgCatalog, PgDevices, PgHistory, PgHomes, PgIdentity,
-    PgNotifications, PgOta, PgPairing, PgScenes,
+    PgNotifications, PgOta, PgPairing, PgScenes, PgSerials,
 };
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -41,6 +41,7 @@ pub struct AppState {
     pub history: Arc<PgHistory>,
     pub notifications: Arc<PgNotifications>,
     pub scenes: Arc<PgScenes>,
+    pub serials: Arc<PgSerials>,
 }
 
 impl AppState {
@@ -65,6 +66,7 @@ impl AppState {
         let history = Arc::new(PgHistory::new(pg.clone()));
         let notifications = Arc::new(PgNotifications::new(pg.clone()));
         let scenes = Arc::new(PgScenes::new(pg.clone()));
+        let serials = Arc::new(PgSerials::new(pg.clone()));
         let automations = Arc::new(AutomationService::new(Arc::new(PgAutomation::new(
             pg.clone(),
         ))));
@@ -84,6 +86,7 @@ impl AppState {
             history,
             notifications,
             scenes,
+            serials,
         }
     }
 }

@@ -96,6 +96,18 @@ pub enum AppError {
 }
 
 impl AppError {
+    /// The wire code this error becomes.
+    ///
+    /// Tests assert on it instead of on the message, so a reworded message does
+    /// not read as a behaviour change.
+    pub fn error_code(&self) -> ErrorCode {
+        match self {
+            AppError::Coded { code, .. } => *code,
+            AppError::Database(_) | AppError::Internal(_) => ErrorCode::Internal,
+            AppError::Cache(_) | AppError::Broker(_) => ErrorCode::Unavailable,
+        }
+    }
+
     pub fn code(code: ErrorCode, message: impl Into<String>) -> Self {
         AppError::Coded {
             code,

@@ -4,6 +4,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use domain::catalog::Product;
+use domain::serials::SerialRepo;
 use protocol::thing_model::ThingModel;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -19,6 +20,10 @@ pub fn router() -> Router<AppState> {
         .route("/vendor/products/{id}", get(one).patch(update))
         .route("/vendor/products/{id}/validate", post(validate))
         .route("/vendor/products/{id}/publish", post(publish))
+        .route(
+            "/vendor/products/{id}/serials",
+            get(serials).post(add_serials),
+        )
 }
 
 #[derive(Deserialize)]
@@ -138,3 +143,59 @@ async fn publish(
 /// token.
 #[allow(dead_code)]
 fn _customer_tokens_are_not_vendor_tokens(_: Auth) {}
+
+#[derive(Deserialize)]
+struct SerialsBody {
+    serials: Vec<String>,
+}
+
+/// Upload a manufacturing manifest.
+///
+/// Idempotent by design: re-uploading a batch that is half-known adds the
+/// missing half and says how many were already there. A vendor reconciling two
+/// spreadsheets should not have to diff them by hand.
+async fn add_serials(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+    Json(body): Json<SerialsBody>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let serials = domain::serials::normalise(body.serials);
+    if serials.is_empty() {
+        return Err(ApiError(kernel::AppError::validation(
+            "no usable serials in that list",
+        )));
+    }
+
+    let (added, already) = state
+        .serials
+        .add(vendor.vendor_id, id, &serials)
+        .await
+        .map_err(ApiError)?;
+
+    let summary = state
+        .serials
+        .summary(vendor.vendor_id, id)
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(serde_json::json!({
+        "added": added,
+        "already_listed": already,
+        "summary": summary,
+    })))
+}
+
+async fn serials(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+) -> ApiResult<Json<domain::serials::SerialSummary>> {
+    Ok(Json(
+        state
+            .serials
+            .summary(vendor.vendor_id, id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
