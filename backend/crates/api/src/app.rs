@@ -15,7 +15,7 @@ use domain::identity::IdentityService;
 use domain::pairing::PairingService;
 use infra::{
     Cache, Mqtt, Pg, PgApiKeys, PgAutomation, PgCatalog, PgDevices, PgHistory, PgHomes, PgIdentity,
-    PgOta, PgPairing,
+    PgNotifications, PgOta, PgPairing,
 };
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -39,6 +39,7 @@ pub struct AppState {
     pub ota: Arc<PgOta>,
     pub api_keys: Arc<PgApiKeys>,
     pub history: Arc<PgHistory>,
+    pub notifications: Arc<PgNotifications>,
 }
 
 impl AppState {
@@ -61,6 +62,7 @@ impl AppState {
         let ota = Arc::new(PgOta::new(pg.clone()));
         let api_keys = Arc::new(PgApiKeys::new(pg.clone()));
         let history = Arc::new(PgHistory::new(pg.clone()));
+        let notifications = Arc::new(PgNotifications::new(pg.clone()));
         let automations = Arc::new(AutomationService::new(Arc::new(PgAutomation::new(
             pg.clone(),
         ))));
@@ -78,6 +80,7 @@ impl AppState {
             ota,
             api_keys,
             history,
+            notifications,
         }
     }
 }
@@ -93,6 +96,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::catalog::router())
         .merge(routes::ota::router())
         .merge(routes::api_keys::router())
+        .merge(routes::notifications::router())
         .route(
             "/devices/{id}/history",
             axum::routing::get(routes::history::history),

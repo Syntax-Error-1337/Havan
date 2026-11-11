@@ -7,6 +7,7 @@ pub mod catalog;
 pub mod devices;
 pub mod history;
 pub mod homes;
+pub mod notifications;
 pub mod ota;
 pub mod pairing;
 pub mod stream;

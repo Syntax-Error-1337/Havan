@@ -124,6 +124,18 @@ boolean the average is the fraction of the window it was true, which is what a
 "when is the light on" chart should draw. A bucket with no samples is drawn as a
 gap, never as zero — silence is not a reading.
 
+### Alerts
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/notifications?unread=&limit=` | newest first, keyed by the caller's user id |
+| GET | `/notifications/unread-count` | `{unread}` — a badge needs a count, not 50 rows |
+| POST | `/notifications/{id}/read` | `{changed}`; `false` means it was already read |
+| POST | `/notifications/read-all` | `{cleared}` |
+
+`notifications` has no vendor column and no RLS: the only thing keeping one
+person's alerts apart is the `user_id` predicate, so it is never optional.
+
 ### Misc
 
 | Method | Path |

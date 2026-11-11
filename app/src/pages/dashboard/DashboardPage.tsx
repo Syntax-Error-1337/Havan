@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Box, Button, Screen, AppText } from '../../shared/ui';
 import { DeviceCard, useDevices } from '../../entities/device';
 import { useCreateHome, useCreateRoom, useHomes, useRooms } from '../../entities/home';
+import { useUnreadCount } from '../../entities/notification';
 import { useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
@@ -34,6 +35,7 @@ export function DashboardPage() {
   const { data, isPending, refetch } = useDevices(homeId ?? undefined);
   const devices = useMemo(() => data ?? [], [data]);
 
+  const { data: unread } = useUnreadCount();
   const { data: rooms } = useRooms(homeId ?? undefined);
   const createRoom = useCreateRoom(homeId ?? undefined);
   const [addingRoom, setAddingRoom] = useState(false);
@@ -87,6 +89,11 @@ export function DashboardPage() {
           </AppText>
         </Box>
         <Box row gap="sm" style={{ alignItems: 'center' }}>
+          <Button
+            label={unread && unread.unread > 0 ? `Alerts (${unread.unread})` : 'Alerts'}
+            variant="ghost"
+            onPress={() => router.push('/alerts')}
+          />
           <Button
             label="Room"
             variant="ghost"

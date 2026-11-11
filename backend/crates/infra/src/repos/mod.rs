@@ -11,6 +11,7 @@ pub mod history;
 pub mod homes;
 pub mod identity;
 pub mod ingest;
+pub mod notification;
 pub mod ota;
 pub mod pairing;
 
