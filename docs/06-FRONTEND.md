@@ -89,6 +89,9 @@ Setup gotchas, all learned the hard way:
   not match this `TextInput` even though the label was on the node.
 - The suite needs `--forceExit` (the `npm test` script has it): something keeps
   a handle alive after the run and jest waits for it.
+- Do **not** set `gcTime: 0` on a test `QueryClient` unless something observes
+  the query. `setQueryData` with no observer is collected immediately, so a test
+  that writes a cache entry and asserts on it passes alone and fails in a suite.
 - `src/test/setup.ts` mocks the keychain, expo-router, safe-area and WebSocket.
   Add a mock there rather than in a test file, so no test can quietly reach a
   real network. `src/test/env.ts` sets `EXPO_PUBLIC_BLE_MOCK=1` before any import,

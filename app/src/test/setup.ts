@@ -27,18 +27,55 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 
-// No socket in tests: a stream that connects for real would make the suite
-// depend on a running backend and fail on a train.
-class DeadSocket {
+/**
+ * No socket in tests: a stream that connects for real would make the suite
+ * depend on a running backend. This records what the code under test did, so a
+ * test can drive it: `lastSocket().open()`, `.emit({...})`.
+ */
+class TestSocket {
+  static instances: TestSocket[] = [];
+
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   onclose: (() => void) | null = null;
-  send() {}
-  close() {}
+
+  sent: string[] = [];
+  closed = false;
+
+  constructor(readonly url: string) {
+    TestSocket.instances.push(this);
+  }
+
+  send(data: string) {
+    this.sent.push(data);
+  }
+
+  close() {
+    this.closed = true;
+  }
+
+  open() {
+    this.onopen?.();
+  }
+
+  emit(message: unknown) {
+    this.onmessage?.({ data: JSON.stringify(message) });
+  }
+
+  emitRaw(data: string) {
+    this.onmessage?.({ data });
+  }
 }
-// @ts-expect-error — the test runtime has no WebSocket
-global.WebSocket = DeadSocket;
+
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = TestSocket;
+(globalThis as unknown as { __lastSocket: () => TestSocket | undefined }).__lastSocket = () =>
+  TestSocket.instances[TestSocket.instances.length - 1];
+// Sockets accumulate across tests; start each one from a clean slate so a test
+// cannot emit into a connection that was closed by the previous test.
+(globalThis as unknown as { __resetSockets: () => void }).__resetSockets = () => {
+  TestSocket.instances = [];
+};
 
 afterEach(() => {
   jest.clearAllMocks();
