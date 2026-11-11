@@ -136,6 +136,17 @@ pub trait OtaRepo {
 
     /// Start a campaign: decide who is in this wave and queue a job per device.
     /// Returns how many jobs were queued.
+    /// Stop a campaign. Returns how many queued jobs were skipped.
+    ///
+    /// In-flight jobs are left alone: a device that is half-way through a flash
+    /// must finish or fail on its own schedule, and killing it mid-write is how
+    /// firmware updates brick hardware.
+    fn halt_campaign(
+        &self,
+        vendor_id: Uuid,
+        id: Uuid,
+    ) -> impl Future<Output = Result<u64, AppError>> + Send;
+
     fn start_campaign(
         &self,
         vendor_id: Uuid,

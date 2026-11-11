@@ -3,6 +3,7 @@ export {
   useCampaigns,
   useCreateCampaign,
   useFirmware,
+  useHaltCampaign,
   useStartCampaign,
 } from './model/queries';
 export { headline, percentDone } from './model/types';

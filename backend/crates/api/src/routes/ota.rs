@@ -20,6 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/vendor/campaigns", get(list).post(create))
         .route("/vendor/campaigns/{id}", get(one))
         .route("/vendor/campaigns/{id}/start", post(start))
+        .route("/vendor/campaigns/{id}/halt", post(halt))
 }
 
 #[derive(Deserialize)]
@@ -206,4 +207,23 @@ async fn start(
         .map_err(ApiError)?;
 
     Ok(Json(serde_json::json!({ "queued": queued })))
+}
+
+/// Stop a rollout.
+///
+/// Queued jobs are dropped and reported; jobs already sent to a device are left
+/// alone, because abandoning a half-written flash is how firmware updates brick
+/// hardware. The campaign shows `halted` either way.
+async fn halt(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let skipped = state
+        .ota
+        .halt_campaign(vendor.vendor_id, id)
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(serde_json::json!({ "skipped": skipped })))
 }

@@ -54,6 +54,13 @@ export function headline(row: CampaignRow): string {
   // cannot support — and a vendor who reads it abandons a rollout that would
   // have updated the whole fleet.
   if (row.campaign.status === 'draft') return 'Not started';
+
+  // A halted campaign has skipped its queued work, which counts as "finished" in
+  // the progress maths — so without this it reads "Done", which is the opposite
+  // of what happened.
+  if (row.campaign.status === 'halted') {
+    return p.skipped > 0 ? `Stopped · ${p.skipped} skipped` : 'Stopped';
+  }
   if (p.total === 0) return 'Matched no devices';
   if (p.failed > 0) return `${p.failed} failed`;
   if (row.complete) return 'Done';

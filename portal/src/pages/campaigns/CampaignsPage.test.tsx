@@ -106,6 +106,20 @@ describe('rollouts', () => {
     expect(screen.queryByText('Matched no devices')).toBeNull();
   });
 
+  it('says stopped, not done, for a campaign someone halted', async () => {
+    stubFetch((url) =>
+      url.endsWith('/vendor/campaigns')
+        ? [row({ status: 'halted' }, { total: 24, skipped: 24, failed: 0 })]
+        : [product],
+    );
+    renderPage();
+
+    // 24 skipped jobs is "finished" in the progress maths; the label must not
+    // claim the fleet was updated.
+    expect(await screen.findByText('Stopped · 24 skipped')).toBeInTheDocument();
+    expect(screen.queryByText('Done')).toBeNull();
+  });
+
   it('says plainly when a started rollout matched nobody', async () => {
     stubFetch((url) =>
       url.endsWith('/vendor/campaigns')
@@ -139,5 +153,41 @@ describe('rollouts', () => {
 
     await screen.findByText('Acme Bulb');
     expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument();
+  });
+
+  it('halts a running rollout and shows it halted without a reload', async () => {
+    let halted = false;
+    const calls = stubFetch((url) => {
+      if (url.endsWith('/halt')) {
+        halted = true;
+        return { skipped: 12 };
+      }
+      if (url.endsWith('/vendor/campaigns')) {
+        return halted
+          ? [row({ status: 'halted' }, { total: 24, skipped: 12, failed: 0 })]
+          : [row({ status: 'running' })];
+      }
+      return [product];
+    });
+    renderPage();
+
+    await screen.findByText('Acme Bulb');
+    await userEvent.click(screen.getByRole('button', { name: 'Halt' }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/halt'))).toBe(true));
+    // The list has to refetch with the same key the hook uses. A hand-written key
+    // that does not match leaves the row saying "running" after a halt.
+    expect(await screen.findByText('Stopped · 12 skipped')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Halt' })).toBeNull();
+  });
+
+  it('offers no halt once a rollout is finished', async () => {
+    stubFetch((url) =>
+      url.endsWith('/vendor/campaigns') ? [row({ status: 'completed' })] : [product],
+    );
+    renderPage();
+
+    await screen.findByText('Acme Bulb');
+    expect(screen.queryByRole('button', { name: 'Halt' })).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import {
   useCampaigns,
   useCreateCampaign,
   useFirmware,
+  useHaltCampaign,
   useStartCampaign,
 } from '../../entities/ota';
 import { ApiError } from '../../shared/api/client';
@@ -20,6 +21,7 @@ export function CampaignsPage() {
   const { data: rows, isPending, error } = useCampaigns();
   const { data: products } = useProducts();
   const start = useStartCampaign();
+  const halt = useHaltCampaign();
   const create = useCreateCampaign();
 
   const [showNew, setShowNew] = useState(false);
@@ -187,6 +189,16 @@ export function CampaignsPage() {
                           onClick={() => start.mutate(row.campaign.id)}
                         >
                           Start
+                        </button>
+                      ) : row.campaign.status === 'running' ? (
+                        // A rollout going badly needs a stop, and it needs it at
+                        // 2am without a terminal.
+                        <button
+                          className="btn"
+                          disabled={halt.isPending && halt.variables === row.campaign.id}
+                          onClick={() => halt.mutate(row.campaign.id)}
+                        >
+                          {halt.isPending && halt.variables === row.campaign.id ? 'Halting…' : 'Halt'}
                         </button>
                       ) : (
                         <Link className="muted" to={`/products/${row.campaign.product_id}/firmware`}>

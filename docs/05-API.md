@@ -83,6 +83,19 @@ already run any rule whose `next_run_at` is due, so this is a small endpoint —
 it is held back because a manual run would be recorded as a `schedule` run, and
 a mislabelled audit trail is worse than no button.
 
+### Rollouts
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/vendor/campaigns/{id}/start` | draft → running, queues the wave |
+| POST | `/vendor/campaigns/{id}/halt` | draft or running → halted; returns `{skipped}` |
+
+Halting drops the queued jobs (`skipped`) and leaves in-flight ones alone: a
+device half-way through a flash must finish or fail on its own schedule, and
+killing it mid-write is how firmware updates brick hardware. A halted campaign
+reports `halted` with `Stopped · N skipped`, never `Done` — the progress maths
+counts skipped jobs as finished, and the label must not claim the fleet updated.
+
 ### Manufacturing manifest
 
 | Method | Path | Notes |

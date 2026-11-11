@@ -59,3 +59,15 @@ export function useStartCampaign() {
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.campaigns }),
   });
 }
+
+export function useHaltCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<{ skipped: number }>(`/vendor/campaigns/${id}/halt`, { method: 'POST' }),
+    // The same key the list uses. A hand-written key that does not match is an
+    // invalidation that silently does nothing — the vendor halts a rollout, sees
+    // no change, and clicks again.
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.campaigns }),
+  });
+}

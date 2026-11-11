@@ -234,6 +234,45 @@ impl OtaRepo for PgOta {
         rows.into_iter().map(map_campaign).collect()
     }
 
+    async fn halt_campaign(&self, vendor_id: Uuid, id: Uuid) -> Result<u64, AppError> {
+        let mut tx = self.tx(vendor_id).await?;
+
+        // The status transition is the gate: draft or running, once.
+        let halted = sqlx::query(
+            r#"UPDATE ota_campaigns
+                  SET status = 'halted', halted_at = now()
+                WHERE id = $1 AND status IN ('draft', 'running')"#,
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        if halted == 0 {
+            return Err(AppError::code(
+                kernel::ErrorCode::Conflict,
+                "only a draft or running campaign can be halted",
+            ));
+        }
+
+        // Queued work is dropped. Jobs already sent are left to finish: a device
+        // mid-flash must not be abandoned half-written.
+        let skipped = sqlx::query(
+            r#"UPDATE ota_jobs
+                  SET state = 'skipped', updated_at = now()
+                WHERE campaign_id = $1 AND state = 'pending'"#,
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        tx.commit().await.map_err(db)?;
+        Ok(skipped)
+    }
+
     async fn start_campaign(&self, vendor_id: Uuid, id: Uuid) -> Result<u64, AppError> {
         let mut tx = self.tx(vendor_id).await?;
 
@@ -326,9 +365,14 @@ impl OtaRepo for PgOta {
                    UPDATE ota_jobs j
                       SET state = 'sent', updated_at = now(), attempts = j.attempts + 1
                     WHERE (j.campaign_id, j.device_id) IN (
-                        SELECT campaign_id, device_id FROM ota_jobs
-                         WHERE state = 'pending'
-                         ORDER BY updated_at
+                        SELECT j2.campaign_id, j2.device_id
+                          FROM ota_jobs j2
+                          JOIN ota_campaigns c ON c.id = j2.campaign_id
+                         WHERE j2.state = 'pending'
+                           -- A halted campaign must not hand out work even if a
+                           -- job slipped through the halt transaction.
+                           AND c.status = 'running'
+                         ORDER BY j2.updated_at
                          LIMIT $1
                          FOR UPDATE SKIP LOCKED
                     )
