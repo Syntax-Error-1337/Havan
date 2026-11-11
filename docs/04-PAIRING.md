@@ -154,6 +154,11 @@ built.
   different secrets is indistinguishable from a stolen serial, and the second one
   loses either way.
 
-Not built yet: uploading a manifest from the portal. Today it is an API call, and
-a vendor with 20,000 serials would want a CSV drop.
+Uploading is a card on the product page: paste the list (newlines, commas or a
+spreadsheet column all work), and it says how many of the serials are still
+unclaimed — which is the number a vendor actually wants.
+
+Still not built: a file picker. Pasting 20,000 lines into a textarea works and is
+the same code path a drop zone would feed, so a file input is a convenience on top
+rather than a missing capability.
 

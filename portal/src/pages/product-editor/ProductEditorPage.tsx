@@ -16,6 +16,8 @@ import { ApiError } from '../../shared/api/client';
  * limit what a vendor can express or grow a widget per capability. The rules
  * are enforced server-side and rendered here, which is the part that matters.
  */
+import { ManifestCard } from './ManifestCard';
+
 export function ProductEditorPage() {
   const { id } = useParams<{ id: string }>();
   const { data: product, isPending, error } = useProduct(id);
@@ -154,12 +156,15 @@ export function ProductEditorPage() {
         </span>
         <textarea
           className="input textarea"
+          aria-label="Thing model"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           spellCheck={false}
           readOnly={readOnly}
         />
       </label>
+
+      <ManifestCard productId={id ?? ''} />
     </>
   );
 }

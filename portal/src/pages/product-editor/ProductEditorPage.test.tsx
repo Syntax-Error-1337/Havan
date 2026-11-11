@@ -63,7 +63,8 @@ function renderEditor() {
   );
 }
 
-const editor = () => screen.getByRole('textbox') as HTMLTextAreaElement;
+// By label, not by role: the page has a second textarea (the serial manifest).
+const editor = () => screen.getByLabelText('Thing model') as HTMLTextAreaElement;
 
 describe('thing-model editor', () => {
   it('loads the stored model into the document', async () => {
