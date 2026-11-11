@@ -33,10 +33,17 @@ reset: ## stop the stack and delete its volumes
 	docker compose -f deploy/docker-compose.yml down -v
 
 .PHONY: testdb
-testdb: ## create the test database if it is missing
+testdb: ## create, migrate and grant the test database
 	@docker exec haven-db psql -U haven -d postgres -tc \
 	  "SELECT 1 FROM pg_database WHERE datname='haven_test'" | grep -q 1 || \
 	  docker exec haven-db createdb -U haven haven_test
+	@MIGRATE_DATABASE_URL=$(subst /haven,/haven_test,$(MIGRATE_DATABASE_URL)) \
+	  DATABASE_URL=$(TEST_DATABASE_URL) $(CARGO) run -q -p migrate
+	@docker exec -i haven-db psql -U haven -d haven_test -q -c \
+	  "GRANT USAGE ON SCHEMA public TO haven_app, haven_system; \
+	   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO haven_app, haven_system; \
+	   GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO haven_app, haven_system;"
+	@echo "haven_test ready"
 
 .PHONY: migrate
 migrate: ## apply migrations

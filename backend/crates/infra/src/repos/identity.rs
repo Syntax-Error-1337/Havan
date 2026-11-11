@@ -1,15 +1,19 @@
-use domain::identity::{IdentityRepo, RefreshRow, User};
-use kernel::AppError;
-use sqlx::PgPool;
+use crate::pg::Pg;
+use domain::identity::{IdentityRepo, RefreshRow, User, VendorUser};
+use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
 
 pub struct PgIdentity {
-    pool: PgPool,
+    pg: Pg,
 }
 
 impl PgIdentity {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+    pub fn new(pg: Pg) -> Self {
+        Self { pg }
+    }
+
+    fn pool(&self) -> &sqlx::PgPool {
+        self.pg.pool()
     }
 }
 
@@ -34,7 +38,7 @@ impl IdentityRepo for PgIdentity {
                FROM users WHERE lower(email) = lower($1) AND disabled_at IS NULL"#,
         )
         .bind(email)
-        .fetch_optional(&self.pool)
+        .fetch_optional(self.pool())
         .await
         .map_err(db)
         .map(|row| {
@@ -67,7 +71,7 @@ impl IdentityRepo for PgIdentity {
                FROM users WHERE id = $1 AND disabled_at IS NULL"#,
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(self.pool())
         .await
         .map_err(db)
         .map(|row| {
@@ -95,7 +99,7 @@ impl IdentityRepo for PgIdentity {
         .bind(&user.display_name)
         .bind(&user.password_hash)
         .bind(&user.locale)
-        .execute(&self.pool)
+        .execute(self.pool())
         .await
         .map(|_| ())
         .map_err(|e| {
@@ -116,15 +120,18 @@ impl IdentityRepo for PgIdentity {
 
     async fn insert_refresh(&self, row: &RefreshRow) -> Result<(), AppError> {
         sqlx::query(
-            r#"INSERT INTO refresh_tokens (id, user_id, family_id, hash, expires_at)
-               VALUES ($1, $2, $3, $4, $5)"#,
+            r#"INSERT INTO refresh_tokens
+                 (id, user_id, vendor_user_id, family_id, vendor_id, hash, expires_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
         )
         .bind(row.id)
         .bind(row.user_id)
+        .bind(row.vendor_user_id)
         .bind(row.family_id)
+        .bind(row.vendor_id)
         .bind(&row.hash)
         .bind(row.expires_at)
-        .execute(&self.pool)
+        .execute(self.pool())
         .await
         .map(|_| ())
         .map_err(db)
@@ -135,31 +142,48 @@ impl IdentityRepo for PgIdentity {
             _,
             (
                 Uuid,
+                Option<Uuid>,
+                Option<Uuid>,
                 Uuid,
-                Uuid,
+                Option<Uuid>,
                 String,
                 time::OffsetDateTime,
                 Option<time::OffsetDateTime>,
                 Option<time::OffsetDateTime>,
             ),
         >(
-            r#"SELECT id, user_id, family_id, hash, expires_at, used_at, revoked_at
+            r#"SELECT id, user_id, vendor_user_id, family_id, vendor_id, hash,
+                      expires_at, used_at, revoked_at
                FROM refresh_tokens WHERE id = $1"#,
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(self.pool())
         .await
         .map_err(db)
         .map(|row| {
             row.map(
-                |(id, user_id, family_id, hash, expires_at, used_at, revoked_at)| RefreshRow {
+                |(
                     id,
                     user_id,
+                    vendor_user_id,
                     family_id,
+                    vendor_id,
                     hash,
                     expires_at,
                     used_at,
                     revoked_at,
+                )| {
+                    RefreshRow {
+                        id,
+                        user_id,
+                        vendor_user_id,
+                        vendor_id,
+                        family_id,
+                        hash,
+                        expires_at,
+                        used_at,
+                        revoked_at,
+                    }
                 },
             )
         })
@@ -168,16 +192,48 @@ impl IdentityRepo for PgIdentity {
     async fn mark_used(&self, id: Uuid) -> Result<(), AppError> {
         sqlx::query("UPDATE refresh_tokens SET used_at = now() WHERE id = $1 AND used_at IS NULL")
             .bind(id)
-            .execute(&self.pool)
+            .execute(self.pool())
             .await
             .map(|_| ())
             .map_err(db)
     }
 
+    async fn find_vendor_user(
+        &self,
+        vendor_id: Uuid,
+        email: &str,
+    ) -> Result<Option<VendorUser>, AppError> {
+        // Authentication runs before any tenant exists, and `vendor_users` is
+        // vendor-scoped by RLS. This is the narrow, documented exception: one
+        // lookup by (vendor, email), in a system-scoped transaction.
+        let mut tx = self.pg.scoped(&TenantCtx::system("vendor-login")).await?;
+
+        let row = sqlx::query_as::<_, (Uuid, Uuid, String, String, String)>(
+            r#"SELECT id, vendor_id, email, password_hash, role FROM vendor_users
+               WHERE vendor_id = $1 AND lower(email) = lower($2)"#,
+        )
+        .bind(vendor_id)
+        .bind(email)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(
+            row.map(|(id, vendor_id, email, password_hash, role)| VendorUser {
+                id,
+                vendor_id,
+                email,
+                password_hash,
+                role,
+            }),
+        )
+    }
+
     async fn revoke_family(&self, family_id: Uuid) -> Result<(), AppError> {
         sqlx::query("UPDATE refresh_tokens SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL")
             .bind(family_id)
-            .execute(&self.pool)
+            .execute(self.pool())
             .await
             .map(|_| ())
             .map_err(db)

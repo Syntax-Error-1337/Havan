@@ -441,6 +441,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "devseed"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "domain",
+ "infra",
+ "kernel",
+ "protocol",
+ "serde_json",
+ "sqlx",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

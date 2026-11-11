@@ -7,11 +7,12 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::get;
+use domain::catalog::CatalogService;
 use domain::devices::DeviceService;
 use domain::homes::HomeService;
 use domain::identity::IdentityService;
 use domain::pairing::PairingService;
-use infra::{Cache, Mqtt, Pg, PgDevices, PgHomes, PgIdentity, PgPairing};
+use infra::{Cache, Mqtt, Pg, PgCatalog, PgDevices, PgHomes, PgIdentity, PgPairing};
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -29,13 +30,14 @@ pub struct AppState {
     pub devices: Arc<DeviceService<PgDevices, PgHomes>>,
     pub pairing: Arc<PairingService<PgPairing>>,
     pub mqtt: Mqtt,
+    pub catalog: Arc<CatalogService<PgCatalog>>,
 }
 
 impl AppState {
     pub fn new(cfg: Arc<Config>, pg: Pg, cache: Cache, mqtt: Mqtt) -> Self {
         let pool = pg.pool().clone();
         let identity = Arc::new(IdentityService::new(
-            Arc::new(PgIdentity::new(pool.clone())),
+            Arc::new(PgIdentity::new(pg.clone())),
             cfg.jwt_secret.expose(),
         ));
         let homes = Arc::new(HomeService::new(Arc::new(PgHomes::new(pool.clone()))));
@@ -47,6 +49,7 @@ impl AppState {
             Arc::new(PgPairing::new(pg.clone())),
             cfg.ticket_secret.expose(),
         ));
+        let catalog = Arc::new(CatalogService::new(Arc::new(PgCatalog::new(pg.clone()))));
         Self {
             cfg,
             pg,
@@ -56,6 +59,7 @@ impl AppState {
             devices,
             pairing,
             mqtt,
+            catalog,
         }
     }
 }
@@ -65,6 +69,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::auth::router())
         .merge(routes::homes::router())
         .merge(routes::devices::router())
+        .merge(routes::vendor::router())
         .merge(routes::pairing::router())
         .route("/stream", get(routes::stream::ws));
 

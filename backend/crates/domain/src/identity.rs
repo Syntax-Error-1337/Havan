@@ -36,7 +36,11 @@ pub struct User {
 #[derive(Debug, Clone)]
 pub struct RefreshRow {
     pub id: Uuid,
-    pub user_id: Uuid,
+    /// Exactly one of these is set; a session belongs to one kind of principal.
+    pub user_id: Option<Uuid>,
+    pub vendor_user_id: Option<Uuid>,
+    /// `Some` for a vendor session. Defaults to `None` for a customer session.
+    pub vendor_id: Option<Uuid>,
     pub family_id: Uuid,
     pub hash: String,
     pub expires_at: OffsetDateTime,
@@ -57,8 +61,24 @@ pub struct Claims {
     pub sub: Uuid,
     /// Session (refresh family) id, so a single login can be revoked.
     pub sid: Uuid,
+    /// Present only on a vendor-session token: the tenant this request acts for.
+    /// A customer token never carries it, and RLS is the thing that enforces
+    /// what that means.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vid: Option<Uuid>,
     pub exp: i64,
     pub iat: i64,
+}
+
+/// A portal user. Separate table from customers: different lifecycle, different
+/// tenancy, and no reason to share a password policy change with them.
+#[derive(Debug, Clone)]
+pub struct VendorUser {
+    pub id: Uuid,
+    pub vendor_id: Uuid,
+    pub email: String,
+    pub password_hash: String,
+    pub role: String,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +111,12 @@ pub trait IdentityRepo {
     fn mark_used(&self, id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
 
     fn revoke_family(&self, family_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    fn find_vendor_user(
+        &self,
+        vendor_id: Uuid,
+        email: &str,
+    ) -> impl Future<Output = Result<Option<VendorUser>, AppError>> + Send;
 }
 
 pub struct IdentityService<R> {
@@ -183,7 +209,35 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
         }
 
         self.repo.mark_used(row.id).await?;
-        self.issue_refresh(row.user_id, row.family_id).await
+        // The subject and the vendor ride on the stored row, not on the new
+        // request: a customer token can never be upgraded by refreshing it.
+        self.issue_refresh(
+            row.user_id,
+            row.vendor_user_id,
+            row.family_id,
+            row.vendor_id,
+        )
+        .await
+    }
+
+    /// Portal login. The customer's `login` is a different door with a
+    /// different table, on purpose.
+    pub async fn login_vendor(
+        &self,
+        vendor_id: Uuid,
+        email: &str,
+        password: &str,
+    ) -> Result<Tokens, AppError> {
+        let email = normalize_email(email);
+        let Some(user) = self.repo.find_vendor_user(vendor_id, &email).await? else {
+            let _ = verify_password(password, dummy_hash());
+            return Err(invalid_credentials());
+        };
+        if !verify_password(password, &user.password_hash) {
+            return Err(invalid_credentials());
+        }
+        self.issue_refresh(None, Some(user.id), kernel::new_id(), Some(user.vendor_id))
+            .await
     }
 
     pub async fn logout(&self, refresh_token: &str) -> Result<(), AppError> {
@@ -217,10 +271,21 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
     }
 
     async fn issue_session(&self, user_id: Uuid) -> Result<Tokens, AppError> {
-        self.issue_refresh(user_id, kernel::new_id()).await
+        self.issue_refresh(Some(user_id), None, kernel::new_id(), None)
+            .await
     }
 
-    async fn issue_refresh(&self, user_id: Uuid, family_id: Uuid) -> Result<Tokens, AppError> {
+    async fn issue_refresh(
+        &self,
+        user_id: Option<Uuid>,
+        vendor_user_id: Option<Uuid>,
+        family_id: Uuid,
+        vendor_id: Option<Uuid>,
+    ) -> Result<Tokens, AppError> {
+        // The access token's subject is whichever principal this session is for.
+        let subject = user_id
+            .or(vendor_user_id)
+            .ok_or_else(|| AppError::Internal("a session needs a subject".into()))?;
         let id = kernel::new_id();
         let secret = random_token();
         let now = kernel::now();
@@ -229,6 +294,8 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
             .insert_refresh(&RefreshRow {
                 id,
                 user_id,
+                vendor_user_id,
+                vendor_id,
                 family_id,
                 hash: hash_token(&secret),
                 expires_at: now + time::Duration::seconds(REFRESH_TTL.as_secs() as i64),
@@ -238,7 +305,7 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
             .await?;
 
         Ok(Tokens {
-            access: self.access_token(user_id, family_id, now)?,
+            access: self.access_token(subject, family_id, now, vendor_id)?,
             refresh: format!("{id}.{secret}"),
             expires_in: ACCESS_TTL.as_secs() as i64,
         })
@@ -249,10 +316,12 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
         user_id: Uuid,
         family_id: Uuid,
         now: OffsetDateTime,
+        vendor_id: Option<Uuid>,
     ) -> Result<String, AppError> {
         let claims = Claims {
             sub: user_id,
             sid: family_id,
+            vid: vendor_id,
             exp: (now + time::Duration::seconds(ACCESS_TTL.as_secs() as i64)).unix_timestamp(),
             iat: now.unix_timestamp(),
         };
@@ -400,6 +469,13 @@ mod tests {
             }
             Ok(())
         }
+        async fn find_vendor_user(
+            &self,
+            _vendor_id: Uuid,
+            _email: &str,
+        ) -> Result<Option<VendorUser>, AppError> {
+            Ok(None)
+        }
         async fn revoke_family(&self, family_id: Uuid) -> Result<(), AppError> {
             // The real repository marks every row in the family; the fake must
             // do the same or it hides a security bug.
@@ -520,6 +596,7 @@ mod tests {
         let claims = Claims {
             sub: Uuid::nil(),
             sid: Uuid::nil(),
+            vid: None,
             exp: 1,
             iat: 1,
         };
