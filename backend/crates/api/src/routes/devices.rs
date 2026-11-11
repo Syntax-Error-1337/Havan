@@ -4,6 +4,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use domain::devices::{Command, CommandOutcome, Device, PointValue};
+use domain::ota::OtaRepo;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -15,6 +16,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/devices", get(list))
         .route("/devices/{id}", get(one).patch(update).delete(remove))
+        .route("/devices/{id}/updates", get(updates))
         .route("/devices/{id}/commands", post(command))
         .route("/devices/{id}/commands/{command_id}", get(command_status))
 }
@@ -52,6 +54,29 @@ async fn list(
             .await
             .map_err(ApiError)?,
     ))
+}
+
+/// The customer's view of their device's firmware: what it runs, what was
+/// attempted, and how it went. No campaign, no rollout percentage, no vendor.
+async fn updates(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<domain::ota::DeviceUpdate>> {
+    // Ownership first: the OTA read itself runs on a system context.
+    let device = state
+        .devices
+        .get(id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    let update = state
+        .ota
+        .device_update(id, device.fw_version.clone())
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(update))
 }
 
 async fn one(

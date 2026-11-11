@@ -1,5 +1,5 @@
 use domain::ota::{
-    Campaign, CampaignProgress, CampaignStatus, Firmware, JobStatus, OtaJob, OtaRepo,
+    Campaign, CampaignProgress, CampaignStatus, DeviceUpdate, Firmware, JobStatus, OtaJob, OtaRepo,
 };
 use kernel::{AppError, TenantCtx};
 use sqlx::Transaction;
@@ -80,6 +80,53 @@ fn map_campaign(row: CampaignRow) -> Result<Campaign, AppError> {
 }
 
 impl OtaRepo for PgOta {
+    async fn device_update(
+        &self,
+        device_id: Uuid,
+        current: Option<String>,
+    ) -> Result<DeviceUpdate, AppError> {
+        let mut tx = self.system_tx().await?;
+
+        let row: Option<(String, String, Option<String>, time::OffsetDateTime)> = sqlx::query_as(
+            r#"SELECT f.version, j.state, j.error, j.updated_at
+                     FROM ota_jobs j
+                     JOIN firmware f ON f.id = (
+                         SELECT firmware_id FROM ota_campaigns WHERE id = j.campaign_id
+                     )
+                    WHERE j.device_id = $1
+                    ORDER BY j.updated_at DESC
+                    LIMIT 1"#,
+        )
+        .bind(device_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(match row {
+            None => DeviceUpdate {
+                current,
+                target: None,
+                state: None,
+                error: None,
+                at: None,
+                in_progress: false,
+            },
+            Some((version, state, error, at)) => DeviceUpdate {
+                current,
+                target: Some(version),
+                in_progress: matches!(
+                    state.as_str(),
+                    "pending" | "sent" | "downloading" | "verified" | "rebooting"
+                ),
+                state: Some(state),
+                error,
+                at: Some(at),
+            },
+        })
+    }
+
     async fn add_firmware(
         &self,
         vendor_id: Uuid,

@@ -102,7 +102,43 @@ pub fn in_rollout(campaign_id: Uuid, device_id: Uuid, pct: i32) -> bool {
     (hash % 100) < pct as u64
 }
 
+/// What the *customer* is allowed to know about their device's firmware.
+///
+/// Deliberately tiny: the version, the outcome of the last attempt, and when.
+/// Campaign ids, rollout percentages and other vendors' devices are none of a
+/// customer's business, so this is a separate shape from `OtaJob` rather than a
+/// projection of it.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeviceUpdate {
+    pub current: Option<String>,
+    pub target: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub at: Option<time::OffsetDateTime>,
+    /// True while a job for this device is still moving.
+    pub in_progress: bool,
+}
+
+impl DeviceUpdate {
+    /// Nothing has ever been attempted, or the last attempt succeeded.
+    pub fn is_settled(&self) -> bool {
+        self.state.as_deref().is_none_or(|s| s == "success")
+    }
+}
+
 pub trait OtaRepo {
+    /// The customer-facing view of one device's firmware.
+    ///
+    /// Runs on a system context because `ota_jobs` is vendor-scoped and the caller
+    /// is a customer; the route checks ownership before it gets here, and the
+    /// result carries no vendor fields.
+    fn device_update(
+        &self,
+        device_id: Uuid,
+        current: Option<String>,
+    ) -> impl Future<Output = Result<DeviceUpdate, AppError>> + Send;
+
     fn add_firmware(
         &self,
         vendor_id: Uuid,

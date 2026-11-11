@@ -2,7 +2,16 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, Switch } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Box, Screen, AppText, Sparkline } from '../../shared/ui';
-import { RANGES, useDevice, useHistory, useSetPoint, useSetRoom, type Range } from '../../entities/device';
+import {
+  RANGES,
+  describeUpdate,
+  useDevice,
+  useDeviceUpdate,
+  useHistory,
+  useSetPoint,
+  useSetRoom,
+  type Range,
+} from '../../entities/device';
 import type { DevicePoint } from '../../entities/device';
 import { useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -11,6 +20,8 @@ export function DeviceDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { color } = useTheme();
   const { data: device, isPending, isError } = useDevice(id);
+  const { data: update } = useDeviceUpdate(id);
+  const firmware = describeUpdate(update);
   const setPoint = useSetPoint(id ?? '');
   const setRoom = useSetRoom();
   const { data: rooms } = useRooms(device?.home_id ?? undefined);
@@ -48,6 +59,13 @@ export function DeviceDetailPage() {
           <AppText variant="caption" tone="muted">
             {device.online ? 'Online' : 'Offline'} · {device.product_key}
           </AppText>
+          {/* Firmware is the one thing about a device a customer cannot fix by
+              themselves, so a failure says why rather than only that it failed. */}
+          {firmware ? (
+            <AppText variant="caption" tone={firmware.bad ? 'danger' : 'muted'}>
+              {firmware.text}
+            </AppText>
+          ) : null}
         </Box>
 
         <Box gap="sm">

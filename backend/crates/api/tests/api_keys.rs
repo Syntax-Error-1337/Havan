@@ -33,11 +33,14 @@ async fn boot() -> Option<Harness> {
         let _ = axum::serve(listener, app).await;
     });
 
-    // Seeding needs the owner role: `vendors` carries an RLS policy, and the app
-    // role is a plain LOGIN on purpose. The tests' own traffic still goes through
-    // the application pool above.
-    let owner_url = std::env::var("MIGRATE_DATABASE_URL").unwrap_or(db_url);
-    let db = sqlx::PgPool::connect(&owner_url).await.ok()?;
+    // Everything runs on the *test* database: seeding, the API under test, and the
+    // assertions. Mixing in MIGRATE_DATABASE_URL looks convenient and silently
+    // points half the test at a different database.
+    let db = sqlx::PgPool::connect(
+        &std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| db_url.clone()),
+    )
+    .await
+    .ok()?;
     Some(Harness {
         base: format!("http://{addr}"),
         db,
@@ -60,11 +63,21 @@ impl Harness {
 
         let hash = self.customer_hash().await;
 
+        // `vendors` and `vendor_users` are RLS-scoped on haven_vendor(), so seed
+        // them the way the application would: inside that vendor's scope. No
+        // superuser, no bypassed policy.
+        let mut conn = self.db.acquire().await.expect("connection");
+        sqlx::query("SELECT set_config('haven.vendor_id', $1, false)")
+            .bind(id.to_string())
+            .execute(&mut *conn)
+            .await
+            .expect("scope");
+
         sqlx::query("INSERT INTO vendors (id, name, slug, created_at) VALUES ($1, $2, $3, now())")
             .bind(id)
             .bind(name)
             .bind(&slug)
-            .execute(&self.db)
+            .execute(&mut *conn)
             .await
             .expect("vendor");
 
@@ -77,9 +90,16 @@ impl Harness {
         .bind(&email)
         .bind(name)
         .bind(hash)
-        .execute(&self.db)
+        .execute(&mut *conn)
         .await
         .expect("vendor user");
+
+        // Leave the pooled connection as we found it.
+        sqlx::query("SELECT set_config('haven.vendor_id', '', false)")
+            .execute(&mut *conn)
+            .await
+            .expect("unscope");
+        drop(conn);
 
         let token = self.login(&email, id).await;
         (id, token)
@@ -98,9 +118,10 @@ impl Harness {
 
         let hash: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE email = $1")
             .bind(&email)
-            .fetch_one(&self.db)
+            .fetch_optional(&self.db)
             .await
-            .expect("hash");
+            .expect("query")
+            .unwrap_or_else(|| panic!("registered user {email} is not in the table"));
         hash
     }
 

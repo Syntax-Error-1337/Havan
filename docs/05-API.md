@@ -83,6 +83,17 @@ already run any rule whose `next_run_at` is due, so this is a small endpoint —
 it is held back because a manual run would be recorded as a `schedule` run, and
 a mislabelled audit trail is worse than no button.
 
+### Firmware (customer)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/devices/{id}/updates` | `{current, target, state, error, at, in_progress}` |
+
+Deliberately tiny: no campaign id, no rollout percentage, no other devices. The
+job table is vendor-scoped and this route runs on a system context *after* the
+ownership check, so a customer sees the outcome of their own device's update and
+nothing else.
+
 ### Rollouts
 
 | Method | Path | Notes |
