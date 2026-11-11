@@ -9,3 +9,4 @@
 pub mod devices;
 pub mod homes;
 pub mod identity;
+pub mod pairing;

@@ -4,6 +4,10 @@
 
 use anyhow::Context;
 use sqlx::postgres::PgPoolOptions;
+use std::path::Path;
+
+/// Resolved at compile time so the binary works from any working directory.
+const MIGRATIONS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../migrations");
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,11 +27,14 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("connect")?;
 
-    sqlx::migrate!("../../migrations")
-        .run(&pool)
+    // Loaded at runtime, not with `sqlx::migrate!`: the macro embeds the file
+    // list at compile time, so a *new* migration file is silently skipped until
+    // the crate happens to rebuild. Reading the directory cannot go stale.
+    let migrator = sqlx::migrate::Migrator::new(Path::new(MIGRATIONS_DIR))
         .await
-        .context("migrate")?;
+        .context("read migrations")?;
+    migrator.run(&pool).await.context("migrate")?;
 
-    tracing::info!("migrations applied");
+    tracing::info!(known = migrator.iter().count(), "migrations applied");
     Ok(())
 }

@@ -17,6 +17,21 @@ pub enum Kind {
     Raw,
 }
 
+impl Kind {
+    /// The value stored in `device_points.kind`. Stable: it is written to the
+    /// database, so change it with a migration, not a rename.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Kind::Bool => "bool",
+            Kind::Int => "int",
+            Kind::Float => "float",
+            Kind::Text => "text",
+            Kind::Enum => "enum",
+            Kind::Raw => "raw",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Access {

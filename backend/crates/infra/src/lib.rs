@@ -12,5 +12,5 @@ pub mod store;
 pub use mqtt::Mqtt;
 pub use pg::Pg;
 pub use redis::Cache;
-pub use repos::{PgDevices, PgHomes, PgIdentity};
+pub use repos::{PgDevices, PgHomes, PgIdentity, PgPairing};
 pub use store::Objects;

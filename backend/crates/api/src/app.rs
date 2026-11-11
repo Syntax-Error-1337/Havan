@@ -10,7 +10,8 @@ use axum::routing::get;
 use domain::devices::DeviceService;
 use domain::homes::HomeService;
 use domain::identity::IdentityService;
-use infra::{Cache, Pg, PgDevices, PgHomes, PgIdentity};
+use domain::pairing::PairingService;
+use infra::{Cache, Pg, PgDevices, PgHomes, PgIdentity, PgPairing};
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -26,6 +27,7 @@ pub struct AppState {
     pub identity: Arc<IdentityService<PgIdentity>>,
     pub homes: Arc<HomeService<PgHomes>>,
     pub devices: Arc<DeviceService<PgDevices, PgHomes>>,
+    pub pairing: Arc<PairingService<PgPairing>>,
 }
 
 impl AppState {
@@ -40,6 +42,10 @@ impl AppState {
             Arc::new(PgDevices::new(pg.clone())),
             homes.clone(),
         ));
+        let pairing = Arc::new(PairingService::new(
+            Arc::new(PgPairing::new(pg.clone())),
+            cfg.ticket_secret.expose(),
+        ));
         Self {
             cfg,
             pg,
@@ -47,6 +53,7 @@ impl AppState {
             identity,
             homes,
             devices,
+            pairing,
         }
     }
 }
@@ -55,7 +62,8 @@ pub fn router(state: AppState) -> Router {
     let v1 = Router::new()
         .merge(routes::auth::router())
         .merge(routes::homes::router())
-        .merge(routes::devices::router());
+        .merge(routes::devices::router())
+        .merge(routes::pairing::router());
 
     Router::new()
         .route("/healthz", get(health::health))

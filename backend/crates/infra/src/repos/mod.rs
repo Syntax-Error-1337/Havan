@@ -6,7 +6,9 @@
 pub mod devices;
 pub mod homes;
 pub mod identity;
+pub mod pairing;
 
 pub use devices::PgDevices;
 pub use homes::PgHomes;
 pub use identity::PgIdentity;
+pub use pairing::PgPairing;
