@@ -5,7 +5,8 @@
 //! tested without a database, a broker or a clock.
 
 use domain::automation::{
-    Action, Automation, AutomationRepo, AutomationService, RunLog, RunStep, Trigger, next_run,
+    Action, Automation, AutomationRepo, AutomationService, PointEvent, RunLog, RunStep, Trigger,
+    next_run,
 };
 use infra::PgAutomation;
 use protocol::envelope::{CommandMsg, CommandOp, DpValue};
@@ -16,11 +17,74 @@ pub struct Runner {
     repo: PgAutomation,
     mqtt: AsyncClient,
     id: String,
+    /// Last fire time per automation. Two rules that set each other's trigger
+    /// would otherwise ping-pong forever; a short cooldown makes that a
+    /// non-event instead of a fleet-wide loop.
+    cooling: std::sync::Mutex<std::collections::HashMap<Uuid, std::time::Instant>>,
 }
 
 impl Runner {
     pub fn new(repo: PgAutomation, mqtt: AsyncClient, id: String) -> Self {
-        Self { repo, mqtt, id }
+        Self {
+            repo,
+            mqtt,
+            id,
+            cooling: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    /// A device report arrived: run every rule that watches this point.
+    pub async fn on_event(&self, device_id: Uuid, code: &str, value: &serde_json::Value) {
+        let event = PointEvent {
+            device_id,
+            code: code.to_string(),
+            value: value.clone(),
+        };
+
+        let candidates = match self.repo.triggered_by(device_id, code).await {
+            Ok(candidates) => candidates,
+            Err(e) => {
+                tracing::warn!(error = ?e, "could not look up triggered automations");
+                return;
+            }
+        };
+
+        for automation in candidates {
+            // SQL narrowed it to "watches this point"; the matcher decides
+            // whether *this value* fires it.
+            if !automation.enabled || !automation.definition.trigger.matches(&event) {
+                continue;
+            }
+            if self.is_cooling(automation.id) {
+                tracing::debug!(automation = %automation.id, "skipping: fired moments ago");
+                continue;
+            }
+
+            let (mut log, status) = self.execute(&automation).await;
+            log.push(RunStep::Trigger {
+                detail: format!("{code} = {value}"),
+            });
+
+            if let Err(e) = self
+                .repo
+                .record_run(automation.id, "device_state", &log, status)
+                .await
+            {
+                tracing::warn!(automation = %automation.id, error = ?e, "could not record run");
+            }
+            self.mark_fired(automation.id);
+        }
+    }
+
+    fn is_cooling(&self, id: Uuid) -> bool {
+        let map = self.cooling.lock().expect("cooldown map");
+        map.get(&id)
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(2))
+    }
+
+    fn mark_fired(&self, id: Uuid) {
+        let mut map = self.cooling.lock().expect("cooldown map");
+        map.insert(id, std::time::Instant::now());
     }
 
     /// One pass: lease what is due, run it, reschedule, release.
@@ -39,7 +103,11 @@ impl Runner {
                 detail: format!("{:?}", automation.definition.trigger),
             });
 
-            if let Err(e) = self.repo.record_run(automation.id, &log, status).await {
+            if let Err(e) = self
+                .repo
+                .record_run(automation.id, "schedule", &log, status)
+                .await
+            {
                 tracing::warn!(automation = %automation.id, error = ?e, "could not record run");
             }
 

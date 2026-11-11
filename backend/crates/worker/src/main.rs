@@ -32,10 +32,26 @@ async fn main() -> anyhow::Result<()> {
         .context("redis")?;
     let commands = infra::PgDevices::new(pg.clone());
 
+    // MQTT before anything that publishes: the runner and the sweeper both hold
+    // this one client, and one event loop drains it.
+    let (host, port) = split_url(&cfg.mqtt_url)?;
+    let mut opts = MqttOptions::new(format!("haven-worker-{}", std::process::id()), host, port);
+    opts.set_keep_alive(Duration::from_secs(30));
+    opts.set_inflight(16);
+    opts.set_clean_session(false);
+    let (client, mut eventloop) = AsyncClient::new(opts, 64);
+
+    let runner = std::sync::Arc::new(automation::Runner::new(
+        infra::PgAutomation::new(pg.clone()),
+        client.clone(),
+        format!("worker-{}", std::process::id()),
+    ));
+
     let ingest = std::sync::Arc::new(ingest::Ingest::new(
         infra::PgIngest::new(pg.clone()),
         commands.clone(),
         cache.clone(),
+        runner.clone(),
     ));
 
     // The sweeper is the other half of a command's life: a device that never
@@ -59,22 +75,9 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    let (host, port) = split_url(&cfg.mqtt_url)?;
-    let mut opts = MqttOptions::new(format!("haven-worker-{}", std::process::id()), host, port);
-    opts.set_keep_alive(Duration::from_secs(30));
-    opts.set_inflight(16);
-    opts.set_clean_session(false);
-
-    let (client, mut eventloop) = AsyncClient::new(opts, 64);
-
-    // The scheduler leases due automations and runs their actions. It shares the
-    // MQTT client with ingest: one connection per process, one event loop.
+    // Scheduled automations: lease what is due, run it, reschedule.
     {
-        let runner = std::sync::Arc::new(automation::Runner::new(
-            infra::PgAutomation::new(pg.clone()),
-            client.clone(),
-            format!("worker-{}", std::process::id()),
-        ));
+        let runner = runner.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(Duration::from_secs(5));
             loop {

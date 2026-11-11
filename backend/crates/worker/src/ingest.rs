@@ -5,6 +5,9 @@
 //! dropped: one bad device must never stall the lane for the rest of the fleet.
 
 use domain::devices::{CommandRepo, Settled};
+use std::sync::Arc;
+
+use crate::automation::Runner;
 use infra::Cache;
 use infra::PgDevices;
 use infra::repos::ingest::PgIngest;
@@ -18,14 +21,21 @@ pub struct Ingest {
     writer: PgIngest,
     commands: PgDevices,
     cache: Cache,
+    automations: Arc<Runner>,
 }
 
 impl Ingest {
-    pub fn new(writer: PgIngest, commands: PgDevices, cache: Cache) -> Self {
+    pub fn new(
+        writer: PgIngest,
+        commands: PgDevices,
+        cache: Cache,
+        automations: Arc<Runner>,
+    ) -> Self {
         Self {
             writer,
             commands,
             cache,
+            automations,
         }
     }
 
@@ -122,6 +132,20 @@ impl Ingest {
             });
             if let Err(e) = self.cache.publish_event(&channel, &event.to_string()).await {
                 tracing::warn!(error = ?e, "fan-out publish failed");
+            }
+
+            // Automation dispatch happens after the write and after the fan-out:
+            // a rule that fires late is a nuisance, a rule that fires before the
+            // state is readable is a bug. Only a real change fires it — a device
+            // that re-reports its shadow every 30 s must not re-run the rule.
+            if update.changed {
+                self.automations
+                    .on_event(
+                        update.device_id,
+                        &update.code,
+                        &serde_json::to_value(&update.value).unwrap_or_default(),
+                    )
+                    .await;
             }
         }
 

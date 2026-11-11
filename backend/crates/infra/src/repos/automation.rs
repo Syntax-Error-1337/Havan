@@ -128,6 +128,25 @@ impl AutomationRepo for PgAutomation {
         Ok(())
     }
 
+    async fn triggered_by(&self, device_id: Uuid, code: &str) -> Result<Vec<Automation>, AppError> {
+        let mut tx = self.tx().await?;
+        let rows = sqlx::query_as::<_, Row>(&format!(
+            r#"SELECT {COLUMNS} FROM automations
+                WHERE enabled
+                  AND definition #>> '{{trigger,type}}' = 'device_state'
+                  AND definition #>> '{{trigger,device_id}}' = $1
+                  AND definition #>> '{{trigger,code}}' = $2"#
+        ))
+        .bind(device_id.to_string())
+        .bind(code)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        rows.into_iter().map(map).collect()
+    }
+
     /// The lease is a single UPDATE: whichever worker's statement wins the row
     /// owns it until `lease_until`. Two workers polling at the same instant
     /// cannot both fire the same automation.
@@ -182,6 +201,7 @@ impl AutomationRepo for PgAutomation {
     async fn record_run(
         &self,
         automation_id: Uuid,
+        trigger_kind: &str,
         log: &RunLog,
         status: &str,
     ) -> Result<(), AppError> {
@@ -191,10 +211,11 @@ impl AutomationRepo for PgAutomation {
 
         sqlx::query(
             r#"INSERT INTO automation_runs (id, automation_id, trigger_kind, status, log, finished_at)
-               VALUES ($1, $2, 'schedule', $3, $4, now())"#,
+               VALUES ($1, $2, $3, $4, $5, now())"#,
         )
         .bind(kernel::new_id())
         .bind(automation_id)
+        .bind(trigger_kind)
         .bind(status)
         .bind(steps)
         .execute(&mut *tx)

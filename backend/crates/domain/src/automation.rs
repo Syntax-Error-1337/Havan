@@ -270,6 +270,14 @@ pub trait AutomationRepo {
 
     /// Lease every due automation to `owner` for `ttl_secs` and return them.
     /// Two workers racing this must never both win a row.
+    /// Enabled automations whose trigger watches this point. The JSON is
+    /// filtered in SQL so a busy home does not deserialize every rule.
+    fn triggered_by(
+        &self,
+        device_id: Uuid,
+        code: &str,
+    ) -> impl Future<Output = Result<Vec<Automation>, AppError>> + Send;
+
     fn lease_due(
         &self,
         owner: &str,
@@ -285,6 +293,7 @@ pub trait AutomationRepo {
     fn record_run(
         &self,
         automation_id: Uuid,
+        trigger_kind: &str,
         log: &RunLog,
         status: &str,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
@@ -554,6 +563,9 @@ mod tests {
         async fn delete(&self, _: Uuid) -> Result<(), AppError> {
             unimplemented!()
         }
+        async fn triggered_by(&self, _: Uuid, _: &str) -> Result<Vec<Automation>, AppError> {
+            unimplemented!()
+        }
         async fn lease_due(&self, _: &str, _: i64) -> Result<Vec<Automation>, AppError> {
             unimplemented!()
         }
@@ -564,7 +576,7 @@ mod tests {
         ) -> Result<(), AppError> {
             unimplemented!()
         }
-        async fn record_run(&self, _: Uuid, _: &RunLog, _: &str) -> Result<(), AppError> {
+        async fn record_run(&self, _: Uuid, _: &str, _: &RunLog, _: &str) -> Result<(), AppError> {
             unimplemented!()
         }
     }

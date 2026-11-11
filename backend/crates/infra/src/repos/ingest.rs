@@ -43,6 +43,9 @@ pub struct PointUpdate {
     pub code: String,
     pub value: DpValue,
     pub ts: i64,
+    /// False when the report repeated the stored value. Automations are edge
+    /// triggered: "when it turns on", not "while it is on".
+    pub changed: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -180,6 +183,7 @@ impl PgIngest {
                 code: point.code.clone(),
                 value: value.clone(),
                 ts,
+                changed: !unchanged,
             });
         }
 
