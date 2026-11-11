@@ -14,7 +14,8 @@ use domain::homes::HomeService;
 use domain::identity::IdentityService;
 use domain::pairing::PairingService;
 use infra::{
-    Cache, Mqtt, Pg, PgAutomation, PgCatalog, PgDevices, PgHomes, PgIdentity, PgOta, PgPairing,
+    Cache, Mqtt, Pg, PgApiKeys, PgAutomation, PgCatalog, PgDevices, PgHomes, PgIdentity, PgOta,
+    PgPairing,
 };
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -36,6 +37,7 @@ pub struct AppState {
     pub catalog: Arc<CatalogService<PgCatalog>>,
     pub automations: Arc<AutomationService<PgAutomation>>,
     pub ota: Arc<PgOta>,
+    pub api_keys: Arc<PgApiKeys>,
 }
 
 impl AppState {
@@ -56,6 +58,7 @@ impl AppState {
         ));
         let catalog = Arc::new(CatalogService::new(Arc::new(PgCatalog::new(pg.clone()))));
         let ota = Arc::new(PgOta::new(pg.clone()));
+        let api_keys = Arc::new(PgApiKeys::new(pg.clone()));
         let automations = Arc::new(AutomationService::new(Arc::new(PgAutomation::new(
             pg.clone(),
         ))));
@@ -71,6 +74,7 @@ impl AppState {
             catalog,
             automations,
             ota,
+            api_keys,
         }
     }
 }
@@ -85,6 +89,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::automations::router())
         .merge(routes::catalog::router())
         .merge(routes::ota::router())
+        .merge(routes::api_keys::router())
         .route("/stream", get(routes::stream::ws));
 
     Router::new()

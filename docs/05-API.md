@@ -72,6 +72,23 @@ already run any rule whose `next_run_at` is due, so this is a small endpoint —
 it is held back because a manual run would be recorded as a `schedule` run, and
 a mislabelled audit trail is worse than no button.
 
+### Vendor API keys
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/vendor/api-keys` | create: `{name}` → `201` with the secret **once** |
+| DELETE | `/vendor/api-keys/{id}` | revoke; `204`, and the key stops working immediately |
+
+A key is `hv_<8 hex prefix>_<32 hex secret>`. The prefix is stored in the clear
+for lookup; the secret is stored as SHA-256 and shown exactly once. Any vendor
+route accepts it: `Authorization: Bearer hv_…`, alongside the session token.
+
+SHA-256 rather than Argon2 is deliberate — a key is 128 bits of randomness, so
+there is nothing for a slow hash to defend. Passwords remain Argon2. A key has no
+user behind it: `user_id` is the nil uuid, and revocation (not expiry) is how it
+stops working. Scopes are stored as `{vendor}` but **not yet enforced** — every
+key is currently equivalent to a vendor session.
+
 ### OTA
 
 | Method | Path | Notes |

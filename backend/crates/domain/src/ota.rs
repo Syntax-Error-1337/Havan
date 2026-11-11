@@ -129,7 +129,10 @@ pub trait OtaRepo {
     ) -> impl Future<Output = Result<Option<Campaign>, AppError>> + Send;
 
     /// Every campaign for a vendor, newest first — the portal's table.
-    fn campaigns(&self, vendor_id: Uuid) -> impl Future<Output = Result<Vec<Campaign>, AppError>> + Send;
+    fn campaigns(
+        &self,
+        vendor_id: Uuid,
+    ) -> impl Future<Output = Result<Vec<Campaign>, AppError>> + Send;
 
     /// Start a campaign: decide who is in this wave and queue a job per device.
     /// Returns how many jobs were queued.

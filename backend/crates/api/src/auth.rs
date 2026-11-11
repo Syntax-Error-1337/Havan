@@ -6,6 +6,7 @@
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
+use domain::api_key::ApiKeyRepo;
 use domain::identity::{Claims, User};
 
 use crate::app::AppState;
@@ -54,7 +55,34 @@ impl FromRequestParts<AppState> for VendorAuth {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let claims = claims(parts, state).await?;
+        let token = bearer(parts)?;
+
+        // A key and a session are both "a vendor acting". A key has no user and
+        // no expiry of its own — it is revoked instead, which is why it is
+        // checked against the database rather than verified as a JWT.
+        if let Some((prefix, secret)) = domain::api_key::parse(token) {
+            let vendor_id = state
+                .api_keys
+                .authenticate(prefix, secret)
+                .await
+                .map_err(ApiError)?
+                .ok_or_else(|| {
+                    ApiError(kernel::AppError::code(
+                        kernel::ErrorCode::Unauthorized,
+                        "that api key is not valid",
+                    ))
+                })?;
+
+            return Ok(VendorAuth {
+                vendor_id,
+                // A key is not a person; the nil uuid says so rather than being
+                // attributed to whoever created it.
+                user_id: uuid::Uuid::nil(),
+                request_id: request_id(parts),
+            });
+        }
+
+        let claims = state.identity.verify_access(token).map_err(ApiError)?;
 
         let vendor_id = claims.vid.ok_or_else(|| {
             ApiError(kernel::AppError::forbidden(
@@ -70,7 +98,7 @@ impl FromRequestParts<AppState> for VendorAuth {
     }
 }
 
-async fn claims(parts: &Parts, state: &AppState) -> Result<Claims, ApiError> {
+fn bearer(parts: &Parts) -> Result<&str, ApiError> {
     let header = parts
         .headers
         .get(axum::http::header::AUTHORIZATION)
@@ -82,14 +110,19 @@ async fn claims(parts: &Parts, state: &AppState) -> Result<Claims, ApiError> {
             ))
         })?;
 
-    let token = header.strip_prefix("Bearer ").ok_or_else(|| {
+    header.strip_prefix("Bearer ").ok_or_else(|| {
         ApiError(kernel::AppError::code(
             kernel::ErrorCode::Unauthorized,
             "authorization must be a bearer token",
         ))
-    })?;
+    })
+}
 
-    state.identity.verify_access(token).map_err(ApiError)
+async fn claims(parts: &Parts, state: &AppState) -> Result<Claims, ApiError> {
+    state
+        .identity
+        .verify_access(bearer(parts)?)
+        .map_err(ApiError)
 }
 
 fn request_id(parts: &Parts) -> String {

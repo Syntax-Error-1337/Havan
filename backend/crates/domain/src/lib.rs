@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod api_key;
 pub mod automation;
 pub mod catalog;
 pub mod devices;
