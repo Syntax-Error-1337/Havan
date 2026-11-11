@@ -26,7 +26,8 @@ impl CampaignStatus {
             CampaignStatus::Draft => "draft",
             CampaignStatus::Running => "running",
             CampaignStatus::Halted => "halted",
-            CampaignStatus::Completed => "completed",
+            // The column's check constraint allows `complete`, not `completed`.
+            CampaignStatus::Completed => "complete",
         }
     }
 }
@@ -143,6 +144,17 @@ pub trait OtaRepo {
         vendor_id: Uuid,
         campaign_id: Uuid,
     ) -> impl Future<Output = Result<CampaignProgress, AppError>> + Send;
+
+    /// Jobs that have gone quiet: requeued while attempts remain, failed after
+    /// that. Returns how many were touched.
+    fn sweep_stale(
+        &self,
+        stale_after_secs: i64,
+        max_attempts: i32,
+    ) -> impl Future<Output = Result<u64, AppError>> + Send;
+
+    /// Close campaigns whose jobs are all final. Returns how many were closed.
+    fn complete_campaigns(&self) -> impl Future<Output = Result<u64, AppError>> + Send;
 
     fn mark_job(
         &self,

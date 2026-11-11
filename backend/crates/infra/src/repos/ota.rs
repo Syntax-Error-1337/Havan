@@ -58,7 +58,9 @@ fn map_campaign(row: CampaignRow) -> Result<Campaign, AppError> {
         "draft" => CampaignStatus::Draft,
         "running" => CampaignStatus::Running,
         "halted" => CampaignStatus::Halted,
-        "completed" => CampaignStatus::Completed,
+        // The schema spells it `complete`; accept both so an older writer and a
+        // newer reader do not disagree about a finished campaign.
+        "complete" | "completed" => CampaignStatus::Completed,
         other => {
             return Err(AppError::Internal(format!(
                 "unknown campaign status {other}"
@@ -395,6 +397,73 @@ impl OtaRepo for PgOta {
         }
 
         Ok(progress)
+    }
+
+    async fn sweep_stale(&self, stale_after_secs: i64, max_attempts: i32) -> Result<u64, AppError> {
+        let mut tx = self.system_tx().await?;
+
+        // One statement, two outcomes: a job with attempts left goes back in the
+        // queue, one that has used them up is failed with a reason. A device
+        // that never answers is indistinguishable from one that is offline, so
+        // the attempt counter is the only thing that can decide.
+        let retried = sqlx::query(
+            r#"UPDATE ota_jobs
+                  SET state = 'pending', error = 'no progress', updated_at = now()
+                WHERE state IN ('sent', 'downloading')
+                  AND updated_at < now() - make_interval(secs => $1)
+                  AND attempts < $2"#,
+        )
+        .bind(stale_after_secs as f64)
+        .bind(max_attempts)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        let failed = sqlx::query(
+            r#"UPDATE ota_jobs
+                  SET state = 'failed',
+                      error = COALESCE(error, 'gave up after ' || attempts || ' attempts'),
+                      updated_at = now()
+                WHERE state IN ('sent', 'downloading')
+                  AND updated_at < now() - make_interval(secs => $1)
+                  AND attempts >= $2"#,
+        )
+        .bind(stale_after_secs as f64)
+        .bind(max_attempts)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        tx.commit().await.map_err(db)?;
+        Ok(retried + failed)
+    }
+
+    async fn complete_campaigns(&self) -> Result<u64, AppError> {
+        let mut tx = self.system_tx().await?;
+
+        // A campaign is done when it has jobs and none of them are in flight. A
+        // campaign with *no* jobs stays running on purpose: it matched nobody,
+        // and silently closing it would hide the mistake.
+        let closed = sqlx::query(
+            r#"UPDATE ota_campaigns c
+                  SET status = 'complete'
+                WHERE c.status = 'running'
+                  AND EXISTS (SELECT 1 FROM ota_jobs j WHERE j.campaign_id = c.id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM ota_jobs j
+                       WHERE j.campaign_id = c.id
+                         AND j.state NOT IN ('success', 'failed', 'skipped')
+                  )"#,
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        tx.commit().await.map_err(db)?;
+        Ok(closed)
     }
 
     async fn mark_job(

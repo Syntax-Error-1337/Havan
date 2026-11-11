@@ -81,6 +81,12 @@ a mislabelled audit trail is worse than no button.
 | GET | `/vendor/campaigns/{id}` | status, `started_at` |
 | POST | `/vendor/campaigns/{id}/start` | freezes the wave, queues jobs, returns `{queued}` |
 
+A campaign closes itself (`complete`) once every job is final; a campaign that
+matched **no** devices stays `running` on purpose — closing it would hide a
+mistake behind a green tick. The worker sweeps jobs that have been silent for 45
+minutes: back to `pending` while attempts remain (3 total), then `failed` with a
+reason, so a device that never answers cannot keep a rollout "in progress" forever.
+
 The image does not travel through the API: the vendor uploads it and signs it
 themselves, and the device verifies the signature before writing flash. The
 worker claims queued jobs and publishes an `OtaOffer` on the device's own `ota`
