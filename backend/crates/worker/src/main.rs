@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tracing::{info, warn};
 
+mod automation;
 mod ingest;
 
 #[tokio::main]
@@ -30,8 +31,9 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("redis")?;
     let commands = infra::PgDevices::new(pg.clone());
+
     let ingest = std::sync::Arc::new(ingest::Ingest::new(
-        infra::PgIngest::new(pg),
+        infra::PgIngest::new(pg.clone()),
         commands.clone(),
         cache.clone(),
     ));
@@ -64,6 +66,23 @@ async fn main() -> anyhow::Result<()> {
     opts.set_clean_session(false);
 
     let (client, mut eventloop) = AsyncClient::new(opts, 64);
+
+    // The scheduler leases due automations and runs their actions. It shares the
+    // MQTT client with ingest: one connection per process, one event loop.
+    {
+        let runner = std::sync::Arc::new(automation::Runner::new(
+            infra::PgAutomation::new(pg.clone()),
+            client.clone(),
+            format!("worker-{}", std::process::id()),
+        ));
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                tick.tick().await;
+                runner.tick().await;
+            }
+        });
+    }
 
     // One shared subscription: the broker delivers each device message to exactly one
     // worker, which is what makes running three replicas safe.

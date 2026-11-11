@@ -7,12 +7,13 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::get;
+use domain::automation::AutomationService;
 use domain::catalog::CatalogService;
 use domain::devices::DeviceService;
 use domain::homes::HomeService;
 use domain::identity::IdentityService;
 use domain::pairing::PairingService;
-use infra::{Cache, Mqtt, Pg, PgCatalog, PgDevices, PgHomes, PgIdentity, PgPairing};
+use infra::{Cache, Mqtt, Pg, PgAutomation, PgCatalog, PgDevices, PgHomes, PgIdentity, PgPairing};
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -31,6 +32,7 @@ pub struct AppState {
     pub pairing: Arc<PairingService<PgPairing>>,
     pub mqtt: Mqtt,
     pub catalog: Arc<CatalogService<PgCatalog>>,
+    pub automations: Arc<AutomationService<PgAutomation>>,
 }
 
 impl AppState {
@@ -50,6 +52,9 @@ impl AppState {
             cfg.ticket_secret.expose(),
         ));
         let catalog = Arc::new(CatalogService::new(Arc::new(PgCatalog::new(pg.clone()))));
+        let automations = Arc::new(AutomationService::new(Arc::new(PgAutomation::new(
+            pg.clone(),
+        ))));
         Self {
             cfg,
             pg,
@@ -60,6 +65,7 @@ impl AppState {
             pairing,
             mqtt,
             catalog,
+            automations,
         }
     }
 }
@@ -71,6 +77,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::devices::router())
         .merge(routes::vendor::router())
         .merge(routes::pairing::router())
+        .merge(routes::automations::router())
         .route("/stream", get(routes::stream::ws));
 
     Router::new()

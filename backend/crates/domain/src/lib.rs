@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod automation;
 pub mod catalog;
 pub mod devices;
 pub mod homes;

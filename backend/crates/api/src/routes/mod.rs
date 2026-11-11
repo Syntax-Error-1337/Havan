@@ -1,6 +1,7 @@
 //! Feature routers. One module per slice; `app.rs` mounts them.
 
 pub mod auth;
+pub mod automations;
 pub mod devices;
 pub mod homes;
 pub mod pairing;
