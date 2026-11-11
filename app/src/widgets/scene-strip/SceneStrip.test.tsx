@@ -65,7 +65,7 @@ describe('scene strip', () => {
     await waitFor(() => expect(view.toJSON()).toBeNull());
   });
 
-  it('runs the scene and reports what happened', async () => {
+  it('says sent, not done — a dispatched command is not a settled one', async () => {
     const calls = stubApi((url) =>
       url.includes('/activate') ? { scene_id: 's1', dispatched: 2, failed: [] } : [scene()],
     );
@@ -75,7 +75,7 @@ describe('scene strip', () => {
     await fireEvent.press(view.getByLabelText('Run Good night'));
 
     await waitFor(() => expect(calls.some((c) => c.url.includes('/scenes/s1/activate'))).toBe(true));
-    expect(await view.findByText('Done · 2 devices')).toBeTruthy();
+    expect(await view.findByText('Sent · 2 devices')).toBeTruthy();
   });
 
   it('says when part of a scene failed instead of claiming success', async () => {
@@ -93,7 +93,7 @@ describe('scene strip', () => {
     await view.findByText('Good night');
     await fireEvent.press(view.getByLabelText('Run Good night'));
 
-    expect(await view.findByText('1 done · 1 failed')).toBeTruthy();
+    expect(await view.findByText('1 sent · 1 failed')).toBeTruthy();
   });
 
   it('says nothing happened, and why, when every action failed', async () => {

@@ -135,7 +135,7 @@ export function ScenesPage() {
               <ChipPicker
                 label={`Device ${index + 1}`}
                 value={action.deviceId}
-                options={(devices ?? []).map((d: Device) => ({ id: d.id, label: d.name }))}
+                options={deviceOptions(devices ?? [])}
                 onChange={(id) =>
                   setActions((rows) =>
                     rows.map((row, i) => (i === index ? { ...row, deviceId: id, code: null } : row)),
@@ -198,6 +198,27 @@ export function ScenesPage() {
       </ScrollView>
     </Screen>
   );
+}
+
+/**
+ * Device chips, with a disambiguator when two devices share a name.
+ *
+ * Two bulbs called "Acme Bulb E27" are the normal case, not the exotic one: a
+ * picker that shows the same label twice cannot be used to build a scene.
+ */
+export function deviceOptions(devices: Device[]): { id: string; label: string }[] {
+  const seen = new Map<string, number>();
+  for (const d of devices) seen.set(d.name, (seen.get(d.name) ?? 0) + 1);
+
+  return devices.map((d) => ({
+    id: d.id,
+    // The serial tail is what is printed on the device, so it is the thing the
+    // person can match against the one in their hand.
+    label:
+      (seen.get(d.name) ?? 0) > 1
+        ? `${d.name} · ${(d.serial ?? '').slice(-4) || d.id.slice(-4)}`
+        : d.name,
+  }));
 }
 
 const field = {

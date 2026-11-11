@@ -47,15 +47,21 @@ export function useActivateScene(homeId: string | undefined) {
   });
 }
 
-/** What to tell the person who pressed the button. */
+/**
+ * What to tell the person who pressed the button.
+ *
+ * "Sent", not "Done": the actions are dispatched and accepted, and a device that
+ * is offline will not act on them until it reconnects. Claiming work that has not
+ * happened is the one thing a smart-home app must never do.
+ */
 export function outcome(activation: Activation): string {
   if (activation.failed.length === 0) {
-    return activation.dispatched === 1 ? 'Done' : `Done · ${activation.dispatched} devices`;
+    return activation.dispatched === 1 ? 'Sent' : `Sent · ${activation.dispatched} devices`;
   }
   if (activation.dispatched === 0) {
     return `Nothing happened: ${activation.failed[0]?.message ?? 'unknown error'}`;
   }
-  return `${activation.dispatched} done · ${activation.failed.length} failed`;
+  return `${activation.dispatched} sent · ${activation.failed.length} failed`;
 }
 
 export function useCreateScene(homeId: string | undefined) {

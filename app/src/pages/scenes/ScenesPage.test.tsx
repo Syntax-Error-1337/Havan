@@ -1,7 +1,7 @@
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { ScenesPage } from './ScenesPage';
+import { ScenesPage, deviceOptions } from './ScenesPage';
 import { ThemeProvider } from '../../app-shell/theme';
 import { useSession } from '../../entities/session';
 
@@ -63,6 +63,29 @@ async function renderPage() {
 
 beforeEach(() => {
   useSession.setState({ access: 'token', homeId: 'home-1', refresh: null });
+});
+
+describe('device chip labels', () => {
+  const dev = (id: string, name: string, serial: string) =>
+    ({ ...device, id, name, serial }) as unknown as Parameters<typeof deviceOptions>[0][number];
+
+  it('leaves a unique name alone', () => {
+    const options = deviceOptions([dev('d1', 'Desk lamp', 'SN-1')]);
+    expect(options[0]?.label).toBe('Desk lamp');
+  });
+
+  it('adds the serial tail when two devices share a name', () => {
+    // Two bulbs called the same thing is the normal case, and a picker showing
+    // the label twice cannot be used to build a scene at all.
+    const options = deviceOptions([
+      dev('d1', 'Acme Bulb E27', 'TRIG-1111'),
+      dev('d2', 'Acme Bulb E27', 'TRIG-2222'),
+    ]);
+    expect(options.map((o) => o.label)).toEqual([
+      'Acme Bulb E27 · 1111',
+      'Acme Bulb E27 · 2222',
+    ]);
+  });
 });
 
 describe('scenes', () => {
