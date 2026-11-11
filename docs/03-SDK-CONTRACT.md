@@ -338,3 +338,18 @@ the simulator and produces a signed report the portal shows as a badge:
 
 A product cannot be published until its reference firmware passes 1–8; 9–10 are
 required for marketplace listing.
+
+### Re-subscribe after every reconnect (MUST)
+
+Subscriptions belong to the MQTT session. A device that asks for a clean session
+comes back **deaf** after a reconnect, and nothing in the protocol says so — the
+broker accepts the connection, the platform sees a connected device, and every
+command times out silently.
+
+Subscribe on `CONNACK`, not only at startup. Idempotent, so the first connect does
+it twice and nothing breaks.
+
+This is not hypothetical: the reference simulator had exactly this bug. It worked
+until the broker restarted, then never heard another command for the rest of its
+life. Proven fixed by restarting VerneMQ and sending a command afterwards.
+

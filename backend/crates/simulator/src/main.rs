@@ -105,7 +105,12 @@ async fn main() -> anyhow::Result<()> {
     loop {
         tokio::select! {
             _ = tick.tick() => {
-                publish_shadow(&client, &vendor, &home_id, &device, &points).await?;
+                // A broker blip must not end the process: this file is the
+                // reference device, and a device that exits is a device a
+                // customer has to power-cycle.
+                if let Err(e) = publish_shadow(&client, &vendor, &home_id, &device, &points).await {
+                    tracing::warn!(error = %e, "shadow publish failed; staying up");
+                }
             }
             event = eventloop.poll() => {
                 match event {
@@ -136,6 +141,16 @@ async fn main() -> anyhow::Result<()> {
                             )
                             .await?;
                         tracing::info!(cmd = %cmd.id, op = ?cmd.op, "acked");
+                    }
+                    // Subscriptions belong to the session, and this client asks
+                    // for a clean one, so a reconnect comes back *deaf* unless we
+                    // subscribe again. That is the bug that made the simulator
+                    // stop hearing commands forever after a single broker blip.
+                    Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                        client
+                            .subscribe(topics::cmd(&vendor, &home_id, &device), QoS::AtLeastOnce)
+                            .await?;
+                        tracing::info!("connected; subscribed to commands");
                     }
                     Ok(_) => {}
                     Err(e) => {
