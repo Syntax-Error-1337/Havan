@@ -4,9 +4,15 @@ Base `https://api.haven.dev/v1`. JSON only. RFC 3339 timestamps, UUIDv7 ids.
 Errors are `{"error":{"code":"…","message":"…","details":{…}}}` with a stable
 `code`; `message` is for humans and may change.
 
-Auth: `Authorization: Bearer <access>`; access 15 min, refresh 30 days with
-rotation + reuse detection. Vendor endpoints accept either a user session
-(portal) or an API key `hvn_live_<prefix>_<secret>` with scopes.
+Auth: `Authorization: Bearer <access>` — access 15 min, refresh 30 days with
+rotation + reuse detection. Vendor endpoints accept either a portal session or a
+vendor API key, sent the same way: `Authorization: Bearer hv_<prefix>_<secret>`.
+There is no `X-API-Key` header. The prefix identifies the key for revocation; only
+the secret is compared, and only its hash is stored.
+
+Known gap, stated rather than implied: keys carry no scopes. A key acts as the
+whole vendor account until revoked, which the portal says in as many words.
+
 
 Pagination: `?limit=&cursor=`; response `{"data":[…],"next_cursor":null}`.
 

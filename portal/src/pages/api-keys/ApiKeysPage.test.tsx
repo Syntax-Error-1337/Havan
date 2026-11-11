@@ -82,6 +82,29 @@ describe('api keys', () => {
     ).toBeInTheDocument();
   });
 
+  it('says so when the clipboard refuses, instead of claiming it copied', async () => {
+    stubFetch((_url, init) =>
+      init?.method === 'POST'
+        ? { ...key(), secret: 'hv_a1b2c3d4_deadbeefdeadbeefdeadbeefdeadbeef' }
+        : [],
+    );
+
+    // The one state a vendor cannot recover from: believing they have a secret
+    // that was never copied, on the only screen that will ever show it.
+    const denied = vi.fn().mockRejectedValueOnce(new Error('denied'));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: denied }, configurable: true });
+
+    renderPage();
+    await userEvent.type(await screen.findByPlaceholderText('factory line 2'), 'ci runner');
+    await userEvent.click(screen.getByRole('button', { name: 'Create key' }));
+    await screen.findByText('Copy this now');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+    expect(await screen.findByText('Select it — copy failed')).toBeInTheDocument();
+    expect(screen.queryByText('Copied')).toBeNull();
+  });
+
   it('revokes through the API and hides the button', async () => {
     const calls = stubFetch((_url, init) =>
       init?.method === 'DELETE' ? null : [key()],

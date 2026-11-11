@@ -14,11 +14,14 @@ export function ApiKeysPage() {
 
   const [name, setName] = useState('');
   const [minted, setMinted] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  // 'failed' exists because a clipboard write can be refused — no permission, no
+  // secure context, another window holding the clipboard. Claiming "Copied" when
+  // we do not know would be the worst possible lie on this page.
+  const [copied, setCopied] = useState<'idle' | 'ok' | 'failed'>('idle');
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setCopied(false);
+    setCopied('idle');
     const key = await create.mutateAsync({ name: name.trim() });
     setName('');
     setMinted(key.secret ?? null);
@@ -51,12 +54,22 @@ export function ApiKeysPage() {
             <input className="input" readOnly value={minted} spellCheck={false} />
             <button
               className="btn"
-              onClick={async () => {
-                await navigator.clipboard.writeText(minted);
-                setCopied(true);
+              onClick={async (event) => {
+                // currentTarget is null once the handler awaits; keep it now.
+                const button = event.currentTarget;
+                try {
+                  await navigator.clipboard.writeText(minted);
+                  setCopied('ok');
+                } catch {
+                  setCopied('failed');
+                  // Fall back to something the person can act on: select the text
+                  // so Ctrl+C works.
+                  const field = button.parentElement?.querySelector('input');
+                  field?.select();
+                }
               }}
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied === 'ok' ? 'Copied' : copied === 'failed' ? 'Select it — copy failed' : 'Copy'}
             </button>
             <button className="btn" onClick={() => setMinted(null)}>
               Done

@@ -50,6 +50,10 @@ export function percentDone(progress: Progress): number {
 /** What a vendor should look at first: failures, then work still moving. */
 export function headline(row: CampaignRow): string {
   const p = row.progress;
+  // A draft has queued nothing yet, so "matched no devices" is a claim the data
+  // cannot support — and a vendor who reads it abandons a rollout that would
+  // have updated the whole fleet.
+  if (row.campaign.status === 'draft') return 'Not started';
   if (p.total === 0) return 'Matched no devices';
   if (p.failed > 0) return `${p.failed} failed`;
   if (row.complete) return 'Done';

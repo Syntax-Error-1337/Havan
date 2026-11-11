@@ -93,7 +93,7 @@ describe('rollouts', () => {
     expect(screen.getByText('3 failed')).toBeInTheDocument();
   });
 
-  it('says plainly when a rollout matched nobody', async () => {
+  it('does not claim a draft matched nobody — it has queued nothing yet', async () => {
     stubFetch((url) =>
       url.endsWith('/vendor/campaigns')
         ? [row({ status: 'draft' }, { total: 0, success: 0, failed: 0 })]
@@ -101,6 +101,20 @@ describe('rollouts', () => {
     );
     renderPage();
 
+    // A draft with total 0 is normal: the wave is selected when it starts.
+    expect(await screen.findByText('Not started')).toBeInTheDocument();
+    expect(screen.queryByText('Matched no devices')).toBeNull();
+  });
+
+  it('says plainly when a started rollout matched nobody', async () => {
+    stubFetch((url) =>
+      url.endsWith('/vendor/campaigns')
+        ? [row({ status: 'running' }, { total: 0, success: 0, failed: 0 })]
+        : [product],
+    );
+    renderPage();
+
+    // This one is the failure worth surfacing: it is running and has no devices.
     expect(await screen.findByText('Matched no devices')).toBeInTheDocument();
   });
 
