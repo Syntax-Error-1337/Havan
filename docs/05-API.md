@@ -1,0 +1,152 @@
+# API surface (v1)
+
+Base `https://api.haven.dev/v1`. JSON only. RFC 3339 timestamps, UUIDv7 ids.
+Errors are `{"error":{"code":"…","message":"…","details":{…}}}` with a stable
+`code`; `message` is for humans and may change.
+
+Auth: `Authorization: Bearer <access>`; access 15 min, refresh 30 days with
+rotation + reuse detection. Vendor endpoints accept either a user session
+(portal) or an API key `hvn_live_<prefix>_<secret>` with scopes.
+
+Pagination: `?limit=&cursor=`; response `{"data":[…],"next_cursor":null}`.
+
+Every mutating request accepts `Idempotency-Key`.
+
+## Customer (app)
+
+### Identity & homes
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/auth/register` | email or phone; returns tokens |
+| POST | `/auth/login` | password; 2FA challenge if enabled |
+| POST | `/auth/refresh` | rotation; reuse revokes the family |
+| POST | `/auth/logout` | revokes refresh family |
+| POST | `/auth/otp/request` · `/auth/otp/verify` | phone/email OTP |
+| GET | `/me` | profile, homes, feature flags |
+| PATCH | `/me` | name, locale, timezone |
+| GET | `/homes` | |
+| POST | `/homes` | |
+| GET/PATCH/DELETE | `/homes/{id}` | |
+| GET/POST | `/homes/{id}/members` | invite by email/phone |
+| PATCH/DELETE | `/homes/{id}/members/{uid}` | roles: owner, admin, member, guest |
+| GET/POST | `/homes/{id}/rooms` | |
+| PATCH/DELETE | `/rooms/{id}` | |
+
+### Devices
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/devices?home_id=` | current values included |
+| GET | `/devices/{id}` | points, product, firmware |
+| PATCH | `/devices/{id}` | name, room |
+| DELETE | `/devices/{id}` | unclaim, keeps history 30 d |
+| POST | `/devices/{id}/commands` | `{point, value}` or `{action}` → `202 {command_id}` |
+| GET | `/devices/{id}/commands/{cid}` | settled state |
+| GET | `/devices/{id}/history?point=&from=&to=&bucket=` | Timescale aggregates |
+| POST | `/devices/{id}/identify` | blink / beep |
+| GET | `/devices/{id}/diagnostics` | rssi, uptime, fw, last seen |
+
+### Pairing
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/homes/{id}/pairing-tickets` | admin; 5-min TTL |
+| POST | `/homes/{id}/pairing-sessions` | installer; 2 h |
+| GET | `/pairing-sessions/{id}` | progress |
+| POST | `/provision/claim` | **device-facing**, no user auth, secret + ticket |
+
+### Automations & scenes
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/homes/{id}/automations` | |
+| GET/PATCH/DELETE | `/automations/{id}` | |
+| POST | `/automations/{id}/run` | manual trigger |
+| GET | `/automations/{id}/runs` | last 50 runs with per-step log |
+| GET/POST | `/homes/{id}/scenes` | named action bundles |
+| POST | `/scenes/{id}/activate` | |
+
+### Misc
+
+| Method | Path |
+|---|---|
+| GET | `/homes/{id}/dashboard` | one call: rooms, devices, points, automations, alerts |
+| GET | `/notifications` · POST `/notifications/read` |
+| POST | `/push-tokens` |
+| GET | `/catalog/capabilities` | versioned capability catalog, cached 1 h |
+| GET | `/catalog/products?product_key=` | radar metadata by product hash |
+| GET | `/stream` | WebSocket upgrade |
+
+## Vendor (portal)
+
+Scoped under the vendor of the authenticated principal; a vendor user cannot
+address another vendor's resource even with a guessed id (RLS + explicit check).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/vendor/products` | |
+| GET/PATCH | `/vendor/products/{id}` | |
+| POST | `/vendor/products/{id}/validate` | the six rules from the thing model |
+| POST | `/vendor/products/{id}/publish` | |
+| GET/POST | `/vendor/products/{id}/firmware` | upload → presigned PUT |
+| POST | `/vendor/firmware/{id}/sign` | portal signs with the vendor key |
+| GET/POST | `/vendor/ota-campaigns` | |
+| POST | `/vendor/ota-campaigns/{id}/pause\|resume\|halt` | |
+| GET | `/vendor/devices?product_id=&status=` | fleet list, cursor-paged |
+| GET | `/vendor/devices/{id}` | telemetry, logs, cert status |
+| GET | `/vendor/analytics/overview` | devices, activity, errors, pair success |
+| GET/POST | `/vendor/api-keys` | |
+| GET | `/vendor/webhooks` · POST/DELETE | event subscriptions |
+| GET | `/vendor/sdk` | SDK versions + download links |
+| GET/PUT | `/vendor/branding` | white-label app config |
+| GET | `/vendor/audit` | |
+
+Key issuance for mTLS lives here too: `POST /vendor/ca/intermediate` returns a
+CSR-signing endpoint and the vendor's CA cert; the vendor keeps the private key.
+
+## Operator (internal)
+
+`/ops/*` — guarded by `OPS_TOKEN`, loopback-bound unless explicitly exposed.
+Tenant CRUD, quotas, cert expiry report, campaign halt-all, job queue depth,
+ingest lag, per-vendor token buckets.
+
+## WebSocket protocol
+
+Connect `wss://api.haven.dev/v1/stream`, then send the first frame:
+
+```json
+{"t":"auth","token":"<access>"}
+```
+
+Server replies `{"t":"ready","session":"…"}`. Subscribe:
+
+```json
+{"t":"sub","topics":["home:h_01H…"]}
+```
+
+Events (server → client):
+
+| `t` | Data |
+|---|---|
+| `point.changed` | `{device_id, code, value, ts}` |
+| `device.online` / `device.offline` | `{device_id, ts}` |
+| `device.added` / `device.removed` | `{device}` |
+| `command.settled` | `{command_id, status, reported, code}` |
+| `automation.fired` | `{automation_id, run_id}` |
+| `ota.progress` | `{device_id, state, pct}` |
+| `home.updated` | `{home}` |
+
+Heartbeat: server `ping` every 25 s; a client that misses two is dropped.
+Reconnect with jittered backoff 1→30 s and re-subscribe; the client refetches
+`/homes/{id}/dashboard` on reconnect rather than trusting missed deltas.
+
+## Conventions that are non-negotiable
+
+1. **`202` for commands**, never `200`. The command is accepted, not applied.
+2. **`409` for state conflicts** (already claimed, transfer pending), `422` for
+   semantic validation, `400` for malformed JSON.
+3. **No secrets in URLs.** Tokens go in headers or the WS first frame.
+4. **Every list is cursor-paginated**, even when it is small today.
+5. **OpenAPI is generated** (`utoipa`) and committed at `docs/openapi.json`;
+   the app and portal clients are generated from it, never hand-written twice.
