@@ -1,0 +1,21 @@
+[package]
+name = "infra"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+kernel.workspace = true
+protocol.workspace = true
+sqlx.workspace = true
+redis.workspace = true
+rumqttc.workspace = true
+object_store.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+time.workspace = true
+thiserror.workspace = true
+bytes.workspace = true

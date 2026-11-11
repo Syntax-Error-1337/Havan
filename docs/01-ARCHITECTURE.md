@@ -7,8 +7,8 @@
                         │                                                    │
  device (SDK)           │                                                    │
    │  MQTT 5 / mTLS    ┌▼────────────┐   ┌──────────────┐   ┌───────────────┐│
-   ├──────────────────►│  EMQX       │──►│ worker       │──►│ Postgres      ││
-   │                   │  (broker)   │   │  ingest      │   │  + Timescale  ││
+   ├──────────────────►│  VerneMQ    │──►│ worker       │──►│ Postgres      ││
+   │                   │  (broker)   │   │  ingest      │   │  (partitioned)││
    │◄──────────────────┤             │   │  scheduler   │◄──│               ││
    │  commands         └─────────────┘   │  ota         │   └───────────────┘│
    │                                     └──────┬───────┘                    │
@@ -16,14 +16,14 @@
    │   BLE (pairing only)                       ▼                            │
  customer app ──HTTPS/WS──► ┌──────────────────────────┐ ◄──HTTPS────────────┘
                             │  api (axum)              │
-                            │  auth · homes · devices  │──► Redis (presence, rate, sessions)
+                            │  auth · homes · devices  │──► Valkey (presence, rate, sessions)
                             └──────────────────────────┘
 ```
 
 Two processes, one codebase. `api` serves humans; `worker` owns everything that
 happens without a request: MQTT ingest, automation evaluation, OTA campaigns,
 notification fan-out, retention. They share `domain` and `infra` and never talk
-to each other directly — Postgres `LISTEN/NOTIFY` and Redis streams are the bus.
+to each other directly — Postgres `LISTEN/NOTIFY` and Valkey streams are the bus.
 
 ## Why two binaries and not one
 
@@ -102,8 +102,9 @@ through an explicit port trait, and the composition root wires it.
 
 ## Data model
 
-Postgres 16 + TimescaleDB. Multi-tenant with RLS, one `vendor_id` on every
-tenant-owned row.
+Postgres 16, plain — no Timescale (ADR-002). Telemetry is range-partitioned by
+month with BRIN; rollups are a table the worker maintains. Multi-tenant with RLS,
+one `vendor_id` on every tenant-owned row.
 
 ```
 vendors(id, slug, name, status, quota_devices, created_at)
@@ -125,7 +126,8 @@ devices(id, vendor_id, product_id, home_id, room_id, name, serial, cert_serial,
         claimed_at, state, metadata JSONB)
 device_points(id, device_id, capability, code, kind, writable, unit, min, max,
               value_num, value_bool, value_text, updated_at)   -- current value
-telemetry(device_id, point_id, ts, num, bool, text)             -- hypertable
+telemetry(ts, device_id, point_id, vendor_id, num, bool, txt)   -- partitioned by month
+telemetry_rollup(point_id, bucket, min, max, avg, sum, samples) -- worker-maintained
 
 commands(id, vendor_id, device_id, point_id, op, payload JSONB, desired JSONB,
          reported JSONB, status, idempotency_key, requested_by,
@@ -142,7 +144,7 @@ ota_jobs(campaign_id, device_id, state, attempts, updated_at)
 notifications(id, user_id, kind, payload JSONB, read_at, created_at)
 push_tokens(id, user_id, platform, token, app_version)
 audit_log(id, vendor_id, actor, action, subject, ip, meta JSONB, ts)
-mqtt_acl(vendor_id, device_id, home_id)         -- read by EMQX authz hook, cached
+mqtt_acl(vendor_id, device_id, home_id)         -- read by the broker's authz hook, cached
 ```
 
 **RLS is the tenant boundary, not a WHERE clause.** Every tenant table gets:
@@ -158,14 +160,15 @@ fleet. Worker paths that must cross tenants use a `haven_system` role that
 bypasses RLS, and only `domain` code holding a `SystemScope` token may use it.
 
 **Hot state is not in Postgres.** Presence, last-seen, command dedupe and rate
-limits live in Redis with TTLs; Postgres keeps the durable row. A device that is
-offline has `online=false` in Redis after 90 s and in Postgres after the next
-write-back — reads prefer Redis.
+limits live in Valkey with TTLs; Postgres keeps the durable row. A device that is
+offline has `online=false` in Valkey after 90 s and in Postgres after the next
+write-back — reads prefer Valkey.
 
 ## MQTT contract
 
-EMQX 5, MQTT 5, TLS 1.3, client cert auth (`peer_cert_as_username`), per-device
-ACL generated from `mqtt_acl`. Topic root `haven`, exactly as documented in
+VerneMQ 2 (Apache-2.0 — see `adr/ADR-001-broker.md`), MQTT 5, TLS 1.3, client
+certificate identity, per-device ACL read from `mqtt_acl` by the `vmq_diversity`
+Lua hook. Topic root `haven`, exactly as documented in
 [03-SDK-CONTRACT.md](03-SDK-CONTRACT.md):
 
 ```
@@ -193,7 +196,7 @@ POST /v1/devices/{id}/commands
   │ 2. validate: point exists, writable, value matches kind+range
   │ 3. idempotency: (device, idempotency_key) → existing command? return it
   │ 4. persist: INSERT command (status=queued, desired=value)
-  │ 5. shadow: write desired into Redis, publish cmd (QoS 1)
+  │ 5. shadow: write desired into Valkey, publish cmd (QoS 1)
   │ 6. respond 202 {command_id}
   ▼
 device applies → publishes ack {id, ok, reported}
@@ -218,16 +221,16 @@ are `{t, id, data}`; the client subscribes to `home:{id}` topics on connect.
 Events: `point.changed`, `device.online`, `device.offline`, `device.added`,
 `device.removed`, `command.settled`, `automation.fired`, `ota.progress`.
 
-Fan-out uses Redis pub/sub so any `api` instance can serve any socket; the
+Fan-out uses Valkey pub/sub so any `api` instance can serve any socket; the
 publishing `worker` does not need a connection to every API pod.
 
 ## Scale envelope (v1 target)
 
 | Dimension | Target | Mechanism |
 |---|---|---|
-| Devices | 1 M | sharded ingest, Timescale compression |
+| Devices | 1 M | sharded ingest, monthly partitions + BRIN |
 | Events/s sustained | 20 k | batching (500 ms or 500 rows, whichever first), COPY |
-| Concurrent app sockets | 100 k | Redis fan-out, `api` horizontal |
+| Concurrent app sockets | 100 k | Valkey fan-out, `api` horizontal |
 | Command p95 | 400 ms | single publish, no DB round-trip on the hot path |
 | Tenants | 5 k | RLS, per-vendor token bucket |
 
@@ -242,7 +245,7 @@ losing a command is not.
 |---|---|
 | Broker down | Commands fail fast with `unreachable`; app shows a banner; no silent queue growth |
 | Postgres down | API returns 503 with `Retry-After`; worker buffers to disk-bounded channel, then drops telemetry |
-| Redis down | Presence degrades to "unknown", commands still dispatch; rate limiting fails closed to a lower static limit |
+| Valkey down | Presence degrades to "unknown", commands still dispatch; rate limiting fails closed to a lower static limit |
 | Device offline | Shadow serves last value; commands queue at most 60 s |
 | Bad OTA image | Devices self-rollback on failed boot; campaign halts at >2 % failure |
 | Cert expiry | 30/14/7-day alerts to vendor; fleet list flags affected devices |
@@ -257,10 +260,10 @@ losing a command is not.
 | 3 | Postgres RLS for tenancy | one forgotten `WHERE` is a data breach otherwise |
 | 4 | Two binaries | ingest blast radius |
 | 5 | Shadow (desired/reported) instead of fire-and-forget | offline control and honest UI state |
-| 6 | Timescale hypertable from day one | retrofitting history is a migration nobody wants |
+| 6 | Range-partitioned telemetry from day one | retrofitting history is a migration nobody wants |
 | 7 | Feature slices in `domain`, traits at the edges | rules engine testable without IO |
 | 8 | Expo, not native | one team, two platforms, and OTA JS fixes |
-| 9 | EMQX, not our own broker | solved problem |
+| 9 | VerneMQ, not our own broker — and not EMQX | solved problem; Apache-2.0 because we resell the hosted service |
 | 10 | object_store crate, S3-compatible | local MinIO in dev, R2/S3 in prod, zero code change |
 
 ## Frontend shape

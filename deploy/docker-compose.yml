@@ -1,0 +1,81 @@
+services:
+  # Plain Postgres 16: no Timescale licence in the hosting path (ADR-002).
+  # Telemetry is a range-partitioned table; retention drops partitions.
+  postgres:
+    image: postgres:16-alpine
+    container_name: haven-db
+    environment:
+      POSTGRES_USER: haven
+      POSTGRES_PASSWORD: haven
+      POSTGRES_DB: haven
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=256MB"]
+    ports:
+      # 5433 on the host: another Postgres usually owns 5432 on a dev machine.
+      - "5433:5432"
+    volumes:
+      - haven-db:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/00-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haven -d haven"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Valkey, BSD-3: Redis-protocol compatible, no RSALv2/SSPL.
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: haven-redis
+    command: ["valkey-server", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # VerneMQ, Apache-2.0. See docs/adr/ADR-001-broker.md for why not EMQX.
+  # Dev runs anonymous so a simulator can connect with no cert; the TLS listener
+  # and the Postgres-backed auth hook are deployment config, not code.
+  vernemq:
+    image: vernemq/vernemq:2.0.1
+    container_name: haven-mqtt
+    environment:
+      DOCKER_VERNEMQ_ACCEPT_EULA: "yes"
+      DOCKER_VERNEMQ_ALLOW_ANONYMOUS: "on"
+      DOCKER_VERNEMQ_LOG__CONSOLE__LEVEL: info
+      DOCKER_VERNEMQ_MAX_INFLIGHT_MESSAGES: "32"
+    ports:
+      - "1883:1883"     # MQTT, dev
+      - "8883:8883"     # MQTT over TLS, devices
+      - "8888:8080"     # broker HTTP status (8080 is the API's)
+    volumes:
+      - haven-mqtt:/vernemq/data
+    ulimits:
+      nofile: 65536
+    healthcheck:
+      test: ["CMD-SHELL", "vmq-admin cluster show || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # SeaweedFS (Apache-2.0) with its S3 gateway: the dev stand-in for R2/S3.
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: haven-s3
+    command: ["server", "-dir=/data", "-s3", "-s3.port=9000"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - haven-s3:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/status >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  haven-db:
+  haven-mqtt:
+  haven-s3:

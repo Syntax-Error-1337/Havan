@@ -1,0 +1,16 @@
+[package]
+name = "migrate"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "haven-migrate"
+path = "src/main.rs"
+
+[dependencies]
+kernel.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true

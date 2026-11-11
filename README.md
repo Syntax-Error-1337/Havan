@@ -25,7 +25,7 @@ backend/        Rust workspace — API, worker, protocol, domain slices, infra
 app/            Customer app (Expo, feature-sliced)
 portal/         Vendor portal (React, feature-sliced)
 sdk/            Device-side SDK: C component, Rust crate, shared protocol docs
-deploy/         Compose, EMQX config, TLS, observability
+deploy/         Compose, VerneMQ config, TLS, observability
 docs/           Spec, architecture, contracts, roadmap
 migrations/     SQL migrations (applied by `haven-migrate`)
 ```
@@ -46,7 +46,7 @@ Read in order:
 ## Running it
 
 ```bash
-make up        # postgres+timescale, redis, emqx, minio
+make up        # postgres, valkey, vernemq, seaweedfs
 make migrate   # schema
 make api       # :8080
 make worker    # MQTT ingest + schedulers

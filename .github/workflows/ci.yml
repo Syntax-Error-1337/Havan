@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: haven
+          POSTGRES_PASSWORD: haven
+          POSTGRES_DB: haven
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U haven"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://haven:haven@localhost:5432/haven
+      TEST_DATABASE_URL: postgres://haven:haven@localhost:5432/haven
+      REDIS_URL: redis://localhost:6379
+      TEST_REDIS_URL: redis://localhost:6379
+      HAVEN_JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789
+      HAVEN_TICKET_SECRET: ci-ticket-secret-0123456789abcdef0123
+      HAVEN_VAULT_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: fmt
+        run: cargo fmt --manifest-path backend/Cargo.toml --all --check
+      - name: clippy
+        run: cargo clippy --manifest-path backend/Cargo.toml --workspace --all-targets -- -D warnings
+      - name: migrate
+        run: cargo run --manifest-path backend/Cargo.toml -p migrate
+      - name: test
+        run: cargo test --manifest-path backend/Cargo.toml --workspace
+
+  contract:
+    # The SDK contract is prose plus types; this job proves the two agree.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: protocol tests
+        run: cargo test --manifest-path backend/Cargo.toml -p protocol

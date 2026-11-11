@@ -68,7 +68,7 @@ streaming (WebRTC), offline local hub, on-prem single-tenant deploy.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | BLE pairing flakiness on Android OEMs | the whole funnel | AP fallback from day one, Playwright-style device matrix, 12 s budget |
-| Timescale ingest cost | unit economics | history policy per capability, compression after 24 h |
+| Telemetry ingest cost | unit economics | history policy per capability, partition drop, rollups |
 | Vendor thing-model mistakes | broken UI for real customers | six validation rules + reference SKUs + cert gate |
 | Scope creep into a general app builder | never ships | capability catalog is closed; new capability = platform release |
 | Two clients diverge | double maintenance | shared OpenAPI client, shared design tokens, same FSD lint |

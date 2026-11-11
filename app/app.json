@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Haven",
+    "slug": "haven",
+    "scheme": "haven",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.haven.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Haven finds nearby devices to pair them.",
+        "NSLocalNetworkUsageDescription": "Haven controls devices on your local network."
+      }
+    },
+    "android": {
+      "package": "dev.haven.app",
+      "permissions": [
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "blockedPermissions": ["android.permission.BLUETOOTH_ADVERTISE"],
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0D10",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-image",
+      "expo-localization",
+      "react-native-ble-plx"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

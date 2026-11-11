@@ -54,7 +54,7 @@ these five.
 
 ## Non-goals (v1)
 
-- **Not a broker.** We run EMQX; we do not write MQTT.
+- **Not a broker.** We run VerneMQ (Apache-2.0); we do not write MQTT.
 - **Not a hub-first product.** Cloud is the control plane; LAN is an
   optimisation, not a second truth.
 - **Not a Zigbee/Z-Wave radio stack.** Vendors bring their own radio; our SDK
