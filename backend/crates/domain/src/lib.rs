@@ -11,4 +11,5 @@ pub mod catalog;
 pub mod devices;
 pub mod homes;
 pub mod identity;
+pub mod ota;
 pub mod pairing;

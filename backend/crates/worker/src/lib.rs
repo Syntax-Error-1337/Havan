@@ -6,3 +6,4 @@
 
 pub mod automation;
 pub mod ingest;
+pub mod ota;

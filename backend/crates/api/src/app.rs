@@ -13,7 +13,9 @@ use domain::devices::DeviceService;
 use domain::homes::HomeService;
 use domain::identity::IdentityService;
 use domain::pairing::PairingService;
-use infra::{Cache, Mqtt, Pg, PgAutomation, PgCatalog, PgDevices, PgHomes, PgIdentity, PgPairing};
+use infra::{
+    Cache, Mqtt, Pg, PgAutomation, PgCatalog, PgDevices, PgHomes, PgIdentity, PgOta, PgPairing,
+};
 use kernel::Config;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::TraceLayer;
@@ -33,6 +35,7 @@ pub struct AppState {
     pub mqtt: Mqtt,
     pub catalog: Arc<CatalogService<PgCatalog>>,
     pub automations: Arc<AutomationService<PgAutomation>>,
+    pub ota: Arc<PgOta>,
 }
 
 impl AppState {
@@ -52,6 +55,7 @@ impl AppState {
             cfg.ticket_secret.expose(),
         ));
         let catalog = Arc::new(CatalogService::new(Arc::new(PgCatalog::new(pg.clone()))));
+        let ota = Arc::new(PgOta::new(pg.clone()));
         let automations = Arc::new(AutomationService::new(Arc::new(PgAutomation::new(
             pg.clone(),
         ))));
@@ -66,6 +70,7 @@ impl AppState {
             mqtt,
             catalog,
             automations,
+            ota,
         }
     }
 }
@@ -79,6 +84,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::pairing::router())
         .merge(routes::automations::router())
         .merge(routes::catalog::router())
+        .merge(routes::ota::router())
         .route("/stream", get(routes::stream::ws));
 
     Router::new()

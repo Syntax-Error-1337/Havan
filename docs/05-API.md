@@ -72,6 +72,24 @@ already run any rule whose `next_run_at` is due, so this is a small endpoint —
 it is held back because a manual run would be recorded as a `schedule` run, and
 a mislabelled audit trail is worse than no button.
 
+### OTA
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST | `/vendor/products/{id}/firmware` | register an image already uploaded and signed; `sha256` must be 64 hex |
+| POST | `/vendor/campaigns` | `{product_id, firmware_id, rollout_pct}` — defaults to **0%**, not 100% |
+| GET | `/vendor/campaigns/{id}` | status, `started_at` |
+| POST | `/vendor/campaigns/{id}/start` | freezes the wave, queues jobs, returns `{queued}` |
+
+The image does not travel through the API: the vendor uploads it and signs it
+themselves, and the device verifies the signature before writing flash. The
+worker claims queued jobs and publishes an `OtaOffer` on the device's own `ota`
+topic; it never moves bytes.
+
+**Rollout is stable, not sampled.** Membership is `hash(campaign, device) % 100 <
+pct`, so a device cannot drift in and out of a wave between scans, and raising the
+percentage only ever adds devices (`domain::ota`).
+
 ### Misc
 
 | Method | Path |

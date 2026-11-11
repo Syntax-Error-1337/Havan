@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tracing::{info, warn};
-use worker::{automation, ingest};
+use worker::{automation, ingest, ota};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -71,6 +71,12 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         });
+    }
+
+    // OTA: hand a queued job to the device that has to apply it.
+    {
+        let dispatcher = ota::Dispatcher::new(infra::PgOta::new(pg.clone()), client.clone());
+        dispatcher.spawn(Duration::from_secs(5));
     }
 
     // Scheduled automations: lease what is due, run it, reschedule.

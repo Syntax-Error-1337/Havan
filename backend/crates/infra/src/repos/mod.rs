@@ -9,6 +9,7 @@ pub mod devices;
 pub mod homes;
 pub mod identity;
 pub mod ingest;
+pub mod ota;
 pub mod pairing;
 
 pub use automation::PgAutomation;

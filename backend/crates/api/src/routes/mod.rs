@@ -5,6 +5,7 @@ pub mod automations;
 pub mod catalog;
 pub mod devices;
 pub mod homes;
+pub mod ota;
 pub mod pairing;
 pub mod stream;
 pub mod vendor;
