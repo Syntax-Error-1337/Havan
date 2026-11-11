@@ -22,6 +22,14 @@ async fn main() -> anyhow::Result<()> {
 
     info!(target: "haven::worker", mqtt = %cfg.mqtt_url, "starting");
 
+    let pg = infra::Pg::connect(&cfg.database_url, cfg.db_max_connections)
+        .await
+        .context("postgres")?;
+    let cache = infra::Cache::connect(&cfg.redis_url)
+        .await
+        .context("redis")?;
+    let ingest = ingest::Ingest::new(infra::PgIngest::new(pg), cache);
+
     let (host, port) = split_url(&cfg.mqtt_url)?;
     let mut opts = MqttOptions::new(format!("haven-worker-{}", std::process::id()), host, port);
     opts.set_keep_alive(Duration::from_secs(30));
@@ -52,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
                         match topics::parse(&p.topic) {
                             Some(topic) => {
                                 let n = seen.fetch_add(1, Ordering::Relaxed) + 1;
-                                ingest::on_message(&topic, &p.payload).await;
+                                ingest.on_message(&topic, &p.payload).await;
                                 if n.is_multiple_of(1000) {
                                     info!(seen = n, "ingested");
                                 }

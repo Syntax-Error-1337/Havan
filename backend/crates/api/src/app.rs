@@ -63,7 +63,8 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::auth::router())
         .merge(routes::homes::router())
         .merge(routes::devices::router())
-        .merge(routes::pairing::router());
+        .merge(routes::pairing::router())
+        .route("/stream", get(routes::stream::ws));
 
     Router::new()
         .route("/healthz", get(health::health))

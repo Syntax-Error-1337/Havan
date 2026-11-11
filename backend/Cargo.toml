@@ -8,6 +8,7 @@ members = [
   "crates/api",
   "crates/worker",
   "crates/migrate",
+  "crates/simulator",
 ]
 
 [workspace.package]
@@ -51,6 +52,7 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 jsonwebtoken = "9"
 object_store = "0.11"
 bytes = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 [profile.dev]
 debug = "line-tables-only"   # a 20-crate workspace does not need full debuginfo

@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use crate::capability::{self, Access, Kind};
+use crate::capability::{self, Access, History, Kind};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThingModel {
@@ -116,6 +116,9 @@ pub struct ResolvedPoint {
     pub max: Option<f64>,
     pub scale: Option<f64>,
     pub enum_map: Option<BTreeMap<String, String>>,
+    /// Copied from the capability catalog: the storage policy travels with the
+    /// point so ingest does not have to look the capability up again.
+    pub history: History,
 }
 
 impl ThingModel {
@@ -311,6 +314,7 @@ impl ThingModel {
                     max: m.max.or(slot.max),
                     scale: m.scale,
                     enum_map: m.enum_map.clone(),
+                    history: slot.history,
                 });
             }
         }

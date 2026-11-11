@@ -65,6 +65,33 @@ pub enum History {
     All,
 }
 
+impl History {
+    /// Stored in `device_points.history`. Stable text, not debug output.
+    pub fn as_str(self) -> String {
+        match self {
+            History::Off => "off".to_string(),
+            History::Change => "change".to_string(),
+            History::Interval(secs) => format!("interval:{secs}"),
+            History::All => "all".to_string(),
+        }
+    }
+
+    pub fn parse(s: &str) -> History {
+        match s {
+            "off" => History::Off,
+            "all" => History::All,
+            other => match other.strip_prefix("interval:") {
+                Some(n) => History::Interval(n.parse().unwrap_or(300)),
+                None => History::Change,
+            },
+        }
+    }
+
+    pub fn stores_rows(self) -> bool {
+        !matches!(self, History::Off)
+    }
+}
+
 /// One value a capability exposes.
 #[derive(Debug, Clone, Copy)]
 pub struct SlotDef {

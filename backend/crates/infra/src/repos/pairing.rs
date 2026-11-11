@@ -197,8 +197,8 @@ impl PairingRepo for PgPairing {
             sqlx::query(
                 r#"INSERT INTO device_points
                    (id, device_id, vendor_id, capability, slot, code, dp, kind, writable,
-                    unit, min_val, max_val, scale, enum_map, updated_at)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())"#,
+                    unit, min_val, max_val, scale, enum_map, history, updated_at)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())"#,
             )
             .bind(kernel::new_id())
             .bind(device_id)
@@ -214,6 +214,7 @@ impl PairingRepo for PgPairing {
             .bind(point.max)
             .bind(point.scale)
             .bind(point.enum_map.as_ref().map(|m| serde_json::json!(m)))
+            .bind(point.history.as_str())
             .execute(&mut *tx)
             .await
             .map_err(db)?;

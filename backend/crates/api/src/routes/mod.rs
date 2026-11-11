@@ -4,3 +4,4 @@ pub mod auth;
 pub mod devices;
 pub mod homes;
 pub mod pairing;
+pub mod stream;

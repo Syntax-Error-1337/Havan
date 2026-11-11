@@ -113,17 +113,19 @@ ingest lag, per-vendor token buckets.
 
 ## WebSocket protocol
 
-Connect `wss://api.haven.dev/v1/stream`, then send the first frame:
+Connect `wss://api.haven.dev/v1/stream`, then send the first frame. It carries
+the token **and** the homes to watch, so the server can subscribe before it
+answers — Redis pub/sub has no replay, and a `sub` frame after `ready` would
+race the first event:
 
 ```json
-{"t":"auth","token":"<access>"}
+{"t":"auth","token":"<access>","homes":["h_01H…"]}
 ```
 
-Server replies `{"t":"ready","session":"…"}`. Subscribe:
-
-```json
-{"t":"sub","topics":["home:h_01H…"]}
-```
+Server replies `{"t":"ready","homes":["h_01H…"]}` once the subscriptions are
+live, or `{"t":"error","code":"invalid_token"|"no_homes"|"auth_required"}`.
+Membership is checked per home; a home the caller cannot prove is dropped
+silently rather than announced.
 
 Events (server → client):
 
@@ -137,7 +139,8 @@ Events (server → client):
 | `ota.progress` | `{device_id, state, pct}` |
 | `home.updated` | `{home}` |
 
-Heartbeat: server `ping` every 25 s; a client that misses two is dropped.
+Heartbeat: the server answers protocol-level pings; a client that misses two is
+dropped. The client reconnects with jittered backoff and re-sends `auth`.
 Reconnect with jittered backoff 1→30 s and re-subscribe; the client refetches
 `/homes/{id}/dashboard` on reconnect rather than trusting missed deltas.
 

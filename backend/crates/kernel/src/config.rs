@@ -118,34 +118,41 @@ pub enum ConfigError {
 
 pub const MIN_SECRET_BYTES: usize = 32;
 
-fn var(name: &'static str) -> Result<String, ConfigError> {
-    std::env::var(name)
-        .ok()
+/// Reads configuration from anywhere — the environment in production, a fixed
+/// map in tests. Without this seam a config test can only pass on a machine
+/// that happens to have the wrong variables set.
+type Lookup<'a> = dyn Fn(&str) -> Option<String> + 'a;
+
+fn var(get: &Lookup<'_>, name: &'static str) -> Result<String, ConfigError> {
+    get(name)
         .filter(|v| !v.trim().is_empty())
         .ok_or(ConfigError::Missing(name))
 }
 
-fn var_or(name: &'static str, default: &str) -> String {
-    std::env::var(name)
-        .ok()
+fn var_or(get: &Lookup<'_>, name: &'static str, default: &str) -> String {
+    get(name)
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| default.to_string())
 }
 
 impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
-        let env = match var_or("HAVEN_ENV", "dev").as_str() {
+        Self::from_lookup(&|k| std::env::var(k).ok())
+    }
+
+    pub fn from_lookup(get: &Lookup<'_>) -> Result<Self, ConfigError> {
+        let env = match var_or(get, "HAVEN_ENV", "dev").as_str() {
             "prod" | "production" => Env::Prod,
             "test" => Env::Test,
             _ => Env::Dev,
         };
 
-        let bind_raw = var_or("HAVEN_BIND", "127.0.0.1:8080");
+        let bind_raw = var_or(get, "HAVEN_BIND", "127.0.0.1:8080");
         let bind: SocketAddr = bind_raw
             .parse()
             .map_err(|_| ConfigError::BadAddr("HAVEN_BIND", bind_raw.clone()))?;
 
-        let jwt_secret = Secret::new(var("HAVEN_JWT_SECRET")?);
+        let jwt_secret = Secret::new(var(get, "HAVEN_JWT_SECRET")?);
         if jwt_secret.len() < MIN_SECRET_BYTES {
             return Err(ConfigError::TooShort(
                 "HAVEN_JWT_SECRET",
@@ -154,12 +161,12 @@ impl Config {
             ));
         }
 
-        let vault_raw = var("HAVEN_VAULT_KEY")?;
+        let vault_raw = var(get, "HAVEN_VAULT_KEY")?;
         if vault_raw.len() != 64 || !vault_raw.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(ConfigError::BadHex("HAVEN_VAULT_KEY", 64));
         }
 
-        let ticket_secret = Secret::new(var("HAVEN_TICKET_SECRET")?);
+        let ticket_secret = Secret::new(var(get, "HAVEN_TICKET_SECRET")?);
         if ticket_secret.len() < MIN_SECRET_BYTES {
             return Err(ConfigError::TooShort(
                 "HAVEN_TICKET_SECRET",
@@ -172,20 +179,20 @@ impl Config {
             env,
             bind,
             database_url: var_or(
+                get,
                 "DATABASE_URL",
-                "postgres://smarthome:smarthome@localhost:5432/haven",
+                "postgres://haven:haven@localhost:5432/haven",
             ),
-            redis_url: var_or("REDIS_URL", "redis://localhost:6379"),
-            mqtt_url: var_or("MQTT_URL", "mqtt://localhost:1883"),
-            public_url: var_or("HAVEN_PUBLIC_URL", "http://localhost:8080"),
+            redis_url: var_or(get, "REDIS_URL", "redis://localhost:6379"),
+            mqtt_url: var_or(get, "MQTT_URL", "mqtt://localhost:1883"),
+            public_url: var_or(get, "HAVEN_PUBLIC_URL", "http://localhost:8080"),
             jwt_secret,
             vault_key: Secret::new(vault_raw),
             ticket_secret,
-            ops_token: std::env::var("OPS_TOKEN")
-                .ok()
+            ops_token: get("OPS_TOKEN")
                 .filter(|v| !v.is_empty())
                 .map(Secret::new),
-            db_max_connections: var_or("HAVEN_DB_POOL", "16")
+            db_max_connections: var_or(get, "HAVEN_DB_POOL", "16")
                 .parse()
                 .unwrap_or(16)
                 .clamp(1, 256),
@@ -219,18 +226,30 @@ mod tests {
     }
 
     #[test]
-    fn missing_secret_is_named() {
-        // Uses a name that is never set in CI.
-        let err = Config::from_env();
-        assert!(
-            matches!(
-                err,
-                Err(ConfigError::Missing("HAVEN_JWT_SECRET"))
-                    | Err(ConfigError::Missing("HAVEN_VAULT_KEY"))
-                    | Err(ConfigError::TooShort(..))
-                    | Err(ConfigError::BadHex(..))
-            ),
-            "unexpected: {err:?}"
-        );
+    fn a_missing_secret_names_the_variable() {
+        // A lookup that knows nothing: the same shape as a fresh container.
+        let err = Config::from_lookup(&|_| None).unwrap_err();
+        assert_eq!(err, ConfigError::Missing("HAVEN_JWT_SECRET"));
+    }
+
+    #[test]
+    fn a_short_secret_is_refused_with_its_length() {
+        let err = Config::from_lookup(&|k| match k {
+            "HAVEN_JWT_SECRET" => Some("short".to_string()),
+            _ => None,
+        })
+        .unwrap_err();
+        assert_eq!(err, ConfigError::TooShort("HAVEN_JWT_SECRET", 32, 5));
+    }
+
+    #[test]
+    fn a_non_hex_vault_key_is_refused() {
+        let err = Config::from_lookup(&|k| match k {
+            "HAVEN_JWT_SECRET" => Some("x".repeat(32)),
+            "HAVEN_VAULT_KEY" => Some("zz".to_string()),
+            _ => None,
+        })
+        .unwrap_err();
+        assert_eq!(err, ConfigError::BadHex("HAVEN_VAULT_KEY", 64));
     }
 }
