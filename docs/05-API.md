@@ -10,6 +10,11 @@ vendor API key, sent the same way: `Authorization: Bearer hv_<prefix>_<secret>`.
 There is no `X-API-Key` header. The prefix identifies the key for revocation; only
 the secret is compared, and only its hash is stored.
 
+Revoking is immediate and permanent: the next request with that secret is `401`,
+and a revoked key is indistinguishable from one that never existed, so a key cannot
+be probed for. Another vendor's key id answers `404`, not `403` — the id is not a
+thing you are allowed to know exists.
+
 Known gap, stated rather than implied: keys carry no scopes. A key acts as the
 whole vendor account until revoked, which the portal says in as many words.
 

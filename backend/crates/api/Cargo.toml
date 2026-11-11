@@ -36,3 +36,4 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 kernel = { workspace = true }
 infra = { workspace = true }
+sqlx = { workspace = true }
