@@ -245,7 +245,28 @@ impl AutomationRepo for PgAutomation {
         .map_err(db)?;
 
         tx.commit().await.map_err(db)?;
-        rows.into_iter().map(map).collect()
+
+        // One rule whose stored definition no longer deserializes must not stop
+        // the fleet: without this, a single bad row fails the whole batch every
+        // tick and *no* automation in the database runs. Disable it, say which
+        // one, and carry on — a corrupt rule is a bug to fix, not an outage.
+        let mut due = Vec::with_capacity(rows.len());
+        for row in rows {
+            let id = row.0;
+            match map(row) {
+                Ok(automation) => due.push(automation),
+                Err(e) => {
+                    tracing::error!(automation = %id, error = ?e, "disabling an automation whose stored definition is invalid");
+                    let _ = sqlx::query(
+                        "UPDATE automations SET enabled = false, next_run_at = NULL, lease_until = NULL WHERE id = $1",
+                    )
+                    .bind(id)
+                    .execute(self.pg.pool())
+                    .await;
+                }
+            }
+        }
+        Ok(due)
     }
 
     async fn reschedule(
