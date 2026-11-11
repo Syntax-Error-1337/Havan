@@ -57,3 +57,23 @@ export function outcome(activation: Activation): string {
   }
   return `${activation.dispatched} done · ${activation.failed.length} failed`;
 }
+
+export function useCreateScene(homeId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; actions: SceneAction[] }) =>
+      request<Scene>(`/homes/${homeId}/scenes`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.scenes(homeId ?? 'none') }),
+  });
+}
+
+export function useDeleteScene(homeId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<void>(`/scenes/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.scenes(homeId ?? 'none') }),
+  });
+}

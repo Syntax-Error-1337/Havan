@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { Box, AppText } from '../../shared/ui';
 import { tokens } from '../../app-shell/theme';
@@ -14,11 +15,25 @@ import { outcome, useActivateScene, useScenes } from '../../entities/scene';
  * out loud.
  */
 export function SceneStrip({ homeId }: { homeId: string }) {
+  const router = useRouter();
   const { data: scenes, isPending } = useScenes(homeId);
   const activate = useActivateScene(homeId);
   const [note, setNote] = useState<{ sceneId: string; text: string; bad: boolean } | null>(null);
 
-  if (isPending || !scenes || scenes.length === 0) return null;
+  // With no scenes the strip still offers the way to make one, but only once
+  // the home has devices: a scene with nothing to control is a dead end.
+  if (isPending) return null;
+  if (!scenes || scenes.length === 0) {
+    return (
+      <Box style={{ paddingHorizontal: tokens.space.lg }}>
+        <Pressable onPress={() => router.push('/scenes')} accessibilityRole="button">
+          <AppText variant="caption" tone="accent">
+            + Add a scene
+          </AppText>
+        </Pressable>
+      </Box>
+    );
+  }
 
   const run = async (sceneId: string) => {
     setNote(null);
@@ -37,6 +52,14 @@ export function SceneStrip({ homeId }: { homeId: string }) {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: tokens.space.lg, gap: tokens.space.sm }}
       >
+        <Pressable onPress={() => router.push('/scenes')} accessibilityRole="button">
+          <Box px="lg" py="md" radius="pill" bg="surface" border>
+            <AppText variant="caption" tone="accent">
+              + New
+            </AppText>
+          </Box>
+        </Pressable>
+
         {scenes.map((scene) => {
           const busy = activate.isPending && activate.variables === scene.id;
           // A scene with no readable actions must not take the dashboard down

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Switch, TextInput } from 'react-native';
 
-import { Box, AppText, Button, Screen } from '../../shared/ui';
+import { Box, AppText, Button, Screen, ChipPicker } from '../../shared/ui';
 import { tokens } from '../../app-shell/theme';
 import { useHomes } from '../../entities/home';
 import { useDevices } from '../../entities/device';
@@ -253,7 +253,7 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
         />
       ) : (
         <>
-          <Picker
+          <ChipPicker
             label="Device"
             value={source}
             options={(devices ?? []).map((d) => ({ id: d.id, label: d.name }))}
@@ -262,7 +262,7 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
               setSourceCode(null);
             }}
           />
-          <Picker
+          <ChipPicker
             label="Point"
             value={sourceCode}
             options={points(source).map((p) => ({ id: p.code, label: p.code }))}
@@ -281,7 +281,7 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
       <AppText variant="caption" tone="muted">
         Then
       </AppText>
-      <Picker
+      <ChipPicker
         label="Device"
         value={target}
         options={(devices ?? []).map((d) => ({ id: d.id, label: d.name }))}
@@ -290,7 +290,7 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
           setTargetCode(null);
         }}
       />
-      <Picker
+      <ChipPicker
         label="Point"
         value={targetCode}
         options={points(target).map((p) => ({ id: p.code, label: p.code }))}
@@ -315,48 +315,6 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
         disabled={!canSave || create.isPending}
         onPress={save}
       />
-    </Box>
-  );
-}
-
-function Picker({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string | null;
-  options: { id: string; label: string }[];
-  onChange: (id: string) => void;
-}) {
-  return (
-    <Box gap="xs">
-      <AppText variant="caption" tone="muted">
-        {label}
-      </AppText>
-      <Box row gap="sm" style={{ flexWrap: 'wrap' }}>
-        {options.length === 0 ? (
-          <AppText variant="caption" tone="muted">
-            Nothing to choose from
-          </AppText>
-        ) : null}
-        {options.map((option) => (
-          <Pressable key={option.id} onPress={() => onChange(option.id)}>
-            <Box
-              px="md"
-              py="sm"
-              radius="pill"
-              bg={value === option.id ? 'accent' : 'surface'}
-              border
-            >
-              <AppText variant="caption" tone={value === option.id ? 'text' : 'muted'}>
-                {option.label}
-              </AppText>
-            </Box>
-          </Pressable>
-        ))}
-      </Box>
     </Box>
   );
 }
