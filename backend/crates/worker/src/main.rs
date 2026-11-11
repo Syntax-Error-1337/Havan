@@ -13,9 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tracing::{info, warn};
-
-mod automation;
-mod ingest;
+use worker::{automation, ingest};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

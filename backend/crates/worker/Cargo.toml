@@ -4,6 +4,15 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 
+[lib]
+name = "worker"
+path = "src/lib.rs"
+
+[dev-dependencies]
+futures-util.workspace = true
+sqlx.workspace = true
+redis.workspace = true
+
 [[bin]]
 name = "haven-worker"
 path = "src/main.rs"

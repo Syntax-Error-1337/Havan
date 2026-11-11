@@ -33,6 +33,8 @@ jobs:
     env:
       DATABASE_URL: postgres://haven:haven@localhost:5432/haven
       TEST_DATABASE_URL: postgres://haven:haven@localhost:5432/haven
+      # Seeding in integration tests runs as the owner; RLS has no vendor context.
+      MIGRATE_DATABASE_URL: postgres://haven:haven@localhost:5432/haven
       REDIS_URL: redis://localhost:6379
       TEST_REDIS_URL: redis://localhost:6379
       HAVEN_JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789

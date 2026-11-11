@@ -56,7 +56,7 @@ impl Ingest {
                 Err(e) => tracing::warn!(%device_id, error = %e, "shadow rejected"),
             },
             Lane::Ack => match serde_json::from_slice::<AckMsg>(payload) {
-                Ok(msg) => self.settle(msg).await,
+                Ok(msg) => self.handle_ack(msg).await,
                 Err(e) => tracing::warn!(%device_id, error = %e, "ack rejected"),
             },
             Lane::Ota | Lane::Cmd => {}
@@ -64,7 +64,10 @@ impl Ingest {
     }
 
     /// The device has spoken: close the command, then tell every open app.
-    async fn settle(&self, ack: AckMsg) {
+    ///
+    /// Public because it is the seam a test needs: everything else in this lane
+    /// is a decode step, and this is the one that changes state and fans out.
+    pub async fn handle_ack(&self, ack: AckMsg) {
         let reported = serde_json::json!({ "dp": ack.dp, "value": ack.value });
 
         match self
