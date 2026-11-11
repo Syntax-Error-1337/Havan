@@ -9,6 +9,8 @@ export type DevicePoint = {
   slot: string;
   kind: PointKind;
   writable: boolean;
+  /** `off | change | interval:N | all` — whether the platform stores this point. */
+  history?: string | null;
   unit?: string | null;
   min?: number | null;
   max?: number | null;

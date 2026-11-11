@@ -153,7 +153,10 @@ const BRIGHTNESS: &[SlotDef] = &[slot(
     Some("%"),
     Some(1.0),
     Some(100.0),
-    History::Off,
+    // On change, not `off`: brightness is the one thing a person sets and later
+    // wants to look at ("why is it dim in here at 6pm?"). A bulb changes it a few
+    // times a day, so the rows are nothing.
+    History::Change,
 )];
 const COLOR_TEMP: &[SlotDef] = &[slot(
     "kelvin",

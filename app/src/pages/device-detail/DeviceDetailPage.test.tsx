@@ -157,4 +157,19 @@ describe('device detail', () => {
     fireEvent(view.getByRole('switch'), 'onValueChange', true);
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
+
+  it('does not offer a chart for a point the platform does not store', async () => {
+    // `history: off` is a policy, not a fault: drawing an empty chart would say
+    // "no readings yet" forever and read as a bug.
+    stubApi((url) => {
+      if (url.includes('/history')) return { ...history, buckets: [] };
+      if (url.includes('/rooms')) return [];
+      return { ...device, points: device.points.map((pt) => ({ ...pt, history: 'off' })) };
+    });
+    const view = await renderPage();
+
+    expect(await view.findByText('This device does not keep history.')).toBeTruthy();
+    // No range chips either: there is nothing to range over.
+    expect(view.queryByText('7d')).toBeNull();
+  });
 });

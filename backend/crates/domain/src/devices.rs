@@ -34,6 +34,9 @@ pub struct Point {
     pub unit: Option<String>,
     pub min: Option<f64>,
     pub max: Option<f64>,
+    /// `off | change | interval:N | all`. Sent to clients so a screen never offers
+    /// a chart for a point the platform does not store.
+    pub history: Option<String>,
     pub value: Option<PointValue>,
 }
 

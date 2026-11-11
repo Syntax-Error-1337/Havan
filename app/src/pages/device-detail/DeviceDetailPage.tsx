@@ -231,7 +231,13 @@ function HistoryChart({ deviceId, points }: { deviceId: string; points: DevicePo
   // the least interesting thing on the screen. `isBoolean` must describe *that*
   // point — deriving it from the device turned a 40–80 brightness chart into a
   // clamped 0–1 one.
-  const charted = points.find((p) => typeof p.value === 'number') ?? points[0];
+  // Only points the platform actually stores. A chart for a point with
+  // `history: off` is a promise that can never be kept — the screen would say
+  // "no readings yet" forever, which reads as a bug rather than a policy.
+  // An older server that does not send `history` keeps the old behaviour: show
+  // the chart. Only an explicit `off` hides it.
+  const stored = points.filter((p) => p.history !== 'off');
+  const charted = stored.find((p) => typeof p.value === 'number') ?? stored[0];
   const code = charted?.code;
   const isBoolean = typeof charted?.value === 'boolean';
   // The range the chart is showing. Four options, because a phone chart with a
@@ -239,7 +245,15 @@ function HistoryChart({ deviceId, points }: { deviceId: string; points: DevicePo
   const [range, setRange] = useState<Range>('1d');
   const { data, isPending, isError } = useHistory(deviceId, code, range);
 
-  if (!code) return null;
+  if (!code) {
+    return (
+      <Box gap="xs">
+        <AppText variant="caption" tone="muted">
+          This device does not keep history.
+        </AppText>
+      </Box>
+    );
+  }
 
   const samples = (data?.buckets ?? []).reduce((sum, b) => sum + b.n, 0);
 
