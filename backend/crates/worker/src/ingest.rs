@@ -119,6 +119,27 @@ impl Ingest {
             .mark_job(report.campaign_id, device_id, state, report.pct)
             .await
         {
+            Ok(()) if state == JobStatus::Success => {
+                // The device just became what it was offered. Recording it here is
+                // what makes "up to date" reachable for the customer.
+                match self
+                    .ota
+                    .record_installed(device_id, report.campaign_id)
+                    .await
+                {
+                    Ok(Some(version)) => tracing::info!(
+                        device = %device_id,
+                        version = %version,
+                        "device installed a new firmware"
+                    ),
+                    Ok(None) => tracing::warn!(
+                        device = %device_id,
+                        campaign = %report.campaign_id,
+                        "a device reported success for a campaign it was not offered"
+                    ),
+                    Err(e) => tracing::warn!(error = ?e, "could not record the installed version"),
+                }
+            }
             Ok(()) => tracing::info!(
                 campaign = %report.campaign_id,
                 device = %device_id,

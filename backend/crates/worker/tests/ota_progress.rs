@@ -174,6 +174,14 @@ fn report(campaign_id: Uuid, state: &str) -> OtaReport {
     }
 }
 
+async fn device_firmware(f: &Fixture) -> Option<String> {
+    sqlx::query_scalar("SELECT fw_version FROM devices WHERE id = $1")
+        .bind(f.device_id)
+        .fetch_one(&f.pg)
+        .await
+        .expect("device")
+}
+
 async fn job_state(f: &Fixture) -> String {
     sqlx::query_scalar("SELECT state FROM ota_jobs WHERE campaign_id = $1 AND device_id = $2")
         .bind(f.campaign_id)
@@ -196,6 +204,27 @@ async fn a_device_walks_a_job_from_sent_to_success() {
             .await;
         assert_eq!(job_state(&f).await, state);
     }
+}
+
+#[tokio::test]
+async fn a_successful_flash_records_what_the_device_now_runs() {
+    let Some(f) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+
+    let before = device_firmware(&f).await;
+    for state in ["downloading", "verified", "success"] {
+        f.ingest
+            .handle_ota(f.device_id, &report(f.campaign_id, state))
+            .await;
+    }
+
+    // Progress alone is not deployment: the device is only up to date once the
+    // version it reports having is written down.
+    let after = device_firmware(&f).await;
+    assert_ne!(after, before);
+    assert_eq!(after.as_deref(), Some("9.9.9"));
 }
 
 #[tokio::test]

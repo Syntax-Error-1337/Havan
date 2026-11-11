@@ -65,6 +65,9 @@ pub struct Campaign {
 #[derive(Debug, Clone, Serialize)]
 pub struct OtaOffer {
     pub v: u8,
+    /// The SDK contract calls this `rollout_id`; both are accepted so firmware
+    /// written against either document keeps working.
+    #[serde(alias = "rollout_id")]
     pub campaign_id: Uuid,
     pub version: String,
     pub url: String,
@@ -172,6 +175,17 @@ pub trait OtaRepo {
 
     /// Start a campaign: decide who is in this wave and queue a job per device.
     /// Returns how many jobs were queued.
+    /// A device reports a successful flash: record what it now runs.
+    ///
+    /// Without this, `devices.fw_version` stays whatever the device claimed with
+    /// at pairing time, so a customer's device could never become "up to date" and
+    /// the vendor's own fleet view lied about what was deployed.
+    fn record_installed(
+        &self,
+        device_id: Uuid,
+        campaign_id: Uuid,
+    ) -> impl Future<Output = Result<Option<String>, AppError>> + Send;
+
     /// Stop a campaign. Returns how many queued jobs were skipped.
     ///
     /// In-flight jobs are left alone: a device that is half-way through a flash

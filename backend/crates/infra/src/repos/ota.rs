@@ -281,6 +281,33 @@ impl OtaRepo for PgOta {
         rows.into_iter().map(map_campaign).collect()
     }
 
+    async fn record_installed(
+        &self,
+        device_id: Uuid,
+        campaign_id: Uuid,
+    ) -> Result<Option<String>, AppError> {
+        let mut tx = self.system_tx().await?;
+
+        // One statement: the version comes from the campaign's firmware, so the
+        // device cannot claim a version it was never offered.
+        let row: Option<(String,)> = sqlx::query_as(
+            r#"UPDATE devices d
+                  SET fw_version = f.version
+                 FROM ota_campaigns c
+                 JOIN firmware f ON f.id = c.firmware_id
+                WHERE d.id = $1 AND c.id = $2
+            RETURNING f.version"#,
+        )
+        .bind(device_id)
+        .bind(campaign_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+        Ok(row.map(|(v,)| v))
+    }
+
     async fn halt_campaign(&self, vendor_id: Uuid, id: Uuid) -> Result<u64, AppError> {
         let mut tx = self.tx(vendor_id).await?;
 

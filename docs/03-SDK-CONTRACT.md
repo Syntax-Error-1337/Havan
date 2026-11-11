@@ -353,3 +353,16 @@ This is not hypothetical: the reference simulator had exactly this bug. It worke
 until the broker restarted, then never heard another command for the rest of its
 life. Proven fixed by restarting VerneMQ and sending a command afterwards.
 
+### Report the result even when it worked (MUST)
+
+`success` is not decoration. It is the only signal that changes what the platform
+believes the device runs: the cloud writes the campaign's firmware version onto the
+device record when it arrives, and until then the customer's app cannot say "up to
+date" and the vendor's rollout table cannot close.
+
+Report `downloading` → `verified` → `rebooting` → `success`, with `pct` while
+downloading. A device that flashes silently leaves a rollout running forever and a
+customer reading a version that is no longer true.
+
+The offer envelope accepts `campaign_id` or `rollout_id`; the report likewise.
+

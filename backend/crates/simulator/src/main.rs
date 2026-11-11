@@ -8,10 +8,23 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use anyhow::Context;
-use protocol::envelope::{AckMsg, CommandMsg, CommandOp, DpValue, EventMsg, ShadowMsg};
+use protocol::envelope::{AckMsg, CommandMsg, CommandOp, DpValue, EventMsg, OtaReport, ShadowMsg};
 use protocol::topics;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
+use serde::Deserialize;
 use serde_json::json;
+
+/// The firmware offer, as it arrives on the wire.
+///
+/// Declared here rather than imported: a vendor's firmware does not depend on the
+/// platform's crates, and this struct is the shape the wire promises. Also the
+/// cheapest way to notice when the promise changes.
+#[derive(Deserialize)]
+struct OtaOffer {
+    #[serde(alias = "rollout_id")]
+    campaign_id: Uuid,
+    version: String,
+}
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -78,6 +91,11 @@ async fn main() -> anyhow::Result<()> {
     client
         .subscribe(topics::cmd(&vendor, &home_id, &device), QoS::AtLeastOnce)
         .await?;
+    // Firmware offers arrive on their own lane. A device that ignores them is a
+    // device that can never be updated, which is the one thing OTA exists to fix.
+    client
+        .subscribe(topics::ota(&vendor, &home_id, &device), QoS::AtLeastOnce)
+        .await?;
 
     // The reference bulb's datapoints: 1 = power (bool), 2 = brightness (int),
     // 3 = kelvin (int). A real firmware derives these from the product model.
@@ -114,6 +132,38 @@ async fn main() -> anyhow::Result<()> {
             }
             event = eventloop.poll() => {
                 match event {
+                    Ok(Event::Incoming(Packet::Publish(p))) if p.topic.ends_with("/ota") => {
+                        // The lane carries both directions, so our own progress
+                        // reports come back to us. A payload with a `state` is a
+                        // report; one without is an offer.
+                        let Ok(raw) = serde_json::from_slice::<serde_json::Value>(&p.payload) else {
+                            tracing::warn!("ota message is not JSON");
+                            continue;
+                        };
+                        if raw.get("state").is_some() {
+                            continue;
+                        }
+                        let Ok(offer) = serde_json::from_value::<OtaOffer>(raw.clone()) else {
+                            tracing::warn!(payload = %raw, "ota offer did not parse");
+                            continue;
+                        };
+                        // A real device downloads, verifies, reboots, then reports.
+                        // Reporting every step is what makes the vendor's rollout
+                        // table show progress rather than a jump.
+                        for (state, pct, wait) in [
+                            ("downloading", Some(60u8), 400u64),
+                            ("verified", None, 300),
+                            ("rebooting", None, 400),
+                            ("success", None, 0),
+                        ] {
+                            report(&client, &vendor, &home_id, &device, offer.campaign_id, state, pct)
+                                .await?;
+                            if wait > 0 {
+                                tokio::time::sleep(Duration::from_millis(wait)).await;
+                            }
+                        }
+                        tracing::info!(version = %offer.version, "installed firmware");
+                    }
                     Ok(Event::Incoming(Packet::Publish(p))) => {
                         let Ok(cmd) = serde_json::from_slice::<CommandMsg>(&p.payload) else {
                             tracing::warn!("command envelope did not parse");
@@ -149,6 +199,9 @@ async fn main() -> anyhow::Result<()> {
                     Ok(Event::Incoming(Packet::ConnAck(_))) => {
                         client
                             .subscribe(topics::cmd(&vendor, &home_id, &device), QoS::AtLeastOnce)
+                            .await?;
+                        client
+                            .subscribe(topics::ota(&vendor, &home_id, &device), QoS::AtLeastOnce)
                             .await?;
                         tracing::info!("connected; subscribed to commands");
                     }
@@ -243,4 +296,33 @@ fn split_url(url: &str) -> anyhow::Result<(String, u16)> {
         Some((h, p)) => (h.to_string(), p.parse()?),
         None => (rest.to_string(), 1883),
     })
+}
+
+/// Tell the platform how the flash is going.
+async fn report(
+    client: &AsyncClient,
+    vendor: &str,
+    home: &str,
+    device: &str,
+    campaign_id: Uuid,
+    state: &str,
+    pct: Option<u8>,
+) -> anyhow::Result<()> {
+    let report = OtaReport {
+        v: 1,
+        ts: kernel::now_s(),
+        campaign_id,
+        state: state.to_string(),
+        pct,
+        code: None,
+    };
+    client
+        .publish(
+            topics::ota(vendor, home, device),
+            QoS::AtLeastOnce,
+            false,
+            serde_json::to_vec(&report)?,
+        )
+        .await?;
+    Ok(())
 }
