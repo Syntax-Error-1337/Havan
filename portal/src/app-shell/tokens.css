@@ -136,6 +136,44 @@ button {
   border-color: color-mix(in srgb, var(--warning) 40%, transparent);
 }
 
+.badge--running {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.badge--completed,
+.badge--complete {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+}
+
+.badge--halted,
+.badge--paused {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+/* A rollout's progress bar: the width is the fact, the colour is the judgement. */
+.progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+  min-width: 120px;
+  margin-bottom: 4px;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+select.input {
+  appearance: none;
+  cursor: pointer;
+}
+
 .btn {
   border-radius: 10px;
   border: 1px solid var(--border);

@@ -17,7 +17,7 @@ pub fn router() -> Router<AppState> {
             "/vendor/products/{product_id}/firmware",
             get(list_firmware).post(add_firmware),
         )
-        .route("/vendor/campaigns", post(create))
+        .route("/vendor/campaigns", get(list).post(create))
         .route("/vendor/campaigns/{id}", get(one))
         .route("/vendor/campaigns/{id}/start", post(start))
 }
@@ -132,6 +132,37 @@ async fn create(
         .map_err(ApiError)?;
 
     Ok((StatusCode::CREATED, Json(campaign)))
+}
+
+/// Every campaign with its progress, newest first.
+///
+/// One request for the whole table: a portal that fetches progress per row turns
+/// a 40-campaign catalogue into 41 round trips.
+async fn list(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+) -> ApiResult<Json<Vec<serde_json::Value>>> {
+    let campaigns = state
+        .ota
+        .campaigns(vendor.vendor_id)
+        .await
+        .map_err(ApiError)?;
+
+    let mut out = Vec::with_capacity(campaigns.len());
+    for campaign in campaigns {
+        let progress = state
+            .ota
+            .progress(vendor.vendor_id, campaign.id)
+            .await
+            .map_err(ApiError)?;
+        out.push(serde_json::json!({
+            "campaign": campaign,
+            "progress": progress,
+            "complete": progress.is_complete(),
+        }));
+    }
+
+    Ok(Json(out))
 }
 
 async fn one(

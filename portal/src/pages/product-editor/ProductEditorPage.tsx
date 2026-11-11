@@ -100,6 +100,9 @@ export function ProductEditorPage() {
         </div>
 
         <div className="row">
+          <Link className="btn" to={`/products/${product.id}/firmware`}>
+            Firmware
+          </Link>
           <button className="btn" onClick={runValidation} disabled={validate.isPending}>
             {validate.isPending ? 'Checking…' : 'Validate'}
           </button>

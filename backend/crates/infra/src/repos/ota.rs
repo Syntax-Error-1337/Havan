@@ -220,6 +220,20 @@ impl OtaRepo for PgOta {
         row.map(map_campaign).transpose()
     }
 
+    async fn campaigns(&self, vendor_id: Uuid) -> Result<Vec<Campaign>, AppError> {
+        let mut tx = self.tx(vendor_id).await?;
+        let rows = sqlx::query_as::<_, CampaignRow>(
+            r#"SELECT id, vendor_id, product_id, firmware_id, rollout_pct, status, created_at, started_at
+                 FROM ota_campaigns ORDER BY created_at DESC"#,
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        rows.into_iter().map(map_campaign).collect()
+    }
+
     async fn start_campaign(&self, vendor_id: Uuid, id: Uuid) -> Result<u64, AppError> {
         let mut tx = self.tx(vendor_id).await?;
 
