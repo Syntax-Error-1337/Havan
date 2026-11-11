@@ -80,13 +80,20 @@ Setup gotchas, all learned the hard way:
   preset moved out of it and it fails with a validation error until it is there.
 - RNTL 14's `render` is **async**: `const view = await render(...)`. The global
   `screen` export is not populated by it, so use the returned `view`.
+- RNTL 14's `fireEvent` is **async too**: `await fireEvent.press(...)`. Un-awaited,
+  the press lands before the state update it depends on, the button is still
+  disabled, nothing happens — and the assertion fails somewhere else entirely.
 - Prefer `await view.findByText(...)` over `waitFor(...) + getByText(...)`; the
   latter races the query and passes or fails by timing.
+- Query by placeholder and role, not accessibility label: `getByLabelText` did
+  not match this `TextInput` even though the label was on the node.
 - The suite needs `--forceExit` (the `npm test` script has it): something keeps
   a handle alive after the run and jest waits for it.
 - `src/test/setup.ts` mocks the keychain, expo-router, safe-area and WebSocket.
   Add a mock there rather than in a test file, so no test can quietly reach a
-  real network.
+  real network. `src/test/env.ts` sets `EXPO_PUBLIC_BLE_MOCK=1` before any import,
+  because the radio is chosen at import time — the radar tests then drive the
+  real stand-in radio rather than a mock of a mock.
 
 These catch what typechecking cannot: the `{data}` bug (a bare array read as an
 envelope) typechecked fine and left every home rendering "no devices yet".

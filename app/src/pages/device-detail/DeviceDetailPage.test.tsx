@@ -76,7 +76,7 @@ describe('device detail', () => {
     const view = await renderPage();
     await view.findByText('Desk lamp');
 
-    fireEvent.press(view.getByText('Study'));
+    await fireEvent.press(view.getByText('Study'));
 
     await waitFor(() => expect(calls.some((c) => c.method === 'PATCH')).toBe(true));
     const patch = calls.find((c) => c.method === 'PATCH');

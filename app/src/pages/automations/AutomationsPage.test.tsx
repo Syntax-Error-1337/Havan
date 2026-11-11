@@ -108,7 +108,7 @@ describe('automations', () => {
     const view = await renderPage();
     await view.findByText('Bathroom fan');
 
-    fireEvent.press(view.getByText('History'));
+    await fireEvent.press(view.getByText('History'));
 
     expect(await view.findByText(/every 5 minutes/)).toBeTruthy();
     expect(view.getByText(/set switch\.power = true/)).toBeTruthy();
@@ -119,7 +119,7 @@ describe('automations', () => {
 
     const view = await renderPage();
     await view.findByText('Bathroom fan');
-    fireEvent.press(view.getByText('History'));
+    await fireEvent.press(view.getByText('History'));
 
     expect(await view.findByText(/Never run/)).toBeTruthy();
   });
