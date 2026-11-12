@@ -8,6 +8,7 @@ pub mod devices;
 pub mod history;
 pub mod homes;
 pub mod notifications;
+pub mod ops;
 pub mod ota;
 pub mod pairing;
 pub mod scenes;

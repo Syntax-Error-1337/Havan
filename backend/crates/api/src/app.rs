@@ -118,6 +118,9 @@ pub fn router(state: AppState) -> Router {
     let app = Router::new()
         .route("/healthz", get(health::health))
         .route("/livez", get(health::live))
+        // Scrapes, not a public API. Loopback always; anywhere else needs OPS_TOKEN,
+        // because an open metrics endpoint is a map of the service for anyone curious.
+        .route("/metrics", get(routes::ops::metrics))
         .nest("/v1", v1)
         // Every list response is JSON and repetitive; a hundred-device home is
         // 99 KB of it, and 11 KB gzipped. A phone on a train notices the
@@ -139,10 +142,39 @@ pub fn router(state: AppState) -> Router {
         app
     }
     .with_state(state)
+    // Route label, status and duration for every request. It sits inside the trace
+    // layer so a slow line in the log and a slow bucket in the histogram are the same
+    // request, and outside the handlers so no route can forget to record itself.
+    .layer(axum::middleware::from_fn(record_metrics))
     .layer(
         TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().include_headers(false)),
     )
     .layer(PropagateRequestIdLayer::x_request_id())
     .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+}
+
+/// One middleware instead of a counter in forty handlers.
+///
+/// The label is the *matched* path (`/v1/devices/{id}`), never the raw URL: labelling by
+/// raw path is how one metric becomes one per device id and the metrics endpoint turns
+/// into the outage.
+async fn record_metrics(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use std::time::Instant;
+
+    let route = request
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| "unmatched".to_string());
+
+    let started = Instant::now();
+    let response = next.run(request).await;
+    let elapsed = started.elapsed().as_secs_f64();
+
+    kernel::metrics::observe_http(&route, response.status().as_u16(), elapsed);
+    response
 }

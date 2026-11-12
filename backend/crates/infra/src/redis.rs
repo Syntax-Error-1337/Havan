@@ -71,6 +71,20 @@ impl Cache {
 
     /// Fixed-window counter. Good enough for abuse control; the window boundary
     /// burst is bounded by the caller's limit.
+    /// How many hits a window already holds, without counting one.
+    ///
+    /// Used by the limiter's check-then-record path: a wrong password must not count
+    /// against the limit until it has been *proven* wrong.
+    pub async fn peek(&self, key: &str) -> Result<u64, AppError> {
+        let mut conn = self.conn.clone();
+        redis::cmd("GET")
+            .arg(key)
+            .query_async::<Option<u64>>(&mut conn)
+            .await
+            .map(|v| v.unwrap_or(0))
+            .map_err(|e| AppError::Cache(Box::new(e)))
+    }
+
     pub async fn incr_with_ttl(&self, key: &str, window: Duration) -> Result<u64, AppError> {
         let mut conn = self.conn.clone();
         let script = redis::Script::new(

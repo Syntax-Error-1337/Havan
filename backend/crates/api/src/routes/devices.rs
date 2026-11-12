@@ -154,6 +154,10 @@ pub(crate) async fn publish_command(
     device_id: Uuid,
     outcome: &CommandOutcome,
 ) -> Result<(), ApiError> {
+    // Counted here, not in each caller: scenes and automations publish commands
+    // through this function too, and a metric that misses half the traffic is worse
+    // than none.
+    kernel::metrics::command_dispatched();
     // A replay is already on the wire; publishing again would make the device
     // act twice on one press.
     let Some(publishable) = outcome.publish.as_ref() else {

@@ -41,14 +41,27 @@ struct LoginBody {
 /// tenancy, and a customer account must never be able to become a vendor one.
 async fn login(
     State(state): State<AppState>,
+    peer: crate::limits::Peer,
     Json(body): Json<LoginBody>,
 ) -> ApiResult<Json<domain::identity::Tokens>> {
-    let tokens = state
+    let key = format!(
+        "rl:vendor-login:{}:{}",
+        peer.key(),
+        body.email.to_lowercase()
+    );
+    crate::limits::check(&state, &key, crate::limits::LOGIN).await?;
+
+    match state
         .identity
         .login_vendor(body.vendor_id, &body.email, &body.password)
         .await
-        .map_err(ApiError)?;
-    Ok(Json(tokens))
+    {
+        Ok(tokens) => Ok(Json(tokens)),
+        Err(e) => {
+            crate::limits::record(&state, &key, crate::limits::LOGIN).await;
+            Err(ApiError(e))
+        }
+    }
 }
 
 async fn list(State(state): State<AppState>, vendor: VendorAuth) -> ApiResult<Json<Vec<Product>>> {

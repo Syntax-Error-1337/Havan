@@ -204,6 +204,7 @@ aborting the burst.
 | POST | `/automations/{id}/hook?token=` | **no bearer token**: the URL is the credential |
 | GET | `/notifications` · POST `/notifications/read` |
 | POST | `/push-tokens` |
+| GET | `/metrics` | Prometheus text; loopback, or `x-ops-token` elsewhere |
 | GET | `/catalog/capabilities` | versioned capability catalog, cached 1 h |
 | GET | `/catalog/products?product_key=` | radar metadata by product hash |
 | GET | `/stream` | WebSocket upgrade |
@@ -299,6 +300,45 @@ enumerate rules by watching which one answers differently.
 are scoped to the vendor and return serial numbers, state, firmware and last-seen —
 not the owner, not the home name. Pagination is keyset on `(created_at, id)`; an
 unknown `state` filter is `422` rather than an empty page that looks like "no devices".
+
+## Rate limits
+
+Limits count **failures**, not requests. A request counter cannot tell a person who has
+forgotten which password this is from a script working through a list, and only one of
+them is a problem — so a legitimate sign-in never meets the limit.
+
+| Endpoint | Key | Failures per minute |
+|---|---|---|
+| `POST /auth/login` | source IP + email | 10 |
+| `POST /vendor/auth/login` | source IP + email | 10 |
+| `POST /provision/claim` | source IP + serial | 10 |
+| `POST /auth/register` | source IP | 20 |
+
+Over the limit answers `429` with `{"error":{"code":"rate_limited","message":"…"}}`, and
+the refusal is counted in `haven_rate_limited_total`. The counter lives in Valkey (one
+`INCR` plus an `EXPIRE` on the first hit), so every replica shares one window. If the
+cache is unreachable the check **fails open**: a cache outage must not lock people out of
+their own homes, and the request is still recorded in the audit path.
+
+## Metrics
+
+`GET /metrics` renders Prometheus text (content type `text/plain; version=0.0.4`) with:
+
+| Metric | Type | Labels |
+|---|---|---|
+| `haven_http_requests_total` | counter | `route` (matched path), `status` |
+| `haven_http_request_duration_seconds` | histogram | `route` |
+| `haven_commands_dispatched_total` | counter | — |
+| `haven_ws_connections` | gauge | — |
+| `haven_rate_limited_total` | counter | — |
+| `haven_uptime_seconds` | gauge | — |
+
+The `route` label is the **matched** path (`/v1/devices/{id}`), never the raw URL:
+labelling by raw path turns one metric into one per device id, which is how a metrics
+endpoint becomes the outage it was meant to detect. The endpoint answers on loopback
+without a token, and everywhere else only with `x-ops-token` matching `OPS_TOKEN`
+(compared in constant time). With no `OPS_TOKEN` set it is unreachable from off-machine
+rather than open.
 
 ## Conventions that are non-negotiable
 

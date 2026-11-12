@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::auth::Auth;
 use crate::error::{ApiError, ApiResult};
+use crate::limits::{self, Peer};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -90,9 +91,15 @@ struct MqttConfig {
 /// serial in the claim path itself.
 async fn claim(
     State(state): State<AppState>,
+    peer: Peer,
     Json(body): Json<ClaimBody>,
 ) -> ApiResult<(StatusCode, Json<ClaimResponse>)> {
-    let claimed = state
+    // Keyed by source and serial: a misconfigured device retries in a loop, and that
+    // loop must not become a denial of service on somebody's home.
+    let key = format!("rl:claim:{}:{}", peer.key(), body.sn);
+    limits::check(&state, &key, limits::CLAIM).await?;
+
+    let claimed = match state
         .pairing
         .claim(ClaimRequest {
             product_key: body.pk,
@@ -102,7 +109,13 @@ async fn claim(
             fw: body.fw,
         })
         .await
-        .map_err(ApiError)?;
+    {
+        Ok(claimed) => claimed,
+        Err(e) => {
+            limits::record(&state, &key, limits::CLAIM).await;
+            return Err(ApiError(e));
+        }
+    };
 
     let (host, port) = mqtt_endpoint(&state.cfg.mqtt_url);
 

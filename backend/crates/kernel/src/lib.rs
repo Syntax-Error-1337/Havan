@@ -9,6 +9,7 @@ pub mod config;
 pub mod context;
 pub mod error;
 pub mod ids;
+pub mod metrics;
 pub mod telemetry;
 
 pub use config::Config;

@@ -83,11 +83,17 @@ has coordinates; a webhook fires `202`, executes as `trigger_kind = webhook` wit
 **Done means:** the reference firmware passes checklist items 1–8 and the portal shows
 the badge. Neither is reachable without an ESP32-S3 on a desk.
 
-## Phase 8 — Hardening (day 46–55)
+## Phase 8 — Hardening (day 46–55) — **partly done**
 
-Load test to 20k events/s, OTA campaign with rollback, cert expiry alerts,
-rate limits, audit log, observability (traces, RED metrics). **Done:** chaos run
-(broker killed, DB killed, Redis killed) with the documented behaviour observed.
+- **Done:** OTA campaigns with halt semantics, gzip (99 KB → 11 KB on a device list),
+  `make bench` baselines, the suite running as `haven_app` in CI, `GET /metrics`
+  (requests/latency histogram, commands, websockets, rate-limit refusals) and failure-counted
+  rate limits on logins, registration and claims.
+- **Not done:** the audit log, certificate-expiry alerts, OTA rollback, the 20k events/s
+  load test and the chaos run — the last two need hardware to mean anything.
+
+**Done means:** chaos run (broker killed, DB killed, Redis killed) with the documented
+behaviour observed.
 
 ## Explicitly after v1
 

@@ -34,10 +34,13 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(cfg.bind).await.context("bind")?;
     info!(target: "haven::api", "listening on http://{}", cfg.bind);
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown())
-        .await
-        .context("serve")?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown())
+    .await
+    .context("serve")?;
 
     if cfg.env == Env::Prod {
         info!("shutdown complete");
