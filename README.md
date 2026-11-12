@@ -42,6 +42,8 @@ Read in order:
 6. [05-API.md](docs/05-API.md) — REST + WebSocket surface
 7. [06-FRONTEND.md](docs/06-FRONTEND.md) — feature-sliced rules for app and portal
 8. [07-ROADMAP.md](docs/07-ROADMAP.md) — phases and what "done" means
+9. [08-PERFORMANCE.md](docs/08-PERFORMANCE.md) — measured timings, and the method behind them
+10. [09-RESILIENCE.md](docs/09-RESILIENCE.md) — what each outage does, and the four bugs it found
 
 ## Running it
 
@@ -59,6 +61,8 @@ make db-reset  # drop, re-migrate, re-seed
 make check     # fmt + clippy + the whole suite, on haven_test
 make e2e       # the customer journey over HTTP, against the running stack
 make bench     # read-path timings on a fresh 100-device home
+make chaos     # stop Redis/MQTT/Postgres in turn and assert the degraded behaviour
+               # (WHAT=redis|mqtt|db to run one). Leaves the stack running.
 ```
 
 `make db-reset` terminates the connections it finds (`DROP DATABASE … WITH (FORCE)`):

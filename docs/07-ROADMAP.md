@@ -37,7 +37,7 @@ Expo app: onboarding (register → create home), radar (BLE), Wi-Fi form, dashbo
 (one request, grouped rows), device detail with capability renderers (bool → switch,
 numeric → stepper bounded by the point), scenes, alerts, settings.
 
-**Done:** every screen exists and is exercised by jest (63 tests) and by the browser
+**Done:** every screen exists and is exercised by jest (70 tests) and by the browser
 build. **Not done:** the 90-second phone pass — this machine has CommandLineTools, not
 Xcode, so no simulator or device run. The acceptance step is the first thing to run on
 a Mac with Xcode, and `npm run start:mcp` gives the agent screenshot/tap tools there.
@@ -83,22 +83,33 @@ has coordinates; a webhook fires `202`, executes as `trigger_kind = webhook` wit
 **Done means:** the reference firmware passes checklist items 1–8 and the portal shows
 the badge. Neither is reachable without an ESP32-S3 on a desk.
 
-## Phase 8 — Hardening (day 46–55) — **partly done**
+## Phase 8 — Hardening (day 46–55) — **done except what needs hardware**
 
 - **Done:** OTA campaigns with halt semantics, gzip (99 KB → 11 KB on a device list),
   `make bench` baselines, the suite running as `haven_app` in CI, `GET /metrics`
-  (requests/latency histogram, commands, websockets, rate-limit refusals),
-  failure-counted rate limits on logins, registration and claims, and the **append-only
-  audit log** (written on product publish, key mint/revoke and rollout start/halt; read
-  by the vendor portal, isolated per vendor by RLS).
-  **OTA rollback** landed with it: a rollback is a new, already-running campaign aimed at
-  the devices actually running the bad image, targeting the version the rest of the fleet
-  is on.
-- **Not done:** certificate-expiry alerts, the 20k events/s load test and the chaos run —
-  the last two need hardware to mean anything.
+  (requests/latency histogram, commands, websockets, rate-limit refusals, undelivered
+  commands), failure-counted rate limits on logins, registration and claims, and the
+  **append-only audit log** (written on product publish, key mint/revoke and rollout
+  start/halt; read by the vendor portal, isolated per vendor by RLS).
+- **OTA rollback:** a new, already-running campaign aimed at the devices actually running
+  the bad image, targeting the version the rest of the fleet is on. Never a newer image.
+- **Chaos run — done, and it found four bugs.** `make chaos` stops Valkey, VerneMQ and
+  Postgres in turn and asserts 18 behaviours: the degraded health report, reads failing as
+  `503` with no driver text, commands refusing rather than pretending, recovery without an
+  API restart. `docs/09-RESILIENCE.md` records what each outage does and what the drill
+  does *not* cover. The four bugs (a dead cache hanging logins, the limiter standing
+  between the cache and every login, `/healthz` unable to report a vanished dependency, and
+  commands reported sent while the broker was down) are fixed.
+- **Late delivery:** a command refused during an outage is redelivered when the broker
+  returns, within two minutes, counted in `commands.attempts`.
+- **Not done:** certificate-expiry alerts (there are no device certificates until
+  `haven-cert` exists — Phase 7), the 20k events/s load test and the multi-replica chaos
+  case. The load test is the one item that could be attempted here with a synthetic
+  publisher, but a number from a laptop against a local broker would say nothing about a
+  deployment.
 
-**Done means:** chaos run (broker killed, DB killed, Redis killed) with the documented
-behaviour observed.
+**Done means:** chaos run with the documented behaviour observed — **yes**, 18/18
+assertions, with the four bugs it found fixed in the same pass.
 
 ## Explicitly after v1
 
