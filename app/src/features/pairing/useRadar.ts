@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { request } from '../../shared/api/client';
-import { radio, type NearbyDevice } from '../../shared/lib/ble';
+import { getRadio, type NearbyDevice } from '../../shared/lib/ble';
 
 /** A device that stops advertising is gone; keep it on screen a moment first. */
 const FORGET_AFTER_MS = 9_000;
@@ -54,6 +54,7 @@ export function useRadar(active: boolean) {
     let cancelled = false;
 
     void (async () => {
+      const radio = getRadio();
       const ok = await radio.available();
       if (cancelled) return;
       if (!ok) {

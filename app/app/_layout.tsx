@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Providers } from '../src/app-shell/providers';
+import { ErrorBoundary } from '../src/app-shell/ErrorBoundary';
 import { useSession } from '../src/entities/session';
 import { LoginPage } from '../src/pages/login/LoginPage';
 import { tokens } from '../src/shared/config/tokens';
@@ -13,8 +14,10 @@ import { tokens } from '../src/shared/config/tokens';
 export default function RootLayout() {
   return (
     <Providers>
-      <StatusBar style="light" />
-      <Gate />
+      <StatusBar style="auto" />
+      <ErrorBoundary>
+        <Gate />
+      </ErrorBoundary>
     </Providers>
   );
 }

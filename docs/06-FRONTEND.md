@@ -332,3 +332,24 @@ needs a full Xcode install. This machine has only CommandLineTools, so screens a
 verified through the web build instead. On a Mac with Xcode the same code path
 gives real screenshots and taps.
 
+### A module that cannot load must not take the app with it
+
+`react-native-ble-plx` throws while being **constructed** when the native module is
+absent — which is every browser, and any build without the native dependency. A
+module-scope `new BlePlxRadio()` therefore killed the whole app on web: expo-router
+imports every route eagerly, so opening the login screen imported the radar route,
+which imported the radio, which threw inside `<ContextNavigator>` and blanked the
+tree.
+
+Two rules came out of it, and both are now enforced:
+
+1. **Nothing above a screen constructs a platform module at import time.**
+   `getRadio()` builds one on first use, `require`s the native implementation lazily,
+   and falls back to `NullRadio` when that throws. A browser now shows "No radio
+   here — pairing needs the phone app".
+2. **A render error is a bad screen, not a dead app.** `app-shell/ErrorBoundary.tsx`
+   wraps the router tree, shows what failed, and offers a retry.
+
+The `Unable to run simctl` line in `make app` is Expo detecting no iOS Simulator
+(CommandLineTools, not full Xcode). It is informational and unrelated.
+

@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 
 import { request } from '../../shared/api/client';
-import { radio, type NearbyDevice } from '../../shared/lib/ble';
+import { getRadio, type NearbyDevice } from '../../shared/lib/ble';
 
 type Ticket = { ticket: string; expires_at: string };
 
@@ -25,7 +25,7 @@ export function usePairDevice(homeId: string) {
         method: 'POST',
       });
 
-      const result = await radio.provision({
+      const result = await getRadio().provision({
         deviceId: input.device.id,
         ssid: input.ssid,
         password: input.password,
