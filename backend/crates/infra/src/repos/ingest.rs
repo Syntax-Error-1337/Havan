@@ -162,9 +162,24 @@ impl PgIngest {
                 History::All | History::Interval(_) => true,
             };
             if store {
+                // `interval:N` is a throttle, not a flag: at most one row per point
+                // per N seconds. A temperature sensor that reports every second was
+                // writing 86 400 rows a day under a policy that promised 288 — the
+                // policy existed and did nothing, which is worse than not having it.
+                let throttle: Option<i32> = match policy {
+                    History::Interval(secs) => Some(secs.min(i32::MAX as u32) as i32),
+                    _ => None,
+                };
+
                 sqlx::query(
                     r#"INSERT INTO telemetry (ts, device_id, point_id, vendor_id, num, bool, txt)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
+                       SELECT $1, $2, $3, $4, $5, $6, $7
+                        WHERE $8::integer IS NULL
+                           OR NOT EXISTS (
+                                SELECT 1 FROM telemetry
+                                 WHERE device_id = $2 AND point_id = $3
+                                   AND ts > now() - make_interval(secs => $8)
+                              )"#,
                 )
                 .bind(at)
                 .bind(device_id)
@@ -173,6 +188,7 @@ impl PgIngest {
                 .bind(num)
                 .bind(boolean)
                 .bind(text.as_deref())
+                .bind(throttle)
                 .execute(&mut *tx)
                 .await
                 .map_err(db)?;

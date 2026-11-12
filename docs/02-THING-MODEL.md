@@ -75,6 +75,11 @@ serves to the app so both sides agree:
 is written at all — a chatty power sensor at 1 Hz would otherwise dominate the
 hypertable.
 
+`interval:N` is a **throttle, not a flag**: at most one row per point per N
+seconds, decided at insert time with a single statement, so it holds for every
+replica writing at once. The point's current value is still updated on every
+report — throttling history must never make the device's live state stale.
+
 ## Product definition
 
 ```json
