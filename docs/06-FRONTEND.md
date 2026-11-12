@@ -272,3 +272,16 @@ devices"** above a list of one. `homes.device_count` is a `count(*)` over
 query never set it, so the count was not *wrong*, it was zero by policy. The
 homes repo now opens the transaction with the caller's identity.
 
+### Checking the build, not the dev server
+
+`npm run build && npx vite preview` serves the bundle that would actually ship.
+`vite preview` does **not** inherit `server.proxy`, so `vite.config.ts` declares the
+same `/v1` proxy under `preview` — otherwise the only way to exercise a build was to
+run the dev server, which is not the same code.
+
+Driving that bundle turned up a bug the dev server hid: with an expired token the
+portal rendered the signed-in shell and printed the API's message
+("missing bearer token"). The client cleared the token on 401, but clearing
+localStorage does not re-render a React context. `onTokenChange` now lets the
+session provider follow, so an expired session lands on the login screen.
+

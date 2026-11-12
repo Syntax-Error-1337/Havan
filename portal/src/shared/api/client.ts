@@ -31,10 +31,26 @@ export function getToken(): string | null {
   return token;
 }
 
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+/**
+ * Told whenever the token changes, including when a 401 clears it.
+ *
+ * Without this the client could clear the token and the session provider would
+ * keep rendering the signed-in shell from React state, so an expired session
+ * showed the API's message ("missing bearer token") instead of the login screen.
+ */
+export function onTokenChange(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export function setToken(next: string | null) {
   token = next;
   if (next) localStorage.setItem(STORAGE_KEY, next);
   else localStorage.removeItem(STORAGE_KEY);
+  for (const listener of listeners) listener();
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -1,5 +1,13 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { getToken, setToken } from '../shared/api/client';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { getToken, onTokenChange, setToken } from '../shared/api/client';
 
 type SessionValue = {
   token: string | null;
@@ -15,6 +23,10 @@ const SessionContext = createContext<SessionValue>({
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(getToken());
+
+  // The API client clears the token on a 401. Follow it: otherwise the gate keeps
+  // rendering the signed-in shell and the page shows "missing bearer token".
+  useEffect(() => onTokenChange(() => setTokenState(getToken())), []);
 
   const signIn = useCallback((next: string) => {
     setToken(next);
