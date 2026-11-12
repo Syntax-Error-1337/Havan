@@ -120,6 +120,9 @@ ci-backend: ## the backend suite as CI runs it: scratch db, deploy roles, haven_
 	./scripts/ci-backend.sh
 
 .PHONY: bench
+load: ## how much ingest this stack takes, and whether it loses any (RATE= SECONDS=)
+	@bash scripts/load.sh $(RATE) $(SECONDS)
+
 chaos: ## What breaks when a dependency dies (stops and starts the local containers)
 	@bash scripts/chaos.sh $(WHAT)
 

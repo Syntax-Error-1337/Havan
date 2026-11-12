@@ -8,6 +8,11 @@ license.workspace = true
 name = "haven-sim"
 path = "src/main.rs"
 
+# The synthetic field used by `make load`: same topics, same envelopes, many devices.
+[[bin]]
+name = "haven-load"
+path = "src/bin/load.rs"
+
 [dependencies]
 haven-sdk.workspace = true
 protocol.workspace = true

@@ -64,3 +64,43 @@ Two things worth knowing:
 - **Per-point throttling is handled at insert** (`history: interval:N`), not by
   batching in the writer. See `docs/02-THING-MODEL.md`.
 
+## Ingest: `make load`
+
+`make bench` measures reads. `make load` measures the other half — a synthetic field of
+devices publishing through the same topics and envelopes a real device uses
+(`haven-load`, built on `haven-sdk`, so the wire format cannot drift from the firmware
+contract).
+
+The measurement needs every message to produce a row, so the script sets the fixture
+points to `history = 'all'` for the duration and restores the exact policies afterwards
+(not "change" — a fleet configured for `interval:300` would otherwise be left writing 300×
+the rows it was set up for).
+
+Three runs on this machine, one worker:
+
+| published | achieved | telemetry rows | expected | result |
+|---|---|---|---|---|
+| 200/s | 153/s | 4 000 | 4 000 | no loss |
+| 800/s | 613/s | 5 572 | 16 000 | **65 % shed** |
+| 2 000/s | 1 661/s | 7 088 | 59 996 | **88 % shed** |
+
+**A single worker tops out around 150–200 messages/second.** Above that the broker does not
+block the publisher: VerneMQ drops the slow subscriber's queue (the compose file pins
+`DOCKER_VERNEMQ_MAX_INFLIGHT_MESSAGES: 32`), so a burst is shed, not queued. The pipeline
+is honest about it — the row count stops moving — but the message is gone.
+
+The cause is visible in `infra::repos::ingest::apply`: one transaction per report, one
+metadata `SELECT` of the device's points per report, then an `UPDATE` and a conditional
+`INSERT` per point, then a fan-out publish. The code carries a `shortcut:` comment
+predicting exactly this ("upgrade to a per-device cache when the fleet passes a few hundred
+reports/second per worker"), and the measurement puts the wall where the comment did.
+
+**This is why the roadmap's "20k events/s" was never a claim we could make:** at ~150
+msg/s per worker it would take ~130 workers before the write path, not the broker, is the
+limit. The fix is batching — group reports into one transaction, cache point metadata per
+device with a short TTL, and only then raise the broker's queue limits, which otherwise
+just move the memory cost.
+
+Honest limits of the number itself: one connection publishes for every device (kinder to
+the broker than a real field), everything is local, and the worker shares the machine with
+Postgres, VerneMQ and the generator.
