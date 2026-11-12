@@ -38,7 +38,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 axum = { version = "0.8", features = ["macros", "ws"] }
 http = "1"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors", "request-id", "limit"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "request-id", "limit", "compression-gzip"] }
 sqlx = { version = "0.8", default-features = false, features = [
   "runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "json", "migrate", "macros",
 ] }

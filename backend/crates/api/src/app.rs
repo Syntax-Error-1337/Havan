@@ -113,7 +113,11 @@ pub fn router(state: AppState) -> Router {
     let app = Router::new()
         .route("/healthz", get(health::health))
         .route("/livez", get(health::live))
-        .nest("/v1", v1);
+        .nest("/v1", v1)
+        // Every list response is JSON and repetitive; a hundred-device home is
+        // 99 KB of it, and 11 KB gzipped. A phone on a train notices the
+        // difference and the server spends nothing to make it.
+        .layer(tower_http::compression::CompressionLayer::new());
 
     // CORS exists for one reason: the customer app has a web build used to check
     // layout and flows without a simulator. A native app sends no Origin, so this
