@@ -1,5 +1,6 @@
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { testQueryClient } from '../../test/query';
 
 import { DeviceDetailPage } from './DeviceDetailPage';
 import { ThemeProvider } from '../../app-shell/theme';
@@ -62,7 +63,7 @@ function stubApi(handler: (url: string, init?: RequestInit) => unknown) {
 }
 
 async function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const client = testQueryClient();
   return await render(
     <QueryClientProvider client={client}>
       <ThemeProvider>

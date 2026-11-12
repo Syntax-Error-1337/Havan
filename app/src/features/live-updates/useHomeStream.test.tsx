@@ -1,5 +1,6 @@
 import { render } from '@testing-library/react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { testQueryClient } from '../../test/query';
 import { Text } from 'react-native';
 
 import { useHomeStream } from './useHomeStream';
@@ -57,7 +58,7 @@ function Probe() {
 async function mount() {
   // No `gcTime: 0` here: nothing observes these entries, and an immediate gc
   // collects them before the assertion reads them.
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = testQueryClient();
   client.setQueryData(qk.devices('home-1'), [device()]);
   client.setQueryData(qk.device('d1'), device());
 

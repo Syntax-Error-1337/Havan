@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { POLL_MS } from '../../../shared/config/polling';
 
 import { request } from '../../../shared/api/client';
 import { qk } from '../../../shared/api/keys';
@@ -18,7 +19,7 @@ export function useNotifications(limit = 50) {
     queryKey: qk.notifications,
     queryFn: () => request<Notification[]>(`/notifications?limit=${limit}`),
     // Alerts arrive from automations that may fire while the screen is open.
-    refetchInterval: 30_000,
+    refetchInterval: POLL_MS,
   });
 }
 
@@ -26,7 +27,7 @@ export function useUnreadCount() {
   return useQuery({
     queryKey: qk.unread,
     queryFn: () => request<{ unread: number }>('/notifications/unread-count'),
-    refetchInterval: 30_000,
+    refetchInterval: POLL_MS,
   });
 }
 

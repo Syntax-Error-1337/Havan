@@ -80,3 +80,14 @@ class TestSocket {
 afterEach(() => {
   jest.clearAllMocks();
 });
+
+/**
+ * Queries schedule garbage-collection timers; a timer still pending is why this
+ * suite used to need `--forceExit`. Clearing every client after each test drops
+ * them, so the process can exit on its own.
+ */
+afterEach(() => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { clearTestQueryClients } = require('./query') as typeof import('./query');
+  clearTestQueryClients();
+});
