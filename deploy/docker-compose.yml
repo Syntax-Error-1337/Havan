@@ -1,3 +1,8 @@
+# Every published port is bound to 127.0.0.1 on purpose. These are development
+# services with no auth on some of them — Valkey has no password, VerneMQ allows
+# anonymous clients, SeaweedFS has no access control — and `-p 6379:6379` would
+# hand them to every machine on the same Wi-Fi. A device on the LAN that needs the
+# broker gets an explicit mapping, added when that device exists.
 services:
   # Plain Postgres 16: no Timescale licence in the hosting path (ADR-002).
   # Telemetry is a range-partitioned table; retention drops partitions.
@@ -11,7 +16,7 @@ services:
     command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=256MB"]
     ports:
       # 5433 on the host: another Postgres usually owns 5432 on a dev machine.
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - haven-db:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/00-roles.sql:ro
@@ -27,7 +32,7 @@ services:
     container_name: haven-redis
     command: ["valkey-server", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
@@ -46,9 +51,9 @@ services:
       DOCKER_VERNEMQ_LOG__CONSOLE__LEVEL: info
       DOCKER_VERNEMQ_MAX_INFLIGHT_MESSAGES: "32"
     ports:
-      - "1883:1883"     # MQTT, dev
-      - "8883:8883"     # MQTT over TLS, devices
-      - "8888:8080"     # broker HTTP status (8080 is the API's)
+      - "127.0.0.1:1883:1883"     # MQTT, dev
+      - "127.0.0.1:8883:8883"     # MQTT over TLS, devices
+      - "127.0.0.1:8888:8080"     # broker HTTP status (8080 is the API's)
     volumes:
       - haven-mqtt:/vernemq/data
     ulimits:
@@ -65,8 +70,8 @@ services:
     container_name: haven-s3
     command: ["server", "-dir=/data", "-s3", "-s3.port=9000"]
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - haven-s3:/data
     healthcheck:

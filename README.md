@@ -27,7 +27,7 @@ portal/         Vendor portal (React, feature-sliced)
 sdk/            Device-side SDK: C component, Rust crate, shared protocol docs
 deploy/         Compose, VerneMQ config, TLS, observability
 docs/           Spec, architecture, contracts, roadmap
-migrations/     SQL migrations (applied by `haven-migrate`)
+backend/migrations/  SQL migrations (applied by `haven-migrate`)
 ```
 
 ## Docs
@@ -65,24 +65,62 @@ assistant and this is a multi-tenant commercial cloud.
 
 Apache-2.0 material that is copied verbatim keeps its notice (see `NOTICE`).
 
-## Signing in on a fresh checkout
+## Credentials
 
-**Vendor portal** (`make portal`) — seeded, deterministic, and printed by the seed:
+Everything below is a **development** credential and is deliberately obvious. It is
+also all of them: if a value is not in these tables it lives in `.env` (copied from
+`.env.example`), which is never committed.
 
-| | |
+### Signing in
+
+| Where | Email | Password | Extra |
+|---|---|---|---|
+| Vendor portal (`make portal`) | `admin@acme.test` | `acme-demo-password` | vendor id `11111111-1111-7111-8111-111111111111` (slug `acme`) |
+| Customer app (`make app`) | *none — register* | *none* | `POST /v1/auth/register {email, password}` |
+| API (any client) | — | — | `Authorization: Bearer <access>` from `/v1/auth/login` |
+
+`make seed` creates the vendor, that portal user and three published products; it
+prints the login it made. The vendor id is a constant rather than a fresh UUID per
+run, because an identity that changes every seed cannot be documented — and the
+portal's login form pre-fills it.
+
+There is no default **customer** account on purpose: the customer account is the one
+a device is bound to, and a password everyone knows is not a password.
+
+### Services
+
+| Service | Address | User | Password | Notes |
+|---|---|---|---|---|
+| Postgres 16 | `localhost:5433` | `haven` | `haven` | owner: migrations and DDL |
+| Postgres 16 | `localhost:5433` | `haven_app` | `haven_app` | the app's role — RLS applies to it |
+| Postgres 16 | `localhost:5433` | `haven_system` | *(none)* | `NOLOGIN BYPASSRLS`, reachable only by `SET ROLE` |
+| Valkey (Redis) | `localhost:6380` | — | — | no auth; loopback only |
+| VerneMQ (MQTT) | `localhost:1883`, TLS `:8883` | — | — | anonymous in dev; inspect with `docker exec haven-mqtt vmq-admin cluster show` |
+| SeaweedFS (S3) | `http://localhost:9000` | — | — | no access control; console `:9001` |
+| VerneMQ HTTP listener | `localhost:8888` | — | — | reserved for auth webhooks; serves nothing yet |
+| Object storage keys | — | `S3_ACCESS_KEY` | `S3_SECRET_KEY` | in `.env` |
+
+Database names: `haven` (dev), `haven_test` (suites). TLS is terminated in front of
+the broker in production; the dev listener is plaintext on purpose.
+
+### URLs
+
+| What | URL |
 |---|---|
-| email | `admin@acme.test` |
-| password | `acme-demo-password` |
-| vendor id | `11111111-1111-7111-8111-111111111111` (slug `acme`) |
+| API | `http://127.0.0.1:8080` (`/healthz`; `/metrics` is Phase 8 and not built yet) |
+| App, browser | `http://localhost:8082` (`make app-web`) |
+| App, Metro / Expo Go | `exp://<lan-ip>:8081` (`make app`) |
+| Vendor portal | `http://127.0.0.1:5174` |
 
-`make seed` creates that vendor, that user and three published products. The vendor
-id is a constant rather than a fresh UUID per run, because an identity that changes
-every seed cannot be documented — and the portal's login form pre-fills it.
+Every published dev port is bound to `127.0.0.1`. Valkey has no password, VerneMQ
+allows anonymous clients and SeaweedFS has no access control — publishing them on
+`0.0.0.0` would hand them to every machine on the same Wi-Fi. A device that needs
+the broker from the LAN gets an explicit mapping, added when that device exists.
 
-**Customer app** — there is deliberately no seeded account. Customers register
-themselves (`POST /v1/auth/register {email, password}`, or "Create one" on the login
-screen), then create a home. A shared demo password in a customer app is the one
-credential that must not exist: it is the account a device is bound to.
+Secrets are not listed here: `HAVEN_JWT_SECRET`, `HAVEN_VAULT_KEY`,
+`HAVEN_TICKET_SECRET` and the S3 keys live in `.env` (32+ bytes / 64 hex chars).
+A process that starts without them fails at boot rather than serving with a blank
+key.
 
 ## What CI proves
 
