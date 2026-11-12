@@ -447,6 +447,9 @@ mod tests {
         async fn create_room(&self, _: &Room) -> Result<(), AppError> {
             Ok(())
         }
+        async fn rename_room(&self, _: Uuid, _: &str) -> Result<(), AppError> {
+            Ok(())
+        }
         async fn delete_room(&self, _: Uuid) -> Result<(), AppError> {
             Ok(())
         }

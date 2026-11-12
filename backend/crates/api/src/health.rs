@@ -16,6 +16,9 @@ use crate::AppState;
 pub struct ComponentHealth {
     pub db: bool,
     pub redis: bool,
+    /// Without the broker the API can still serve reads, but every command it
+    /// accepts has nowhere to go — so it is part of readiness, not an aside.
+    pub mqtt: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -27,15 +30,20 @@ pub struct Health {
 
 impl Health {
     pub fn is_ok(&self) -> bool {
-        self.components.db && self.components.redis
+        self.components.db && self.components.redis && self.components.mqtt
     }
 }
 
 pub async fn health(State(state): State<AppState>) -> Response {
     let (db, redis) = tokio::join!(state.pg.ping(), state.cache.ping());
+    let mqtt = state.mqtt.is_connected();
     let health = Health {
-        status: if db && redis { "ok" } else { "degraded" },
-        components: ComponentHealth { db, redis },
+        status: if db && redis && mqtt {
+            "ok"
+        } else {
+            "degraded"
+        },
+        components: ComponentHealth { db, redis, mqtt },
         version: env!("CARGO_PKG_VERSION"),
     };
     let code = if health.is_ok() {
@@ -63,6 +71,7 @@ mod tests {
             components: ComponentHealth {
                 db: true,
                 redis: false,
+                mqtt: true,
             },
             version: "0.1.0",
         };

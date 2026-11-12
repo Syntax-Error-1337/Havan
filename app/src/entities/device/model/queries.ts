@@ -57,6 +57,10 @@ export function useSetPoint(deviceId: string) {
     onSettled: () => {
       // The websocket settles it; a refetch here covers the socket-missed case.
       qc.invalidateQueries({ queryKey: qk.device(deviceId) });
+      // The home screen shows the same points; without this it keeps a value the
+      // device has already moved past (no socket, e.g. when offline).
+      const homeId = qc.getQueryData<Device>(qk.device(deviceId))?.home_id;
+      if (homeId) qc.invalidateQueries({ queryKey: qk.dashboard(homeId) });
     },
   });
 }

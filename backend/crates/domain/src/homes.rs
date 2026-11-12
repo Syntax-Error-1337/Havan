@@ -142,6 +142,12 @@ pub trait HomeRepo {
 
     fn create_room(&self, room: &Room) -> impl Future<Output = Result<(), AppError>> + Send;
 
+    fn rename_room(
+        &self,
+        room_id: Uuid,
+        name: &str,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
     fn delete_room(&self, room_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
 
     fn room_belongs_to(
@@ -342,6 +348,27 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
         Ok(room)
     }
 
+    pub async fn rename_room(
+        &self,
+        room_id: Uuid,
+        home_id: Uuid,
+        user_id: Uuid,
+        name: &str,
+    ) -> Result<(), AppError> {
+        let home = self.require(home_id, user_id).await?;
+        if !home.role.can_manage() {
+            return Err(AppError::forbidden("only an admin can rename a room"));
+        }
+        if !self.repo.room_belongs_to(room_id, home_id).await? {
+            return Err(AppError::not_found("room"));
+        }
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 40 {
+            return Err(AppError::validation("room name must be 1–40 characters"));
+        }
+        self.repo.rename_room(room_id, name).await
+    }
+
     pub async fn delete_room(
         &self,
         room_id: Uuid,
@@ -503,6 +530,21 @@ mod tests {
         }
         async fn create_room(&self, room: &Room) -> Result<(), AppError> {
             self.rooms.lock().unwrap().push(room.clone());
+            Ok(())
+        }
+
+        async fn rename_room(&self, room_id: Uuid, name: &str) -> Result<(), AppError> {
+            // Stored, not ignored: a fake that accepts a rename without applying it
+            // makes a broken rename look tested.
+            if let Some(room) = self
+                .rooms
+                .lock()
+                .unwrap()
+                .iter_mut()
+                .find(|r| r.id == room_id)
+            {
+                room.name = name.to_string();
+            }
             Ok(())
         }
         async fn delete_room(&self, room_id: Uuid) -> Result<(), AppError> {

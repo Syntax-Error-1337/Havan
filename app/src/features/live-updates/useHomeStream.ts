@@ -4,6 +4,7 @@ import { BASE } from '../../shared/api/client';
 import { qk } from '../../shared/api/keys';
 import { useSession } from '../../entities/session';
 import type { Device } from '../../entities/device/model/types';
+import type { Dashboard } from '../../entities/home/model/dashboard';
 
 /**
  * One socket per signed-in app, one subscription per home.
@@ -32,8 +33,25 @@ export function useHomeStream(homeId: string | null) {
       if (!msg || !msg.device_id) return;
       const deviceId = msg.device_id;
 
+      // The dashboard holds its own copy of the device list; a screen that reads it
+      // must repaint from the same event, not from the next refetch.
+      const patchDashboard = (patch: (d: Device) => Device) =>
+        qc.setQueryData<Dashboard>(qk.dashboard(homeId), (dash) =>
+          dash ? { ...dash, devices: dash.devices.map(patch) } : dash,
+        );
+
       switch (msg.t) {
         case 'point.changed':
+          patchDashboard((d) =>
+            d.id === deviceId
+              ? {
+                  ...d,
+                  points: d.points.map((p) =>
+                    p.code === msg.code ? { ...p, value: msg.value as never } : p,
+                  ),
+                }
+              : d,
+          );
           qc.setQueryData<Device[]>(qk.devices(homeId), (devices) =>
             devices?.map((d) =>
               d.id === deviceId
@@ -63,6 +81,7 @@ export function useHomeStream(homeId: string | null) {
         case 'device.offline': {
           const online = msg.t === 'device.online';
           const patch = (d: Device) => (d.id === deviceId ? { ...d, online } : d);
+          patchDashboard(patch);
           qc.setQueryData<Device[]>(qk.devices(homeId), (devices) => devices?.map(patch));
           qc.setQueryData<Device>(qk.device(deviceId), (d) => (d ? patch(d) : d));
           break;

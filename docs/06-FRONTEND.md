@@ -295,6 +295,16 @@ failed six tests on the default 5 s timeout that pass in a second locally, so
 `jest.config.js` sets 15 s with that reason written down. A timeout should mean
 "this test hung", not "this machine is cold".
 
+## Screens
+
+| Screen | Reads | Notes |
+|---|---|---|
+| Home | `/homes/{id}/dashboard` | one request; the payload seeds the device, room, scene and unread caches so widgets keep their own hooks without a second round trip. The socket patches both the dashboard and the device caches |
+| Device | `/devices/{id}`, `/history`, `/updates` | bool → switch, numeric → stepper with the point's own min/max |
+| Scenes | `/homes/{id}/scenes` | says **Sent**, never **Done** — dispatch is not settlement |
+| Alerts | `/notifications` | unread count is its own endpoint |
+| Settings | `/me`, `/homes`, `/homes/{id}/dashboard`, `/homes/{id}/rooms` | grouped rows; each editable row owns its draft so the Save of one row cannot send another's text |
+
 ## Design language
 
 The app speaks iOS, not "a dark theme". `src/shared/config/tokens.ts` is the whole

@@ -5,7 +5,8 @@ import { DashboardPage } from './DashboardPage';
 import { ThemeProvider } from '../../app-shell/theme';
 import { useSession } from '../../entities/session';
 
-/** Reply by route, so one stub serves the four requests the dashboard makes. */
+/** Reply by route. The screen asks for one aggregate; `/homes` still decides whether
+ *  an account has a home at all. */
 function stubApi(handler: (url: string) => unknown) {
   globalThis.fetch = jest.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -53,14 +54,20 @@ describe('dashboard', () => {
           },
         ];
       }
-      if (url.includes('/rooms')) {
-        return [{ id: 'room-1', home_id: 'home-1', name: 'Living room', sort_order: 0 }];
+      if (url.includes('/dashboard')) {
+        // One response for the whole screen, as the server now composes it.
+        return {
+          home: { id: 'home-1', name: 'Flat', timezone: 'UTC' },
+          rooms: [{ id: 'room-1', home_id: 'home-1', name: 'Living room', sort: 0 }],
+          devices: [
+            { id: 'd1', name: 'Lamp', room_id: 'room-1', serial: 'S1', product_key: 'k', category: 'light', online: true, points: [] },
+            { id: 'd2', name: 'Plug', room_id: null, serial: 'S2', product_key: 'k', category: 'plug', online: true, points: [] },
+          ],
+          scenes: [],
+          unread_count: 0,
+        };
       }
-      if (url.includes('/scenes')) return [];
-      return [
-        { id: 'd1', name: 'Lamp', room_id: 'room-1', serial: 'S1', product_key: 'k', category: 'light', online: true, points: [] },
-        { id: 'd2', name: 'Plug', room_id: null, serial: 'S2', product_key: 'k', category: 'plug', online: true, points: [] },
-      ];
+      return [];
     });
 
     const view = await renderDashboard();
@@ -90,6 +97,15 @@ describe('dashboard', () => {
             created_at: '2026-01-01T00:00:00Z',
           },
         ];
+      }
+      if (url.includes('/dashboard')) {
+        return {
+          home: { id: 'home-1', name: 'Flat', timezone: 'UTC' },
+          rooms: [],
+          devices: [],
+          scenes: [],
+          unread_count: 0,
+        };
       }
       return [];
     });

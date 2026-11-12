@@ -63,8 +63,8 @@ echo "e2e against $API"
 request GET "$API/healthz"
 expect "health is ok" 200
 case "$BODY" in
-  *'"db":true'*'"redis":true'*) ok "db and redis connected" ;;
-  *) bad "db and redis connected" "$BODY" ;;
+  *'"db":true'*'"redis":true'*'"mqtt":true'*) ok "db, redis and broker connected" ;;
+  *) bad "db, redis and broker connected" "$BODY" ;;
 esac
 
 # 2. a customer creates an account
@@ -84,7 +84,26 @@ case "$BODY" in
   *) bad "home starts with no devices" "$BODY" ;;
 esac
 
-# 4. a pairing ticket, and a device claiming it
+# 4. rooms, and the screen the app paints from one call
+request POST "$V1/homes/$HOME_ID/rooms" '{"name":"Kitchen"}' "$TOKEN"
+expect "create a room" 201
+ROOM_ID="$(printf '%s' "$BODY" | field id)"
+
+request PATCH "$V1/rooms/$ROOM_ID?home_id=$HOME_ID" '{"name":"Pantry"}' "$TOKEN"
+expect "rename the room" 204
+
+request GET "$V1/homes/$HOME_ID/dashboard" '' "$TOKEN"
+expect "read the dashboard" 200
+case "$BODY" in
+  *'"Pantry"'*) ok "the dashboard carries the rooms" ;;
+  *) bad "the dashboard carries the rooms" "${BODY:0:150}" ;;
+esac
+case "$BODY" in
+  *'"unread_count":'*) ok "the dashboard carries the unread count" ;;
+  *) bad "the dashboard carries the unread count" "${BODY:0:150}" ;;
+esac
+
+# 5. a pairing ticket, and a device claiming it
 request POST "$V1/homes/$HOME_ID/pairing-tickets" '' "$TOKEN"
 expect "mint pairing ticket" 201
 TICKET="$(printf '%s' "$BODY" | field ticket)"
@@ -104,7 +123,7 @@ request POST "$V1/provision/claim" \
 REPLAY_ID="$(printf '%s' "$BODY" | field device_id 2>/dev/null || echo '')"
 if [ "$REPLAY_ID" = "$DEVICE_ID" ]; then ok "claiming twice replays the same device"; else bad "claiming twice replays the same device" "$CODE ${BODY:0:150}"; fi
 
-# 5. the device is visible, with the points its product declares
+# 6. the device is visible, with the points its product declares
 request GET "$V1/devices/$DEVICE_ID" '' "$TOKEN"
 expect "read the device" 200
 case "$BODY" in
@@ -112,7 +131,7 @@ case "$BODY" in
   *) bad "its points came from the product" "$BODY" ;;
 esac
 
-# 6. a command is accepted, and can be read back before the device settles it
+# 7. a command is accepted, and can be read back before the device settles it
 request POST "$V1/devices/$DEVICE_ID/commands" '{"code":"switch.power","value":true}' "$TOKEN"
 expect "send a command" 202
 CMD_ID="$(printf '%s' "$BODY" | field command_id)"
@@ -120,7 +139,7 @@ CMD_ID="$(printf '%s' "$BODY" | field command_id)"
 request GET "$V1/devices/$DEVICE_ID/commands/$CMD_ID" '' "$TOKEN"
 expect "read the command back" 200
 
-# 7. the surfaces the phone draws on its home screen
+# 8. the surfaces the phone draws on its home screen
 request GET "$V1/devices?home_id=$HOME_ID" '' "$TOKEN"
 expect "list devices in the home" 200
 
@@ -133,7 +152,7 @@ expect "unread count" 200
 request GET "$V1/devices/$DEVICE_ID/updates" '' "$TOKEN"
 expect "firmware status" 200
 
-# 8. and the door is shut on another account
+# 9. and the door is shut on another account
 request POST "$V1/auth/register" "{\"email\":\"e2e-$TS-b@haven.dev\",\"password\":\"$SECRET\"}"
 OTHER="$(printf '%s' "$BODY" | field access)"
 
@@ -142,6 +161,9 @@ expect "another account cannot read the device" 404
 
 request POST "$V1/devices/$DEVICE_ID/commands" '{"code":"switch.power","value":true}' "$OTHER"
 expect "another account cannot command the device" 404
+
+request GET "$V1/homes/$HOME_ID/dashboard" '' "$OTHER"
+expect "another account cannot read the dashboard" 404
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

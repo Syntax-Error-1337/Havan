@@ -4,6 +4,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, patch};
 use domain::homes::{Home, Member, Role, Room};
+use domain::notification::NotificationRepo;
+use domain::scenes::SceneRepo;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -21,7 +23,10 @@ pub fn router() -> Router<AppState> {
             patch(set_role).delete(remove_member),
         )
         .route("/homes/{id}/rooms", get(rooms).post(create_room))
-        .route("/rooms/{room_id}", axum::routing::delete(delete_room))
+        // Everything a home screen draws, in one round trip. Five requests to paint
+        // one screen is five chances to be half-painted on a phone.
+        .route("/homes/{id}/dashboard", get(dashboard))
+        .route("/rooms/{room_id}", patch(rename_room).delete(delete_room))
 }
 
 #[derive(Deserialize)]
@@ -210,6 +215,84 @@ async fn create_room(
         .await
         .map_err(ApiError)?;
     Ok((StatusCode::CREATED, Json(room)))
+}
+
+/// What the home screen needs, in one call: the home, its rooms, its devices with
+/// their points, its scenes, and the caller's unread count.
+///
+/// Each part is read through the service that owns it, so the tenancy checks are the
+/// same ones the individual endpoints use — this endpoint inherits the policies
+/// rather than re-implementing them.
+#[derive(serde::Serialize)]
+struct Dashboard {
+    home: Home,
+    rooms: Vec<Room>,
+    devices: Vec<domain::devices::Device>,
+    scenes: Vec<domain::scenes::Scene>,
+    unread_count: i64,
+}
+
+async fn dashboard(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Dashboard>> {
+    // The home check comes first and fails with 404 for a stranger, so the rest
+    // can assume membership.
+    let home = state
+        .homes
+        .require(id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    let rooms = state
+        .homes
+        .rooms(id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+    let devices = state
+        .devices
+        .list(id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+    let scenes = state
+        .scenes
+        .list(id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+    let unread_count = state
+        .notifications
+        .unread_count(auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(Dashboard {
+        home,
+        rooms,
+        devices,
+        scenes,
+        unread_count,
+    }))
+}
+
+#[derive(Deserialize)]
+struct RenameRoom {
+    name: String,
+}
+
+async fn rename_room(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(room_id): Path<Uuid>,
+    axum::extract::Query(q): axum::extract::Query<RoomQuery>,
+    Json(body): Json<RenameRoom>,
+) -> ApiResult<StatusCode> {
+    state
+        .homes
+        .rename_room(room_id, q.home_id, auth.user.id, &body.name)
+        .await
+        .map_err(ApiError)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn delete_room(

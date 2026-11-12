@@ -9,11 +9,14 @@ Workspace, protocol crate, kernel, migrations, compose stack, health endpoint,
 CI. **Done:** `make up && make migrate && cargo test --workspace` green, `/healthz`
 returns `{db, mqtt, redis}` statuses.
 
-## Phase 1 — Identity, homes, devices (day 3–6)
+## Phase 1 — Identity, homes, devices (day 3–6) — **done**
 
-Register/login/refresh, homes, members, rooms. Device CRUD against a product
-catalog row. Dashboard endpoint. **Done:** a user can create a home, a room, and
-see an empty dashboard; RLS proven by a test that vendor A cannot read vendor B.
+Register/login/refresh, homes, members, rooms (create, rename, delete), device CRUD
+against a product catalog row, `GET /homes/{id}/dashboard`.
+
+**Done:** a user can create a home, a room, and see an empty dashboard; RLS proven —
+`api/tests/dashboard.rs` shows a stranger receiving `404` from the dashboard and from a
+room rename, and `ci-backend` runs the whole suite as `haven_app` so the policies bite.
 
 ## Phase 2 — Catalog, claim, shadow (day 7–11)
 
@@ -28,11 +31,16 @@ Command endpoint, validation, idempotency, desired shadow, publish, ack
 handling, settle, WS `command.settled`. **Done:** toggle a light from the app;
 the sim acks; the UI settles; a rejected value shows the device's message.
 
-## Phase 4 — App MVP (day 15–22)
+## Phase 4 — App MVP (day 15–22) — **done, except the phone pass**
 
-Expo app: onboarding, radar (BLE), Wi-Fi form, dashboard, device detail with
-capability renderers, scenes (list + run), settings. **Done:** on a real phone,
-radar → paired → toggled, in under 90 s, with the sim in place of hardware.
+Expo app: onboarding (register → create home), radar (BLE), Wi-Fi form, dashboard
+(one request, grouped rows), device detail with capability renderers (bool → switch,
+numeric → stepper bounded by the point), scenes, alerts, settings.
+
+**Done:** every screen exists and is exercised by jest (63 tests) and by the browser
+build. **Not done:** the 90-second phone pass — this machine has CommandLineTools, not
+Xcode, so no simulator or device run. The acceptance step is the first thing to run on
+a Mac with Xcode, and `npm run start:mcp` gives the agent screenshot/tap tools there.
 
 ## Phase 5 — Vendor portal (day 23–28)
 

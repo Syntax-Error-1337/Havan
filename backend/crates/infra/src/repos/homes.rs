@@ -300,6 +300,16 @@ impl HomeRepo for PgHomes {
             .collect())
     }
 
+    async fn rename_room(&self, room_id: Uuid, name: &str) -> Result<(), AppError> {
+        sqlx::query("UPDATE rooms SET name = $2 WHERE id = $1")
+            .bind(room_id)
+            .bind(name)
+            .execute(&self.pool)
+            .await
+            .map_err(db)?;
+        Ok(())
+    }
+
     async fn create_room(&self, room: &Room) -> Result<(), AppError> {
         sqlx::query(
             r#"INSERT INTO rooms (id, home_id, name, icon, sort) VALUES ($1, $2, $3, $4, $5)"#,

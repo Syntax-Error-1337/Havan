@@ -5,7 +5,9 @@
 //! decision to publish QoS 1 with a bounded in-flight window.
 
 use kernel::AppError;
-use rumqttc::{AsyncClient, EventLoop, MqttOptions, QoS};
+use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::{info, warn};
 
@@ -17,6 +19,10 @@ pub const INFLIGHT: u16 = 16;
 #[derive(Clone)]
 pub struct Mqtt {
     client: AsyncClient,
+    /// Set by the event loop, read by `/healthz`. A handle that exists is not a
+    /// connection: the client will happily queue a publish into a dead socket, so
+    /// the only honest signal is the last event the loop actually saw.
+    connected: Arc<AtomicBool>,
 }
 
 impl Mqtt {
@@ -32,22 +38,34 @@ impl Mqtt {
         opts.set_clean_session(false);
 
         let (client, eventloop) = AsyncClient::new(opts, usize::from(INFLIGHT) * 4);
-        Self::spawn(eventloop);
-        Ok(Self { client })
+        let connected = Arc::new(AtomicBool::new(false));
+        Self::spawn(eventloop, connected.clone());
+        Ok(Self { client, connected })
     }
 
-    fn spawn(mut eventloop: EventLoop) {
+    fn spawn(mut eventloop: EventLoop, connected: Arc<AtomicBool>) {
         tokio::spawn(async move {
             loop {
                 match eventloop.poll().await {
+                    Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                        connected.store(true, Ordering::Relaxed);
+                    }
                     Ok(_) => {}
                     Err(e) => {
+                        // A poll error is the loop's only evidence of a dead link.
+                        connected.store(false, Ordering::Relaxed);
                         warn!(error = %e, "mqtt event loop error; backing off");
                         tokio::time::sleep(Duration::from_secs(2)).await;
                     }
                 }
             }
         });
+    }
+
+    /// True once the broker has acknowledged a connection and no poll has failed
+    /// since.
+    pub fn is_connected(&self) -> bool {
+        self.connected.load(Ordering::Relaxed)
     }
 
     pub async fn publish(&self, topic: &str, payload: Vec<u8>) -> Result<(), AppError> {

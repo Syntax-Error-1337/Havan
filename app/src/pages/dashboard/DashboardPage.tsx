@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
+
 import { Box, Button, Screen, AppText, Section } from '../../shared/ui';
-import { DeviceCard, useDevices } from '../../entities/device';
-import { useCreateHome, useCreateRoom, useHomes, useRooms } from '../../entities/home';
-import { useUnreadCount } from '../../entities/notification';
+import { DeviceCard } from '../../entities/device';
+import { useCreateHome, useCreateRoom, useDashboard, useHomes } from '../../entities/home';
+import { qk } from '../../shared/api/keys';
 import { useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
@@ -13,16 +15,24 @@ import { groupByRoom } from './sections';
 import { SceneStrip } from '../../widgets/scene-strip/SceneStrip';
 
 /**
- * Home screen. Four honest states: no home yet, loading, empty, list. Errors are
- * the empty state with a different sentence — a user cannot act on a stack trace.
+ * Home screen.
+ *
+ * One request paints it: `/homes/{id}/dashboard` returns the home, its rooms, its
+ * devices with their points, its scenes and the unread count. The payload is then
+ * written into the caches the widgets already read, so `DeviceCard` and `SceneStrip`
+ * keep working without a second round trip — and the socket keeps patching them.
+ *
+ * Four honest states: no home yet, loading, empty, list. Errors are the empty state
+ * with a different sentence — a user cannot act on a stack trace.
  */
 export function DashboardPage() {
   const router = useRouter();
   const { color } = useTheme();
+  const qc = useQueryClient();
 
   const homeId = useSession((s) => s.homeId);
   const setHome = useSession((s) => s.setHome);
-  const { data: homes, isPending: homesPending } = useHomes();
+  const { data: homes, isPending: homesPending } = useHomes(Boolean(homeId));
   const createHome = useCreateHome();
 
   // First run on a new account: adopt the only home there is.
@@ -33,20 +43,32 @@ export function DashboardPage() {
   // Live state for whichever home is open.
   useHomeStream(homeId);
 
-  const { data, isPending, refetch } = useDevices(homeId ?? undefined);
-  const devices = useMemo(() => data ?? [], [data]);
+  const { data: dashboard, isPending, refetch } = useDashboard(homeId ?? null);
 
-  const { data: unread } = useUnreadCount();
-  const { data: rooms } = useRooms(homeId ?? undefined);
+  // Seed the per-entity caches from the aggregate: the widgets below were written
+  // against those keys, and this keeps one request for the whole screen.
+  useEffect(() => {
+    if (!dashboard || !homeId) return;
+    qc.setQueryData(qk.devices(homeId), dashboard.devices);
+    qc.setQueryData(qk.scenes(homeId), dashboard.scenes);
+    qc.setQueryData(qk.unread, { unread: dashboard.unread_count });
+    qc.setQueryData([...qk.home(homeId), 'rooms'], dashboard.rooms);
+  }, [dashboard, homeId, qc]);
+
+  const devices = useMemo(() => dashboard?.devices ?? [], [dashboard]);
+  const rooms = dashboard?.rooms;
+  const unread = dashboard?.unread_count ?? 0;
   const createRoom = useCreateRoom(homeId ?? undefined);
   const [addingRoom, setAddingRoom] = useState(false);
   const [roomName, setRoomName] = useState('');
 
   const sections = useMemo(() => groupByRoom(devices, rooms), [devices, rooms]);
 
-  if (homesPending) return <Screen>{null}</Screen>;
+  // A disabled query reports `isPending` forever, so the gate is "no home yet", not
+  // "the homes list has not arrived" — with a stored home we never ask for it.
+  if (!homeId && homesPending) return <Screen>{null}</Screen>;
 
-  if (!homes || homes.length === 0) {
+  if (!homeId) {
     return (
       <Screen>
         <Box p="xl" gap="md" center flex={1}>
@@ -76,36 +98,41 @@ export function DashboardPage() {
     );
   }
 
-  const home = homes.find((h) => h.id === homeId) ?? homes[0]!;
+  // The dashboard already carries the home; the list is only a fallback for the
+  // moment before it lands.
+  const homeName = dashboard?.home.name ?? homes?.find((h) => h.id === homeId)?.name ?? 'Home';
 
   return (
     <Screen>
       <Box px="lg" py="md" row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <Box gap="xs">
           <AppText variant="display" weight="700">
-            {home.name}
+            {homeName}
           </AppText>
           <AppText variant="caption" tone="muted">
-            {home.device_count} device{home.device_count === 1 ? '' : 's'}
+            {devices.length} device{devices.length === 1 ? '' : 's'}
           </AppText>
         </Box>
         <Box row gap="sm" style={{ alignItems: 'center' }}>
           <Button
-            label={unread && unread.unread > 0 ? `Alerts (${unread.unread})` : 'Alerts'}
+            label={unread > 0 ? `Alerts (${unread})` : 'Alerts'}
             variant="ghost"
             onPress={() => router.push('/alerts')}
           />
+          <Button label="Room" variant="ghost" onPress={() => setAddingRoom((v) => !v)} />
           <Button
-            label="Room"
+            label="Automatic"
             variant="ghost"
-            onPress={() => setAddingRoom((v) => !v)}
+            onPress={() => router.push('/automations')}
           />
-          <Button label="Automatic" variant="ghost" onPress={() => router.push('/automations')} />
+          <Button label="Settings" variant="ghost" onPress={() => router.push('/settings')} />
           <Button label="Add" onPress={() => router.push('/add-device')} />
         </Box>
       </Box>
 
-      {homeId ? <SceneStrip homeId={homeId} /> : null}
+      {homeId ? (
+        <SceneStrip homeId={homeId} scenes={dashboard?.scenes} pending={!dashboard} />
+      ) : null}
 
       {addingRoom ? (
         <Box row gap="sm" px="lg" style={{ alignItems: 'center' }}>
@@ -160,10 +187,16 @@ export function DashboardPage() {
           <AppText tone="muted" style={{ textAlign: 'center' }}>
             Tap Add and we will look for devices nearby.
           </AppText>
-          <Button label="Try again" variant="ghost" onPress={() => refetch()} />
+          <Pressable onPress={() => refetch()} accessibilityRole="button">
+            <AppText variant="body" tone="accent">
+              Try again
+            </AppText>
+          </Pressable>
         </Box>
       ) : (
-        <ScrollView contentContainerStyle={{ paddingTop: tokens.space.sm, paddingBottom: tokens.space.xxl }}>
+        <ScrollView
+          contentContainerStyle={{ paddingTop: tokens.space.sm, paddingBottom: tokens.space.xxl }}
+        >
           {sections.map((section) => (
             <Section key={section.title} title={section.title}>
               {section.data.map((device) => (

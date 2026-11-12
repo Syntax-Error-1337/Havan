@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 
 import { Box, AppText } from '../../shared/ui';
 import { tokens } from '../../app-shell/theme';
-import { outcome, useActivateScene, useScenes } from '../../entities/scene';
+import { outcome, useActivateScene, useScenes, type Scene } from '../../entities/scene';
 
 /**
  * The home's scenes, as buttons.
@@ -14,9 +14,23 @@ import { outcome, useActivateScene, useScenes } from '../../entities/scene';
  * place, because a press that silently does nothing is worse than one that fails
  * out loud.
  */
-export function SceneStrip({ homeId }: { homeId: string }) {
+export function SceneStrip({
+  homeId,
+  scenes: provided,
+  pending: waiting = false,
+}: {
+  homeId: string;
+  /** The dashboard already fetched them; a second call for the same list is waste. */
+  scenes?: Scene[];
+  /** The owner is still loading. Render nothing rather than firing our own request. */
+  pending?: boolean;
+}) {
   const router = useRouter();
-  const { data: scenes, isPending } = useScenes(homeId);
+  // Only fetch when nobody else is feeding us: `provided` means the data is here,
+  // `waiting` means it is on its way.
+  const query = useScenes(homeId, provided === undefined && !waiting);
+  const scenes = provided ?? query.data;
+  const isPending = waiting || (provided === undefined && query.isPending);
   const activate = useActivateScene(homeId);
   const [note, setNote] = useState<{ sceneId: string; text: string; bad: boolean } | null>(null);
 

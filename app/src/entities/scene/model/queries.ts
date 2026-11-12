@@ -25,11 +25,11 @@ export type Activation = {
   failed: { index: number; device_id: string; code: string; message: string }[];
 };
 
-export function useScenes(homeId: string | undefined) {
+export function useScenes(homeId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: qk.scenes(homeId ?? 'none'),
     queryFn: () => request<Scene[]>(`/homes/${homeId}/scenes`),
-    enabled: Boolean(homeId),
+    enabled: Boolean(homeId) && enabled,
     staleTime: 60_000,
   });
 }
@@ -72,7 +72,11 @@ export function useCreateScene(homeId: string | undefined) {
         method: 'POST',
         body: JSON.stringify(input),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.scenes(homeId ?? 'none') }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.scenes(homeId ?? 'none') });
+      // The dashboard carries the same scenes; a new one must appear there too.
+      void qc.invalidateQueries({ queryKey: qk.dashboard(homeId ?? 'none') });
+    },
   });
 }
 
@@ -80,6 +84,10 @@ export function useDeleteScene(homeId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => request<void>(`/scenes/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.scenes(homeId ?? 'none') }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.scenes(homeId ?? 'none') });
+      // The dashboard carries the same scenes; a new one must appear there too.
+      void qc.invalidateQueries({ queryKey: qk.dashboard(homeId ?? 'none') });
+    },
   });
 }
