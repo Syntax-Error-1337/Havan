@@ -7,7 +7,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
+  # Deliberately no global `RUSTFLAGS: -D warnings`: that applies to every crate in
+  # the graph, so a warning inside a dependency fails our build. Warnings are denied
+  # where they matter — on our own code, by clippy's `-- -D warnings`.
 
 jobs:
   backend:
@@ -31,12 +33,19 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 20
 
     env:
-      DATABASE_URL: postgres://haven:haven@localhost:5432/haven
-      TEST_DATABASE_URL: postgres://haven:haven@localhost:5432/haven
-      # Seeding in integration tests runs as the owner; RLS has no vendor context.
+      # Two identities, because they are not the same thing:
+      #   haven      owner — runs DDL and seeds fixtures
+      #   haven_app  ordinary LOGIN — what the application connects as, and the
+      #              only identity row-level security actually applies to
+      # A suite that only ever runs as the owner proves nothing about tenancy;
+      # that is exactly how this repo's first RLS policies ended up as decoration.
+      OWNER_DATABASE_URL: postgres://haven:haven@localhost:5432/haven
+      DATABASE_URL: postgres://haven_app:haven_app@localhost:5432/haven
+      TEST_DATABASE_URL: postgres://haven_app:haven_app@localhost:5432/haven
       MIGRATE_DATABASE_URL: postgres://haven:haven@localhost:5432/haven
       REDIS_URL: redis://localhost:6379
       TEST_REDIS_URL: redis://localhost:6379
+      MQTT_URL: mqtt://localhost:1883
       HAVEN_JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789
       HAVEN_TICKET_SECRET: ci-ticket-secret-0123456789abcdef0123
       HAVEN_VAULT_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
@@ -49,6 +58,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
+
+      # A service container cannot be configured for anonymous access at start, so
+      # the broker runs as a step. Without it the websocket and worker suites do not
+      # fail — they return early with "skipping", which is the worst kind of green.
+      - name: broker
+        run: |
+          docker run -d --name mqtt -p 1883:1883 eclipse-mosquitto:2 \
+            sh -c "printf 'listener 1883 0.0.0.0\nallow_anonymous true\n' > /tmp/m.conf && exec mosquitto -c /tmp/m.conf"
+
+      - name: roles and grants
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          psql "$OWNER_DATABASE_URL" -v ON_ERROR_STOP=1 -f deploy/postgres/init.sql
+
       - name: fmt
         run: cargo fmt --manifest-path backend/Cargo.toml --all --check
       - name: clippy
@@ -56,7 +79,15 @@ jobs:
       - name: migrate
         run: cargo run --manifest-path backend/Cargo.toml -p migrate
       - name: test
-        run: cargo test --manifest-path backend/Cargo.toml --workspace
+        run: |
+          set -o pipefail
+          cargo test --manifest-path backend/Cargo.toml --workspace 2>&1 | tee /tmp/test.log
+          # A suite that quietly skips because a service is missing reports success.
+          # Treat that as a failure: the point of running CI is to run them.
+          if grep -q "skipping:" /tmp/test.log; then
+            echo "::error::an integration suite skipped — a service it needs is missing"
+            exit 1
+          fi
 
   contract:
     # The SDK contract is prose plus types; this job proves the two agree.

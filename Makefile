@@ -15,7 +15,9 @@ CARGO := cd $(BACKEND) && cargo
 
 .PHONY: help
 help: ## show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
+	@# `include .env` puts a second file in MAKEFILE_LIST, and grep then prefixes
+	@# every line with its filename — which made this list read "Makefile  format".
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: up
@@ -86,3 +88,24 @@ app: ## start the Expo app
 .PHONY: portal
 portal: ## start the vendor portal
 	cd portal && npm run dev
+
+.PHONY: app-web
+app-web: ## serve the customer app in a browser (no simulator needed)
+	cd app && EXPO_PUBLIC_BLE_MOCK=1 EXPO_PUBLIC_API_URL=http://127.0.0.1:8080/v1 \
+	  npx expo start --web --port 8082
+
+.PHONY: ci-backend
+ci-backend: ## the backend suite as CI runs it: scratch db, deploy roles, haven_app
+	./scripts/ci-backend.sh
+
+.PHONY: bench
+bench: ## baseline the read paths for the current home
+	./scripts/bench.sh /tmp/tok.txt "$$(cat /tmp/hid.txt)" "$$(cat /tmp/did.txt)"
+
+.PHONY: db-reset
+db-reset: ## drop and rebuild the dev database from migrations
+	@docker exec -i haven-db psql -U haven -d postgres -c 'DROP DATABASE IF EXISTS haven;'
+	docker exec -i haven-db psql -U haven -d postgres -c 'CREATE DATABASE haven OWNER haven;'
+	docker exec -i haven-db psql -U haven -d haven -q < deploy/postgres/init.sql
+	$(MAKE) migrate
+

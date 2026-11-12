@@ -64,3 +64,23 @@ tenancy and provisioning story, because Gladys is a single-home self-hosted
 assistant and this is a multi-tenant commercial cloud.
 
 Apache-2.0 material that is copied verbatim keeps its notice (see `NOTICE`).
+
+## What CI proves
+
+Four jobs on every push: `backend` (fmt, clippy, migrations, the full suite),
+`contract` (the SDK types against their tests), `app`, `portal`.
+
+Two details in `backend` are the difference between a green tick and a useful one:
+
+- **The suite runs as `haven_app`, not as the owner.** `deploy/postgres/init.sql`
+  creates the two roles in CI exactly as it does in production, and `DATABASE_URL`
+  points at the ordinary login. Run as the owner, row-level security is bypassed and
+  every tenancy policy could be wrong while the suite stayed green — which is
+  precisely what happened in this repo's first phase.
+- **A skipped suite fails the build.** Integration tests return early with
+  "skipping" when a database, Redis or the broker is absent. That is right on a
+  laptop and wrong on a runner, so CI greps for it and exits non-zero. Without that
+  check, a missing service silently leaves the websocket and OTA paths untested.
+
+`make ci-backend` reproduces it locally against a scratch database.
+
