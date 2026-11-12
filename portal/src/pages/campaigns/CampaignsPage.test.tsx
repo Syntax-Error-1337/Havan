@@ -83,6 +83,45 @@ function renderPage() {
 }
 
 describe('rollouts', () => {
+  it('offers a way back once a rollout has finished', async () => {
+    const calls = stubFetch((url) =>
+      url.endsWith('/vendor/campaigns')
+        ? [row({ status: 'complete', rollout_pct: 100 }, { success: 10, failed: 0 })]
+        : [product],
+    );
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Roll back' }));
+
+    const posted = calls.find((c) => c.url.endsWith('/campaigns/camp-1/rollback'));
+    expect(posted?.method).toBe('POST');
+  });
+
+  it('says how many devices a rollback moved, and to what', async () => {
+    stubFetch((url) => {
+      if (url.endsWith('/campaigns/camp-1/rollback')) {
+        return {
+          campaign_id: 'camp-2',
+          from_version: '2.0.0',
+          to_version: '1.4.2',
+          queued: 3,
+        };
+      }
+      return url.endsWith('/vendor/campaigns')
+        ? [row({ status: 'complete', rollout_pct: 100 }, { success: 10, failed: 0 })]
+        : [product];
+    });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Roll back' }));
+
+    // Both versions, because "rolled back" without "to what" is not an answer.
+    expect(await screen.findByText('1.4.2')).toBeInTheDocument();
+    expect(screen.getByText('2.0.0')).toBeInTheDocument();
+    expect(screen.getByText(/3/)).toBeInTheDocument();
+  });
+
+
   it('leads with failures rather than a percentage', async () => {
     stubFetch((url) => (url.endsWith('/vendor/campaigns') ? [row()] : [product]));
     renderPage();

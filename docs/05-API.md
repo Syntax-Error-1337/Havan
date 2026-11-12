@@ -302,6 +302,31 @@ are scoped to the vendor and return serial numbers, state, firmware and last-see
 not the owner, not the home name. Pagination is keyset on `(created_at, id)`; an
 unknown `state` filter is `422` rather than an empty page that looks like "no devices".
 
+## Rolling back a bad image
+
+`POST /vendor/campaigns/{id}/rollback` answers `201` with
+`{ campaign_id, from_version, to_version, queued }`.
+
+It is deliberately **not an undo**. Devices that already flashed the bad image have to be
+told to flash again, so a rollback creates a second campaign — already running, because a
+rollback that waits for someone to press start is a rollback that does not happen at 3 a.m.
+— and queues **only the devices currently reporting that campaign's version**. A fleet that
+never took the image is left alone.
+
+The target is chosen in this order:
+
+1. the version **most of the fleet is actually running**, among firmware older than the bad
+   one — putting three devices back beside the hundred that never left is what a person
+   means by "roll back";
+2. failing that, the newest image uploaded before the bad one.
+
+Never a *newer* image: rolling forward to a hotfix is a new campaign, and calling it a
+rollback would put the wrong word in the audit trail. If neither rule finds anything the
+request is refused with `422` rather than queuing nothing and reporting success.
+
+A rollback is recorded as `campaign.rollback_started`, with both versions, the count and
+the campaign it reacted to.
+
 ## The audit trail
 
 Administrative actions append a row to `audit_log`: publishing a product, minting or

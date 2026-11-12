@@ -21,6 +21,9 @@ pub fn router() -> Router<AppState> {
         .route("/vendor/campaigns/{id}", get(one))
         .route("/vendor/campaigns/{id}/start", post(start))
         .route("/vendor/campaigns/{id}/halt", post(halt))
+        // Rollback is its own campaign, not an undo: the devices that took the bad image
+        // have to be told to flash again.
+        .route("/vendor/campaigns/{id}/rollback", post(rollback))
 }
 
 #[derive(Deserialize)]
@@ -266,4 +269,46 @@ async fn halt(
         .await;
 
     Ok(Json(serde_json::json!({ "skipped": skipped })))
+}
+
+/// `POST /vendor/campaigns/{id}/rollback`
+///
+/// Creates and starts a campaign that offers the firmware this one replaced, to exactly
+/// the devices running what it shipped. Answers `201` with the new campaign id, both
+/// versions, and how many devices were queued.
+async fn rollback(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    peer: crate::limits::Peer,
+    Path(id): Path<Uuid>,
+) -> ApiResult<(StatusCode, Json<domain::ota::Rollback>)> {
+    let result = state
+        .ota
+        .rollback(vendor.vendor_id, id)
+        .await
+        .map_err(ApiError)?;
+
+    state
+        .audit
+        .record(
+            domain::audit::AuditEntry::new(
+                vendor.vendor_id,
+                domain::audit::ActorKind::User,
+                "campaign.rollback_started",
+                "ota_campaign",
+            )
+            .by(vendor.user_id)
+            .on(result.campaign_id)
+            .with_request(&vendor.request_id)
+            .from_ip(peer.ip())
+            .detail(serde_json::json!({
+                "from": result.from_version,
+                "to": result.to_version,
+                "queued": result.queued,
+                "rolled_back_campaign": id,
+            })),
+        )
+        .await;
+
+    Ok((StatusCode::CREATED, Json(result)))
 }

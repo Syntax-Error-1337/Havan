@@ -66,3 +66,11 @@ export function headline(row: CampaignRow): string {
   if (row.complete) return 'Done';
   return `${p.success} of ${p.total} updated`;
 }
+
+/** What a rollback answers: the campaign it created, both versions, and how many devices. */
+export type Rollback = {
+  campaign_id: string;
+  from_version: string;
+  to_version: string;
+  queued: number;
+};

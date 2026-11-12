@@ -8,6 +8,7 @@ import {
   useCreateCampaign,
   useFirmware,
   useHaltCampaign,
+  useRollbackCampaign,
   useStartCampaign,
 } from '../../entities/ota';
 import { ApiError } from '../../shared/api/client';
@@ -22,6 +23,7 @@ export function CampaignsPage() {
   const { data: products } = useProducts();
   const start = useStartCampaign();
   const halt = useHaltCampaign();
+  const rollback = useRollbackCampaign();
   const create = useCreateCampaign();
 
   const [showNew, setShowNew] = useState(false);
@@ -68,6 +70,28 @@ export function CampaignsPage() {
       </div>
 
       {notice ? <p className="muted">{notice}</p> : null}
+
+      {rollback.error ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <p className="error">
+            {rollback.error instanceof ApiError
+              ? rollback.error.message
+              : 'Could not roll back this campaign.'}
+          </p>
+        </div>
+      ) : null}
+
+      {rollback.data ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <p style={{ margin: 0 }}>
+            Rolling <strong>{rollback.data.queued}</strong>{' '}
+            {rollback.data.queued === 1 ? 'device' : 'devices'} from{' '}
+            <span className="mono">{rollback.data.from_version}</span> back to{' '}
+            <span className="mono">{rollback.data.to_version}</span>.{' '}
+            <Link to="/audit">Recorded in the audit log</Link>.
+          </p>
+        </div>
+      ) : null}
 
       {showNew ? (
         <form onSubmit={submit} className="card" style={{ marginBottom: 20 }}>
@@ -201,9 +225,22 @@ export function CampaignsPage() {
                           {halt.isPending && halt.variables === row.campaign.id ? 'Halting…' : 'Halt'}
                         </button>
                       ) : (
-                        <Link className="muted" to={`/products/${row.campaign.product_id}/firmware`}>
-                          Firmware
-                        </Link>
+                        <div className="row" style={{ gap: 8 }}>
+                          {/* A finished rollout is exactly when someone finds out the
+                              image was bad — so the way back belongs next to Halt. */}
+                          <button
+                            className="btn"
+                            disabled={rollback.isPending && rollback.variables === row.campaign.id}
+                            onClick={() => rollback.mutate(row.campaign.id)}
+                          >
+                            {rollback.isPending && rollback.variables === row.campaign.id
+                              ? 'Rolling back…'
+                              : 'Roll back'}
+                          </button>
+                          <Link className="muted" to={`/products/${row.campaign.product_id}/firmware`}>
+                            Firmware
+                          </Link>
+                        </div>
                       )}
                     </td>
                   </tr>

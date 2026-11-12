@@ -130,6 +130,18 @@ impl DeviceUpdate {
     }
 }
 
+/// What a rollback did, in a shape the portal can show afterwards.
+#[derive(Debug, Clone, Serialize)]
+pub struct Rollback {
+    /// The new campaign that offers the older image.
+    pub campaign_id: Uuid,
+    pub from_version: String,
+    pub to_version: String,
+    /// Devices queued. Zero is legitimate — nobody took the bad firmware — and is worth
+    /// seeing rather than being reported as success.
+    pub queued: u64,
+}
+
 pub trait OtaRepo {
     /// The customer-facing view of one device's firmware.
     ///
@@ -166,6 +178,17 @@ pub trait OtaRepo {
         vendor_id: Uuid,
         id: Uuid,
     ) -> impl Future<Output = Result<Option<Campaign>, AppError>> + Send;
+
+    /// Offer a campaign's devices the firmware it replaced, as a new campaign.
+    ///
+    /// Not an "undo" of the original: the devices that already flashed the bad image have
+    /// to be told to flash again, so the honest model is a new rollout to exactly those
+    /// devices. Refuses when there is nothing to go back to.
+    fn rollback(
+        &self,
+        vendor_id: Uuid,
+        campaign_id: Uuid,
+    ) -> impl Future<Output = Result<Rollback, AppError>> + Send;
 
     /// Every campaign for a vendor, newest first — the portal's table.
     fn campaigns(

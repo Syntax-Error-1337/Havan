@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { request } from '../../../shared/api/client';
 import { qk } from '../../../shared/api/keys';
-import type { Campaign, CampaignRow, Firmware } from './types';
+import type { Campaign, CampaignRow, Firmware, Rollback } from './types';
 
 export function useFirmware(productId: string | undefined) {
   return useQuery({
@@ -57,6 +57,22 @@ export function useStartCampaign() {
     mutationFn: (id: string) =>
       request<{ queued: number }>(`/vendor/campaigns/${id}/start`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.campaigns }),
+  });
+}
+
+/**
+ * Roll a campaign back: a new, already-running campaign that offers the previous
+ * image to exactly the devices running what this one shipped.
+ */
+export function useRollbackCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<Rollback>(`/vendor/campaigns/${id}/rollback`, { method: 'POST' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['campaigns'] });
+      void qc.invalidateQueries({ queryKey: ['audit'] });
+    },
   });
 }
 

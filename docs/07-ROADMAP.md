@@ -91,8 +91,11 @@ the badge. Neither is reachable without an ESP32-S3 on a desk.
   failure-counted rate limits on logins, registration and claims, and the **append-only
   audit log** (written on product publish, key mint/revoke and rollout start/halt; read
   by the vendor portal, isolated per vendor by RLS).
-- **Not done:** certificate-expiry alerts, OTA rollback, the 20k events/s load test and
-  the chaos run — the last two need hardware to mean anything.
+  **OTA rollback** landed with it: a rollback is a new, already-running campaign aimed at
+  the devices actually running the bad image, targeting the version the rest of the fleet
+  is on.
+- **Not done:** certificate-expiry alerts, the 20k events/s load test and the chaos run —
+  the last two need hardware to mean anything.
 
 **Done means:** chaos run (broker killed, DB killed, Redis killed) with the documented
 behaviour observed.

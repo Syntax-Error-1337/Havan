@@ -1,5 +1,6 @@
 use domain::ota::{
     Campaign, CampaignProgress, CampaignStatus, DeviceUpdate, Firmware, JobStatus, OtaJob, OtaRepo,
+    Rollback,
 };
 use kernel::{AppError, TenantCtx};
 use sqlx::Transaction;
@@ -265,6 +266,117 @@ impl OtaRepo for PgOta {
         tx.commit().await.map_err(db)?;
 
         row.map(map_campaign).transpose()
+    }
+
+    async fn rollback(&self, vendor_id: Uuid, campaign_id: Uuid) -> Result<Rollback, AppError> {
+        let mut tx = self.tx(vendor_id).await?;
+
+        // Where we are coming from: the campaign's product, the image it shipped, and the
+        // version string devices will be reporting.
+        let source: Option<(Uuid, Uuid, String, time::OffsetDateTime)> = sqlx::query_as(
+            r#"SELECT c.product_id, c.firmware_id, f.version, f.created_at
+                 FROM ota_campaigns c JOIN firmware f ON f.id = c.firmware_id
+                WHERE c.id = $1"#,
+        )
+        .bind(campaign_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let Some((product_id, firmware_id, from_version, shipped_at)) = source else {
+            return Err(AppError::not_found("campaign"));
+        };
+
+        // Where we are going. Two candidate rules, and the order matters:
+        //
+        // 1. the version most of the fleet is *actually running* right now — putting three
+        //    devices back on 1.0.0 alongside the hundred that never left is what "roll
+        //    back" means to a person;
+        // 2. failing that, the newest image uploaded before the bad one.
+        //
+        // "Newest earlier image" alone is the tempting rule and would have sent these
+        // devices to a release nobody ever ran.
+        let running: Option<(Uuid, String)> = sqlx::query_as(
+            r#"SELECT f.id, f.version
+                 FROM firmware f
+                 JOIN devices d ON d.product_id = f.product_id AND d.fw_version = f.version
+                WHERE f.product_id = $1 AND f.id <> $2
+                  -- Backwards only. Without this an older campaign could "roll back" onto a
+                  -- newer image simply because more devices happen to run it, and the audit
+                  -- trail would call a roll-forward a rollback.
+                  AND f.created_at < $3
+                GROUP BY f.id, f.version
+                ORDER BY count(d.id) DESC, f.created_at DESC
+                LIMIT 1"#,
+        )
+        .bind(product_id)
+        .bind(firmware_id)
+        .bind(shipped_at)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let previous = match running {
+            Some(found) => Some(found),
+            None => sqlx::query_as(
+                r#"SELECT id, version FROM firmware
+                        WHERE product_id = $1 AND id <> $2 AND created_at <= $3
+                        ORDER BY created_at DESC LIMIT 1"#,
+            )
+            .bind(product_id)
+            .bind(firmware_id)
+            .bind(shipped_at)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db)?,
+        };
+
+        let Some((previous_id, to_version)) = previous else {
+            return Err(AppError::validation(
+                "there is no earlier firmware for this product to roll back to",
+            ));
+        };
+
+        // The new campaign starts running: a rollback that waits for someone to press
+        // start is a rollback that does not happen at 3 a.m.
+        let new_id = kernel::new_id();
+        sqlx::query(
+            r#"INSERT INTO ota_campaigns
+                 (id, vendor_id, product_id, firmware_id, rollout_pct, status, started_at)
+               VALUES ($1, $2, $3, $4, 100, 'running', now())"#,
+        )
+        .bind(new_id)
+        .bind(vendor_id)
+        .bind(product_id)
+        .bind(previous_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        // Only the devices actually running the bad image. Rolling back a fleet that never
+        // took it would push an old image onto devices that are fine.
+        let queued = sqlx::query(
+            r#"INSERT INTO ota_jobs (campaign_id, device_id, state)
+               SELECT $1, id, 'pending' FROM devices
+                WHERE product_id = $2 AND fw_version = $3
+               ON CONFLICT (campaign_id, device_id) DO NOTHING"#,
+        )
+        .bind(new_id)
+        .bind(product_id)
+        .bind(&from_version)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(Rollback {
+            campaign_id: new_id,
+            from_version,
+            to_version,
+            queued,
+        })
     }
 
     async fn campaigns(&self, vendor_id: Uuid) -> Result<Vec<Campaign>, AppError> {
