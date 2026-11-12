@@ -3,6 +3,8 @@
  * calls this. When the OpenAPI client lands, only this file changes.
  */
 
+import Constants from 'expo-constants';
+
 export type ApiErrorBody = {
   error: { code: string; message: string; details?: Record<string, string> };
 };
@@ -24,7 +26,30 @@ export class ApiError extends Error {
   }
 }
 
-export const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080/v1';
+/**
+ * Where the API is.
+ *
+ * `localhost` is right on a simulator and wrong on a phone: a phone loading the bundle
+ * from `exp://192.168.0.49:8081` has its own localhost, so every request goes nowhere and
+ * the app looks broken. Metro knows the address it served from, so the API is assumed to
+ * be on that same host — true of every dev setup where the two run side by side.
+ *
+ * `EXPO_PUBLIC_API_URL` still wins: a deployment, or an API somewhere else, says so.
+ */
+function apiBase(): string {
+  const explicit = process.env.EXPO_PUBLIC_API_URL;
+  if (explicit) return explicit;
+
+  // "192.168.0.49:8081" on a LAN dev server, "localhost:8081" on a simulator: take the
+  // host, swap the port.
+  const hostUri: string | undefined =
+    Constants.expoConfig?.hostUri ??
+    (Constants.expoGoConfig as { debuggerHost?: string } | undefined)?.debuggerHost;
+  const host = hostUri?.split(':')[0];
+  return host ? `http://${host}:8080/v1` : 'http://localhost:8080/v1';
+}
+
+export const BASE = apiBase();
 
 let accessToken: string | null = null;
 let refreshHandler: (() => Promise<string | null>) | null = null;

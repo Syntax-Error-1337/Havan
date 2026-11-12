@@ -81,6 +81,11 @@ api: ## run the HTTP API (foreground)
 	$(CARGO) run -p api
 
 .PHONY: worker
+api-lan: ## run the API on all interfaces, so a phone on the LAN can reach it
+	@echo "  listening on every interface — use this only on a network you trust"
+	cd $(BACKEND) && HAVEN_BIND=0.0.0.0:8080 cargo run -p api
+
+.PHONY: api-lan
 worker: ## run the worker (foreground)
 	$(CARGO) run -p worker
 

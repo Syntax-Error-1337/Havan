@@ -54,7 +54,7 @@ make migrate   # schema
 make api       # :8080
 make worker    # MQTT ingest + schedulers
 make sim       # virtual devices
-make app       # Expo
+make app       # Expo (the app finds the API from Metro's own address)
 make portal    # Vite
 
 make seed      # demo vendor, portal login, three products
@@ -64,6 +64,7 @@ make e2e       # the customer journey over HTTP, against the running stack
 make bench     # read-path timings on a fresh 100-device home
 make licences  # every dependency is permissively licensed (AGENTS.md, ADR-002)
 make load      # ingest throughput and loss (RATE= SECONDS=)
+make api-lan   # the API on every interface, for a phone on the same Wi-Fi
 make chaos     # stop Redis/MQTT/Postgres in turn and assert the degraded behaviour
                # (WHAT=redis|mqtt|db to run one). Leaves the stack running.
 ```
