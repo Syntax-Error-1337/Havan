@@ -251,3 +251,31 @@ select.input {
 .violations code {
   color: var(--warning);
 }
+
+/* Fleet state: the same badge shape the products table uses, so a vendor reads one
+   visual language across the portal. */
+.badge--online {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+}
+
+.badge--offline {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+/* A column header that wraps mid-phrase is a column nobody scans. */
+.table th.nowrap {
+  white-space: nowrap;
+}
+
+.field-label {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}

@@ -5,9 +5,10 @@
 //! tested without a database, a broker or a clock.
 
 use domain::automation::{
-    Action, Automation, AutomationRepo, AutomationService, PointEvent, RunLog, RunStep, Trigger,
-    next_run,
+    Action, Automation, AutomationRepo, AutomationService, PointEvent, RunLog, RunStep, Snapshot,
+    Trigger, next_run,
 };
+use domain::solar;
 use infra::PgAutomation;
 use protocol::envelope::{CommandMsg, CommandOp, DpValue};
 use rumqttc::{AsyncClient, QoS};
@@ -110,9 +111,10 @@ impl Runner {
                 },
             );
 
+            let kind = automation.definition.trigger.kind();
             if let Err(e) = self
                 .repo
-                .record_run(automation.id, "schedule", &log, status)
+                .record_run(automation.id, kind, &log, status)
                 .await
             {
                 tracing::warn!(automation = %automation.id, error = ?e, "could not record run");
@@ -120,6 +122,30 @@ impl Runner {
 
             let next = match automation.definition.trigger {
                 Trigger::Schedule { every_secs } => Some(next_run(every_secs, kernel::now())),
+                // A solar rule fires once and re-arms for the next sunrise or sunset.
+                // Getting this wrong is silent: the rule runs tonight and never again.
+                Trigger::Solar { event, offset_min } => {
+                    match self.repo.home_location(automation.home_id).await {
+                        Ok(Some((lat, lon))) => solar::next_occurrence(
+                            kernel::now(),
+                            lat,
+                            lon,
+                            event.is_sunset(),
+                            offset_min,
+                        ),
+                        Ok(None) => {
+                            tracing::warn!(
+                                automation = %automation.id,
+                                "solar automation has no location; it will not re-arm"
+                            );
+                            None
+                        }
+                        Err(e) => {
+                            tracing::warn!(automation = %automation.id, error = ?e, "location lookup failed");
+                            None
+                        }
+                    }
+                }
                 _ => None,
             };
             if let Err(e) = self.repo.reschedule(automation.id, next).await {
@@ -153,10 +179,28 @@ impl Runner {
             }
         };
 
+        // Presence and daylight are facts about the home, not its devices. Both are
+        // optional: no location means solar conditions are false, which is the only
+        // safe default — a rule must not decide it is dark in a home it cannot place.
+        let anyone_home = self
+            .repo
+            .anyone_home(automation.home_id)
+            .await
+            .unwrap_or(true);
+        let solar_today = match self.repo.home_location(automation.home_id).await {
+            Ok(Some((lat, lon))) => solar::solar_times(kernel::now().date(), lat, lon),
+            _ => None,
+        };
+        let now = kernel::now();
+        let snapshot = Snapshot {
+            get: &|id, code| values.get(&(id, code.to_string())).cloned(),
+            anyone_home,
+            solar: solar_today,
+            now_minutes: (now.hour() as u32) * 60 + now.minute() as u32,
+        };
+
         let (should_run, condition_log) =
-            AutomationService::<PgAutomation>::should_run(&automation.definition, &|id, code| {
-                values.get(&(id, code.to_string())).cloned()
-            });
+            AutomationService::<PgAutomation>::should_run(&automation.definition, &snapshot);
         log.steps.extend(condition_log.steps);
 
         if !should_run {

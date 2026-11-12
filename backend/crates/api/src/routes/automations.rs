@@ -2,7 +2,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use domain::automation::{Automation, AutomationDef, RunRecord};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -11,11 +11,39 @@ use crate::app::AppState;
 use crate::auth::Auth;
 use crate::error::{ApiError, ApiResult};
 
+#[derive(serde::Deserialize)]
+struct HookQuery {
+    token: String,
+}
+
+/// `POST /automations/{id}/hook?token=…` — the inbound edge of the automation system.
+async fn webhook(
+    State(state): State<AppState>,
+    Path(automation_id): Path<Uuid>,
+    axum::extract::Query(q): axum::extract::Query<HookQuery>,
+) -> ApiResult<StatusCode> {
+    let armed = state
+        .automations
+        .fire_webhook(automation_id, &q.token)
+        .await
+        .map_err(ApiError)?;
+
+    if !armed {
+        // Same answer for a bad token and a missing rule.
+        return Err(ApiError(kernel::AppError::not_found("automation")));
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/homes/{id}/automations", get(list).post(create))
         .route("/automations/{automation_id}", delete(remove).patch(update))
         .route("/automations/{automation_id}/runs", get(runs))
+        // No bearer token: the URL is the credential. The response is `202` because
+        // the rule is *armed*, not run — the worker picks it up on its next tick,
+        // which keeps every execution in one place instead of two.
+        .route("/automations/{automation_id}/hook", post(webhook))
 }
 
 #[derive(Deserialize)]

@@ -2,10 +2,11 @@ import { useState, type ReactNode } from 'react';
 import { Alert, Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Box, AppText, Row, Screen, Section } from '../../shared/ui';
+import { Box, AppText, Row, Screen, Section, Toggle } from '../../shared/ui';
 import {
   useCreateRoom,
   useDashboard,
+  useSetPresence,
   useDeleteRoom,
   useHomes,
   useRenameHome,
@@ -40,6 +41,9 @@ export function SettingsPage() {
 
   const renameHome = useRenameHome();
   const createRoom = useCreateRoom(homeId ?? undefined);
+  const setPresence = useSetPresence(homeId ?? undefined);
+  // Local until the server confirms; the switch must move when the finger does.
+  const [atHome, setAtHome] = useState(true);
 
   const home = dashboard?.home ?? homes?.find((h) => h.id === homeId);
 
@@ -75,6 +79,21 @@ export function SettingsPage() {
           />
           <Row title="Time zone" value={home?.timezone ?? 'UTC'} />
           <Row title="Devices" value={String(dashboard?.devices.length ?? 0)} />
+          <Row
+            title="At home"
+            subtitle="Automations that ask “is anyone home” use this"
+            right={
+              <Toggle
+                label="At home"
+                value={atHome}
+                disabled={setPresence.isPending}
+                onChange={(next) => {
+                  setAtHome(next);
+                  setPresence.mutate(next);
+                }}
+              />
+            }
+          />
         </Section>
 
         <Section title="Rooms" footnote="A device belongs to the room you put it in.">

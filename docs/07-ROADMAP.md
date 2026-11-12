@@ -42,18 +42,33 @@ build. **Not done:** the 90-second phone pass — this machine has CommandLineTo
 Xcode, so no simulator or device run. The acceptance step is the first thing to run on
 a Mac with Xcode, and `npm run start:mcp` gives the agent screenshot/tap tools there.
 
-## Phase 5 — Vendor portal (day 23–28)
+## Phase 5 — Vendor portal (day 23–28) — **done**
 
-Product editor with thing-model validation, firmware upload + sign, fleet list,
-basic analytics. **Done:** a new product can be defined, validated, published,
-and used by the simulator end to end.
+Product editor with thing-model validation, firmware upload, OTA campaigns (with
+halt), API keys, serial manifest, **fleet list** and **analytics**.
 
-## Phase 6 — Automations (day 29–35)
+**Done:** a new product can be defined, validated, published and used by the
+simulator end to end; a vendor can then see every device they shipped — bound or in
+stock, online or not, which firmware — and the counts behind it. Verified against the
+dev fleet: 104 devices, 50 online, one product, firmware split including devices that
+have never reported a version.
 
-Trigger/condition/action DSL, evaluator, scheduler, run log. Migration of the
-Gladys scene vocabulary (time, device state, presence, webhook) into the DSL.
+## Phase 6 — Automations (day 29–35) — **done**
+
+Trigger/condition/action DSL, evaluator, scheduler, run log. Triggers: `schedule`,
+`device_state`, **`solar`** (sunrise/sunset ± offset), **`presence`**, **`webhook`**,
+`manual`. Conditions: `device_state`, `time_of_day`, **`present`**, **`solar`**.
+Actions: `set_device`, `notify`.
+
+Sunrise and sunset come from a NOAA solar calculation over the home's coordinates
+(`domain::solar`), not a timezone database: the sun is an instant and an instant does
+not need a zone. Polar day and night return "no answer" rather than midnight.
+
 **Done:** "if motion after sunset and nobody home → turn on hallway light and
-notify" runs with a readable per-step log.
+notify" builds, arms and runs with a readable per-step log. Verified live: a solar rule
+is refused without a location, arms for 15:48Z (London sunset −30 min) once the home
+has coordinates; a webhook fires `202`, executes as `trigger_kind = webhook` with
+`[trigger, action]` steps and produces the notification.
 
 ## Phase 7 — SDK and certification (day 36–45)
 

@@ -24,6 +24,10 @@ pub fn router() -> Router<AppState> {
             "/vendor/products/{id}/serials",
             get(serials).post(add_serials),
         )
+        // The fleet: what the vendor shipped and what it is doing. Read-only, and
+        // deliberately without customer identity — see `domain::fleet`.
+        .route("/vendor/devices", get(fleet))
+        .route("/vendor/analytics", get(analytics))
 }
 
 #[derive(Deserialize)]
@@ -195,6 +199,37 @@ async fn serials(
         state
             .serials
             .summary(vendor.vendor_id, id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+/// `GET /vendor/devices?product_key=&state=online|offline|bound|unbound&cursor=&limit=`
+async fn fleet(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    axum::extract::Query(filter): axum::extract::Query<domain::fleet::FleetFilter>,
+) -> ApiResult<Json<domain::fleet::FleetPage>> {
+    domain::fleet::validate(&filter).map_err(ApiError)?;
+    Ok(Json(
+        state
+            .fleet
+            .page(vendor.vendor_id, filter)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+/// `GET /vendor/analytics` — counts over the vendor's own devices. No estimates: every
+/// number here is a `count(*)` over rows the vendor can already list one by one.
+async fn analytics(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+) -> ApiResult<Json<domain::fleet::FleetStats>> {
+    Ok(Json(
+        state
+            .fleet
+            .stats(vendor.vendor_id)
             .await
             .map_err(ApiError)?,
     ))

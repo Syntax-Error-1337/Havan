@@ -26,6 +26,7 @@ pub fn router() -> Router<AppState> {
         // Everything a home screen draws, in one round trip. Five requests to paint
         // one screen is five chances to be half-painted on a phone.
         .route("/homes/{id}/dashboard", get(dashboard))
+        .route("/homes/{id}/presence", axum::routing::post(presence))
         .route("/rooms/{room_id}", patch(rename_room).delete(delete_room))
 }
 
@@ -41,8 +42,23 @@ fn default_tz() -> String {
 }
 
 #[derive(Deserialize)]
-struct RenameHome {
-    name: String,
+struct PatchHome {
+    name: Option<String>,
+    /// Set together, or send null for both to clear. Solar automations need a place.
+    #[serde(default, deserialize_with = "double_option")]
+    geo_lat: Option<Option<f64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    geo_lon: Option<Option<f64>>,
+}
+
+/// Distinguishes "field absent" from "field explicitly null": absent means "leave
+/// it", null means "clear it". Without this the two cases collapse and a rename
+/// silently wipes the coordinates.
+fn double_option<'de, D>(de: D) -> Result<Option<Option<f64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<f64>::deserialize(de)?))
 }
 
 #[derive(Deserialize)]
@@ -109,15 +125,59 @@ async fn rename(
     State(state): State<AppState>,
     auth: Auth,
     Path(id): Path<Uuid>,
-    Json(body): Json<RenameHome>,
+    Json(body): Json<PatchHome>,
 ) -> ApiResult<Json<Home>> {
-    Ok(Json(
-        state
+    let mut home = state
+        .homes
+        .require(id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    if let Some(name) = body.name.as_deref() {
+        home = state
             .homes
-            .rename(id, auth.user.id, &body.name)
+            .rename(id, auth.user.id, name)
             .await
-            .map_err(ApiError)?,
-    ))
+            .map_err(ApiError)?;
+    }
+
+    // Both coordinates arrive together or not at all; the service enforces it, and
+    // this only decides whether the caller asked about location at all.
+    if body.geo_lat.is_some() || body.geo_lon.is_some() {
+        home = state
+            .homes
+            .set_location(
+                id,
+                auth.user.id,
+                body.geo_lat.flatten(),
+                body.geo_lon.flatten(),
+            )
+            .await
+            .map_err(ApiError)?;
+    }
+
+    Ok(Json(home))
+}
+
+#[derive(Deserialize)]
+struct PresenceBody {
+    present: bool,
+}
+
+/// Each member says whether they are at home. The automation condition "nobody home"
+/// reads the aggregate, so this is the only thing a person has to do.
+async fn presence(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+    Json(body): Json<PresenceBody>,
+) -> ApiResult<StatusCode> {
+    state
+        .homes
+        .set_presence(id, auth.user.id, body.present)
+        .await
+        .map_err(ApiError)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn remove(

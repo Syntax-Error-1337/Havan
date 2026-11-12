@@ -123,6 +123,37 @@ request POST "$V1/provision/claim" \
 REPLAY_ID="$(printf '%s' "$BODY" | field device_id 2>/dev/null || echo '')"
 if [ "$REPLAY_ID" = "$DEVICE_ID" ]; then ok "claiming twice replays the same device"; else bad "claiming twice replays the same device" "$CODE ${BODY:0:150}"; fi
 
+# 5b. presence, and a solar rule that refuses to exist without a place
+request POST "$V1/homes/$HOME_ID/presence" '{"present":false}' "$TOKEN"
+expect "declare presence" 204
+
+request POST "$V1/homes/$HOME_ID/automations" \
+  '{"name":"dusk","definition":{"trigger":{"type":"solar","event":"sunset","offset_min":0},"actions":[{"type":"notify","title":"dusk","body":"lights"}]}}' \
+  "$TOKEN"
+expect "a solar rule without a location is refused" 422
+
+request PATCH "$V1/homes/$HOME_ID" '{"geo_lat":51.5074,"geo_lon":-0.1278}' "$TOKEN"
+expect "set the home location" 200
+
+request POST "$V1/homes/$HOME_ID/automations" \
+  '{"name":"dusk","definition":{"trigger":{"type":"solar","event":"sunset","offset_min":-30},"actions":[{"type":"notify","title":"dusk","body":"lights"}]}}' \
+  "$TOKEN"
+expect "the same solar rule is accepted with one" 201
+
+request POST "$V1/homes/$HOME_ID/automations" \
+  '{"name":"hook","definition":{"trigger":{"type":"webhook","token":""},"actions":[{"type":"notify","title":"hook","body":"fired"}]}}' \
+  "$TOKEN"
+expect "a webhook rule" 201
+HOOK_ID="$(printf '%s' "$BODY" | field id)"
+HOOK_TOKEN="$(printf '%s' "$BODY" | python3 -c 'import sys,json;print(json.load(sys.stdin)["definition"]["trigger"]["token"])')"
+if [ -n "$HOOK_TOKEN" ]; then ok "the server made the webhook token"; else bad "the server made the webhook token" "$BODY"; fi
+
+request POST "$V1/automations/$HOOK_ID/hook?token=wrong"
+expect "a wrong webhook token is refused" 404
+
+request POST "$V1/automations/$HOOK_ID/hook?token=$HOOK_TOKEN"
+expect "the right webhook token is accepted" 202
+
 # 6. the device is visible, with the points its product declares
 request GET "$V1/devices/$DEVICE_ID" '' "$TOKEN"
 expect "read the device" 200

@@ -56,6 +56,22 @@ impl TenantCtx {
         }
     }
 
+    /// A read on behalf of a vendor rather than of one person at that vendor.
+    ///
+    /// The fleet and analytics views are the same for every user of a vendor; carrying
+    /// a user id would suggest an audit trail that does not exist. Row-level security
+    /// only needs the vendor.
+    pub fn vendor(vendor_id: Uuid, request_id: impl Into<String>) -> Self {
+        Self {
+            vendor_id: Some(vendor_id),
+            actor: Actor::ApiKey {
+                vendor_id,
+                key_id: vendor_id,
+            },
+            request_id: request_id.into(),
+        }
+    }
+
     pub fn system(job: &'static str) -> Self {
         Self {
             vendor_id: None,

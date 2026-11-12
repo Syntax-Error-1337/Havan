@@ -313,6 +313,55 @@ impl AutomationRepo for PgAutomation {
         .map_err(db)?;
         tx.commit().await.map_err(db)
     }
+
+    async fn home_location(&self, home_id: Uuid) -> Result<Option<(f64, f64)>, AppError> {
+        let mut tx = self.tx().await?;
+        let row: Option<(Option<f64>, Option<f64>)> =
+            sqlx::query_as("SELECT geo_lat, geo_lon FROM homes WHERE id = $1")
+                .bind(home_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(row.and_then(|(lat, lon)| match (lat, lon) {
+            (Some(lat), Some(lon)) => Some((lat, lon)),
+            _ => None,
+        }))
+    }
+
+    async fn anyone_home(&self, home_id: Uuid) -> Result<bool, AppError> {
+        let mut tx = self.tx().await?;
+        let present: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM home_members WHERE home_id = $1 AND present)",
+        )
+        .bind(home_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(present)
+    }
+
+    async fn fire_webhook(&self, id: Uuid, token: &str) -> Result<bool, AppError> {
+        let mut tx = self.tx().await?;
+        // One statement: the token check lives in the WHERE clause, so a wrong token
+        // and a missing automation both change zero rows and are indistinguishable.
+        let changed = sqlx::query(
+            r#"UPDATE automations SET next_run_at = now()
+                WHERE id = $1
+                  AND enabled
+                  AND definition -> 'trigger' ->> 'type' = 'webhook'
+                  AND definition -> 'trigger' ->> 'token' = $2"#,
+        )
+        .bind(id)
+        .bind(token)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+        tx.commit().await.map_err(db)?;
+        Ok(changed == 1)
+    }
 }
 
 impl PgAutomation {

@@ -64,6 +64,10 @@ pub struct Home {
     pub role: Role,
     pub member_count: i64,
     pub device_count: i64,
+    /// Coordinates for sunrise/sunset. `None` until somebody sets them, and solar
+    /// automations refuse to be created without them.
+    pub geo_lat: Option<f64>,
+    pub geo_lon: Option<f64>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: time::OffsetDateTime,
 }
@@ -108,6 +112,21 @@ pub trait HomeRepo {
     ) -> impl Future<Output = Result<(), AppError>> + Send;
 
     fn delete(&self, home_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    fn set_location(
+        &self,
+        home_id: Uuid,
+        lat: Option<f64>,
+        lon: Option<f64>,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Mark one member present or away.
+    fn set_presence(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        present: bool,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
 
     fn members(&self, home_id: Uuid) -> impl Future<Output = Result<Vec<Member>, AppError>> + Send;
 
@@ -188,6 +207,8 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
             role: Role::Owner,
             member_count: 1,
             device_count: 0,
+            geo_lat: None,
+            geo_lon: None,
             created_at: kernel::now(),
         };
         self.repo.create_home(&home).await?;
@@ -221,6 +242,55 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
             name: name.to_string(),
             ..home
         })
+    }
+
+    /// Set or clear the home's coordinates. Latitude and longitude move together:
+    /// half a coordinate is a home somewhere on a line, which is not a place.
+    pub async fn set_location(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        lat: Option<f64>,
+        lon: Option<f64>,
+    ) -> Result<Home, AppError> {
+        let home = self.require(home_id, user_id).await?;
+        if !home.role.can_manage() {
+            return Err(AppError::forbidden("only an admin can set the location"));
+        }
+        match (lat, lon) {
+            (None, None) => {}
+            (Some(lat), Some(lon)) => {
+                if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
+                    return Err(AppError::validation(
+                        "latitude must be -90..90 and longitude -180..180",
+                    ));
+                }
+            }
+            _ => {
+                return Err(AppError::validation(
+                    "latitude and longitude must be set together",
+                ));
+            }
+        }
+        self.repo.set_location(home_id, lat, lon).await?;
+        Ok(Home {
+            geo_lat: lat,
+            geo_lon: lon,
+            ..home
+        })
+    }
+
+    /// Say whether you are at home. Each member answers for themselves; a home is
+    /// occupied when at least one does.
+    pub async fn set_presence(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        present: bool,
+    ) -> Result<(), AppError> {
+        // Membership is the only requirement: a guest may say they left.
+        self.require(home_id, user_id).await?;
+        self.repo.set_presence(home_id, user_id, present).await
     }
 
     pub async fn delete(&self, home_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
@@ -547,6 +617,26 @@ mod tests {
             }
             Ok(())
         }
+        async fn set_location(
+            &self,
+            _: Uuid,
+            lat: Option<f64>,
+            lon: Option<f64>,
+        ) -> Result<(), AppError> {
+            // Remember it: a fake that forgets coordinates makes a passing solar test
+            // meaningless.
+            let mut homes = self.homes.lock().unwrap();
+            for home in homes.iter_mut() {
+                home.geo_lat = lat;
+                home.geo_lon = lon;
+            }
+            Ok(())
+        }
+
+        async fn set_presence(&self, _: Uuid, _: Uuid, _: bool) -> Result<(), AppError> {
+            Ok(())
+        }
+
         async fn delete_room(&self, room_id: Uuid) -> Result<(), AppError> {
             self.rooms.lock().unwrap().retain(|r| r.id != room_id);
             Ok(())

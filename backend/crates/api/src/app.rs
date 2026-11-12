@@ -42,6 +42,7 @@ pub struct AppState {
     pub notifications: Arc<PgNotifications>,
     pub scenes: Arc<PgScenes>,
     pub serials: Arc<PgSerials>,
+    pub fleet: Arc<domain::fleet::FleetService<infra::PgFleet>>,
 }
 
 impl AppState {
@@ -67,6 +68,9 @@ impl AppState {
         let notifications = Arc::new(PgNotifications::new(pg.clone()));
         let scenes = Arc::new(PgScenes::new(pg.clone()));
         let serials = Arc::new(PgSerials::new(pg.clone()));
+        let fleet = Arc::new(domain::fleet::FleetService::new(Arc::new(
+            infra::PgFleet::new(pg.clone()),
+        )));
         let automations = Arc::new(AutomationService::new(Arc::new(PgAutomation::new(
             pg.clone(),
         ))));
@@ -87,6 +91,7 @@ impl AppState {
             notifications,
             scenes,
             serials,
+            fleet,
         }
     }
 }

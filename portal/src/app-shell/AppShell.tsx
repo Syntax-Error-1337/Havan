@@ -6,6 +6,8 @@ import { ProductEditorPage } from '../pages/product-editor/ProductEditorPage';
 import { FirmwarePage } from '../pages/firmware/FirmwarePage';
 import { CampaignsPage } from '../pages/campaigns/CampaignsPage';
 import { ApiKeysPage } from '../pages/api-keys/ApiKeysPage';
+import { FleetPage } from '../pages/fleet/FleetPage';
+import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
 
 /**
  * The gate lives here, not in each page: a new screen cannot forget it.
@@ -31,6 +33,12 @@ export function AppShell() {
           <Link to="/" className="muted">
             Products
           </Link>
+          <Link to="/fleet" className="muted">
+            Fleet
+          </Link>
+          <Link to="/analytics" className="muted">
+            Analytics
+          </Link>
           <Link to="/campaigns" className="muted">
             Rollouts
           </Link>
@@ -44,6 +52,8 @@ export function AppShell() {
           <Route path="/" element={<ProductsPage />} />
           <Route path="/products/:id" element={<ProductEditorPage />} />
           <Route path="/products/:id/firmware" element={<FirmwarePage />} />
+          <Route path="/fleet" element={<FleetPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
           {/* The nav calls it Rollouts, so the URL people type should work:
               otherwise a vendor who guesses the name lands on Products with no

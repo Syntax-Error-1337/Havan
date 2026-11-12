@@ -80,12 +80,15 @@ impl HomeRepo for PgHomes {
                 String,
                 i64,
                 i64,
+                Option<f64>,
+                Option<f64>,
                 time::OffsetDateTime,
             ),
         >(
             r#"SELECT h.id, h.owner_id, h.name, h.timezone, m.role,
                       (SELECT count(*) FROM home_members x WHERE x.home_id = h.id) AS member_count,
                       (SELECT count(*) FROM devices d WHERE d.home_id = h.id) AS device_count,
+                      h.geo_lat, h.geo_lon,
                       h.created_at
                FROM homes h
                JOIN home_members m ON m.home_id = h.id AND m.user_id = $1
@@ -100,7 +103,18 @@ impl HomeRepo for PgHomes {
         Ok(rows
             .into_iter()
             .map(
-                |(id, owner_id, name, timezone, role, member_count, device_count, created_at)| {
+                |(
+                    id,
+                    owner_id,
+                    name,
+                    timezone,
+                    role,
+                    member_count,
+                    device_count,
+                    geo_lat,
+                    geo_lon,
+                    created_at,
+                )| {
                     Home {
                         id,
                         owner_id,
@@ -109,6 +123,8 @@ impl HomeRepo for PgHomes {
                         role: role_of(&role),
                         member_count,
                         device_count,
+                        geo_lat,
+                        geo_lon,
                         created_at,
                     }
                 },
@@ -128,12 +144,15 @@ impl HomeRepo for PgHomes {
                 String,
                 i64,
                 i64,
+                Option<f64>,
+                Option<f64>,
                 time::OffsetDateTime,
             ),
         >(
             r#"SELECT h.id, h.owner_id, h.name, h.timezone, m.role,
                       (SELECT count(*) FROM home_members x WHERE x.home_id = h.id) AS member_count,
                       (SELECT count(*) FROM devices d WHERE d.home_id = h.id) AS device_count,
+                      h.geo_lat, h.geo_lon,
                       h.created_at
                FROM homes h
                JOIN home_members m ON m.home_id = h.id AND m.user_id = $2
@@ -148,7 +167,18 @@ impl HomeRepo for PgHomes {
         tx.commit().await.map_err(db)?;
 
         Ok(row.map(
-            |(id, owner_id, name, timezone, role, member_count, device_count, created_at)| Home {
+            |(
+                id,
+                owner_id,
+                name,
+                timezone,
+                role,
+                member_count,
+                device_count,
+                geo_lat,
+                geo_lon,
+                created_at,
+            )| Home {
                 id,
                 owner_id,
                 name,
@@ -156,6 +186,8 @@ impl HomeRepo for PgHomes {
                 role: role_of(&role),
                 member_count,
                 device_count,
+                geo_lat,
+                geo_lon,
                 created_at,
             },
         ))
@@ -165,6 +197,38 @@ impl HomeRepo for PgHomes {
         sqlx::query("UPDATE homes SET name = $2 WHERE id = $1")
             .bind(home_id)
             .bind(name)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(db)
+    }
+
+    async fn set_location(
+        &self,
+        home_id: Uuid,
+        lat: Option<f64>,
+        lon: Option<f64>,
+    ) -> Result<(), AppError> {
+        sqlx::query("UPDATE homes SET geo_lat = $2, geo_lon = $3 WHERE id = $1")
+            .bind(home_id)
+            .bind(lat)
+            .bind(lon)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(db)
+    }
+
+    async fn set_presence(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        present: bool,
+    ) -> Result<(), AppError> {
+        sqlx::query("UPDATE home_members SET present = $3 WHERE home_id = $1 AND user_id = $2")
+            .bind(home_id)
+            .bind(user_id)
+            .bind(present)
             .execute(&self.pool)
             .await
             .map(|_| ())

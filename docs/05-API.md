@@ -197,7 +197,11 @@ aborting the burst.
 
 | Method | Path |
 |---|---|
-| GET | `/homes/{id}/dashboard` | one call: rooms, devices, points, automations, alerts |
+| GET | `/homes/{id}/dashboard` | one call: home, rooms, devices+points, scenes, unread count |
+| PATCH | `/homes/{id}` | `{name?, geo_lat?, geo_lon?}` — coordinates together, `null` clears |
+| POST | `/homes/{id}/presence` | `{present}` — this member is home / away |
+| PATCH/DELETE | `/rooms/{room_id}?home_id=` | rename; delete leaves its devices unassigned |
+| POST | `/automations/{id}/hook?token=` | **no bearer token**: the URL is the credential |
 | GET | `/notifications` · POST `/notifications/read` |
 | POST | `/push-tokens` |
 | GET | `/catalog/capabilities` | versioned capability catalog, cached 1 h |
@@ -211,6 +215,8 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 
 | Method | Path | Notes |
 |---|---|---|
+| GET | `/vendor/devices?product_key=&state=&cursor=&limit=` | fleet page; `state` = online/offline/bound/unbound |
+| GET | `/vendor/analytics` | totals, online, bound, new 7/30 d, by product, by firmware |
 | GET/POST | `/vendor/products` | |
 | GET/PATCH | `/vendor/products/{id}` | |
 | POST | `/vendor/products/{id}/validate` | the six rules from the thing model |
@@ -269,6 +275,30 @@ Heartbeat: the server answers protocol-level pings; a client that misses two is
 dropped. The client reconnects with jittered backoff and re-sends `auth`.
 Reconnect with jittered backoff 1→30 s and re-subscribe; the client refetches
 `/homes/{id}/dashboard` on reconnect rather than trusting missed deltas.
+
+## Presence, location and webhooks
+
+**Presence is declared, not inferred.** `POST /homes/{id}/presence {"present": false}`
+marks *you* away; the automation condition "nobody home" reads the aggregate of the
+home's members. A geofence that guesses wrong turns a light on in an empty flat and
+there is nobody to argue with — so the app has a switch and the automation reads it.
+
+**Solar rules need a place.** `PATCH /homes/{id}` sets `geo_lat`/`geo_lon` (both
+together, `null` clears). Sunrise and sunset are computed locally with the NOAA
+approximation (`domain::solar`) — accurate to a minute, no timezone database, and polar
+day/night returns *no answer* rather than midnight. Creating a solar automation without
+coordinates is a `422` with a sentence, not a rule that fires at 00:00 forever.
+
+**Webhooks are armed, not executed.** `POST /automations/{id}/hook?token=…` sets
+`next_run_at = now()` and answers `202`; the worker runs it on its next tick, so there
+is exactly one executor. The token is generated server-side at creation. A wrong token
+and a missing automation both answer `404`: an anonymous caller must not be able to
+enumerate rules by watching which one answers differently.
+
+**Vendor reads carry no customer identity.** `/vendor/devices` and `/vendor/analytics`
+are scoped to the vendor and return serial numbers, state, firmware and last-seen —
+not the owner, not the home name. Pagination is keyset on `(created_at, id)`; an
+unknown `state` filter is `422` rather than an empty page that looks like "no devices".
 
 ## Conventions that are non-negotiable
 

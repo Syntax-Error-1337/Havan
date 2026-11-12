@@ -111,6 +111,20 @@ describe('settings', () => {
     alert.mockRestore();
   });
 
+  it('declares presence, because automations ask "is anyone home"', async () => {
+    const calls = stubApi();
+    const view = await renderPage();
+
+    const toggle = await view.findByLabelText('At home', {}, { timeout: 5000 });
+    await fireEvent(toggle, 'valueChange', false);
+
+    await waitFor(() => {
+      const post = calls.find((c) => c.method === 'POST' && c.url.includes('/presence'));
+      expect(post).toBeTruthy();
+      expect(JSON.parse(post!.body ?? '{}')).toEqual({ present: false });
+    });
+  });
+
   it('signs out', async () => {
     stubApi();
     const view = await renderPage();

@@ -450,6 +450,23 @@ mod tests {
         async fn rename_room(&self, _: Uuid, _: &str) -> Result<(), AppError> {
             Ok(())
         }
+        async fn set_location(
+            &self,
+            _: Uuid,
+            lat: Option<f64>,
+            lon: Option<f64>,
+        ) -> Result<(), AppError> {
+            for home in self.homes.lock().unwrap().iter_mut() {
+                home.geo_lat = lat;
+                home.geo_lon = lon;
+            }
+            Ok(())
+        }
+
+        async fn set_presence(&self, _: Uuid, _: Uuid, _: bool) -> Result<(), AppError> {
+            Ok(())
+        }
+
         async fn delete_room(&self, _: Uuid) -> Result<(), AppError> {
             Ok(())
         }
@@ -541,6 +558,8 @@ mod tests {
             role: Role::Owner,
             member_count: 2,
             device_count: 1,
+            geo_lat: None,
+            geo_lon: None,
             created_at: kernel::now(),
         });
         homes
