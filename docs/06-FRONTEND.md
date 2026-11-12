@@ -285,3 +285,13 @@ portal rendered the signed-in shell and printed the API's message
 localStorage does not re-render a React context. `onTokenChange` now lets the
 session provider follow, so an expired session lands on the login screen.
 
+### Tests on a cold runner
+
+`npm test` is what CI runs, and CI starts from a fresh `npm ci` with an empty
+transform cache — several times slower than a warm laptop. Verified by doing it:
+`git archive` the app to a temp directory, `npm ci --legacy-peer-deps`,
+`expo export`, `tsc`, then `jest` with an empty cache directory. The first cold run
+failed six tests on the default 5 s timeout that pass in a second locally, so
+`jest.config.js` sets 15 s with that reason written down. A timeout should mean
+"this test hung", not "this machine is cold".
+
