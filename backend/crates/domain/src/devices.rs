@@ -169,6 +169,17 @@ pub trait CommandRepo {
         code: Option<&str>,
     ) -> impl Future<Output = Result<Option<Settled>, AppError>> + Send;
 
+    /// Settle a command that never left the process because the broker was unavailable.
+    ///
+    /// Recorded as failed with a reason, deliberately *not* left as queued: the timeout
+    /// sweeper would later mark it `timeout` and the customer would be told the device did
+    /// not answer, blaming hardware for an outage that was ours.
+    fn fail_undelivered(
+        &self,
+        command_id: Uuid,
+        reason: &str,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
     /// Anything dispatched and unanswered past the deadline becomes `timeout`.
     fn sweep_timeouts(
         &self,
@@ -333,6 +344,14 @@ where
         });
 
         Ok(CommandOutcome { command, publish })
+    }
+
+    /// Settle a command the broker never received.
+    ///
+    /// Goes through the service rather than the repo so the API does not learn about
+    /// scopes: the caller has a command id and an outage, nothing more.
+    pub async fn fail_undelivered(&self, command_id: Uuid, reason: &str) -> Result<(), AppError> {
+        self.commands.fail_undelivered(command_id, reason).await
     }
 
     pub async fn command_status(

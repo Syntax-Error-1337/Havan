@@ -124,6 +124,17 @@ impl AppError {
         Self::code(ErrorCode::Forbidden, message)
     }
 
+    /// The broker is down, so the command was recorded and settled as `unreachable`.
+    /// Answers `503` — never `202` — because the customer's next move differs: nothing was
+    /// sent. The message names the command so a client can reconcile its own history
+    /// instead of guessing which press vanished.
+    pub fn broker_unavailable(command_id: uuid::Uuid) -> Self {
+        Self::code(
+            ErrorCode::Unavailable,
+            format!("the device broker is unavailable; command {command_id} was not sent"),
+        )
+    }
+
     pub fn validation(message: impl Into<String>) -> Self {
         Self::code(ErrorCode::ValidationFailed, message)
     }

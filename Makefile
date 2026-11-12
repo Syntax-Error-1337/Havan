@@ -120,6 +120,9 @@ ci-backend: ## the backend suite as CI runs it: scratch db, deploy roles, haven_
 	./scripts/ci-backend.sh
 
 .PHONY: bench
+chaos: ## What breaks when a dependency dies (stops and starts the local containers)
+	@bash scripts/chaos.sh $(WHAT)
+
 bench: ## baseline the read paths on a fresh 100-device bench home
 	./scripts/bench.sh
 

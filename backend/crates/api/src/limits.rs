@@ -85,9 +85,25 @@ pub const CLAIM: Window = Window {
     secs: 60,
 };
 
+/// How long a limiter will wait on the cache before giving up on it.
+///
+/// Deliberately tiny. The limiter is a guard against guessing passwords, not part of the
+/// work the caller asked for: if the cache cannot answer in a quarter of a second it is
+/// having a worse day than the request, and the request goes through. Found by running:
+/// with Valkey stopped, a login *never answered* — the client's deadline expired before
+/// the cache did, so the caller saw a timeout instead of a decision.
+const DEADLINE: std::time::Duration = std::time::Duration::from_millis(250);
+
 /// Refuse if this key has already used its window. Does not count the attempt.
 pub async fn check(state: &AppState, key: &str, window: Window) -> Result<(), ApiError> {
-    match state.cache.peek(key).await {
+    let peeked = tokio::time::timeout(DEADLINE, state.cache.peek(key)).await;
+    match match peeked {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!("rate-limit check timed out; allowing the request");
+            return Ok(());
+        }
+    } {
         Ok(count) if i64::try_from(count).unwrap_or(i64::MAX) >= window.limit => {
             kernel::metrics::rate_limited();
             Err(ApiError(AppError::code(
@@ -104,12 +120,18 @@ pub async fn check(state: &AppState, key: &str, window: Window) -> Result<(), Ap
 /// Count one failure. Best-effort: a limiter that cannot record is not a reason to return
 /// an error to a caller whose request has already been answered.
 pub async fn record(state: &AppState, key: &str, window: Window) {
-    if let Err(e) = state
-        .cache
-        .incr_with_ttl(key, std::time::Duration::from_secs(window.secs))
-        .await
-    {
-        tracing::warn!(error = ?e, "could not record a failed attempt");
+    let recorded = tokio::time::timeout(
+        DEADLINE,
+        state
+            .cache
+            .incr_with_ttl(key, std::time::Duration::from_secs(window.secs)),
+    )
+    .await;
+
+    match recorded {
+        Ok(Ok(_count)) => {}
+        Ok(Err(e)) => tracing::warn!(error = ?e, "could not record a failed attempt"),
+        Err(_) => tracing::warn!("timed out recording a failed attempt"),
     }
 }
 

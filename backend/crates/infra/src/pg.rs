@@ -17,12 +17,23 @@ pub struct Pg {
 
 impl Pg {
     pub async fn connect(url: &str, max_connections: u32) -> Result<Self, AppError> {
+        // Server-side deadlines, so a query stuck behind a lock or a checkpoint is killed
+        // by Postgres rather than held by us. The client-side `acquire_timeout` bounds the
+        // wait for a connection; these bound the work done with it.
+        let options: sqlx::postgres::PgConnectOptions =
+            url.parse().map_err(|e| AppError::Database(Box::new(e)))?;
+        let options = options.options([("statement_timeout", "10000"), ("lock_timeout", "5000")]);
+
         let pool = PgPoolOptions::new()
             .max_connections(max_connections)
-            .acquire_timeout(Duration::from_secs(5))
+            // Two seconds, not five. A healthy database hands out a connection in
+            // microseconds; waiting five means the caller waits five and then gets an
+            // error anyway — observed as a read that never answered inside curl's
+            // five-second deadline while Postgres was stopped.
+            .acquire_timeout(Duration::from_secs(2))
             .idle_timeout(Some(Duration::from_secs(600)))
             .test_before_acquire(true)
-            .connect(url)
+            .connect_with(options)
             .await
             .map_err(|e| AppError::Database(Box::new(e)))?;
         Ok(Self { pool })
@@ -33,11 +44,18 @@ impl Pg {
         &self.pool
     }
 
+    /// Is the database reachable? Bounded, because this backs `/healthz`: a probe that
+    /// hangs is a probe that cannot report a degraded dependency.
     pub async fn ping(&self) -> bool {
-        sqlx::query_scalar::<_, i32>("SELECT 1")
-            .fetch_one(&self.pool)
-            .await
-            .is_ok()
+        match tokio::time::timeout(
+            Duration::from_secs(2),
+            sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&self.pool),
+        )
+        .await
+        {
+            Ok(result) => result.is_ok(),
+            Err(_) => false,
+        }
     }
 
     /// A transaction whose session carries the tenant. Every tenant-scoped

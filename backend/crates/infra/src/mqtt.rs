@@ -68,7 +68,19 @@ impl Mqtt {
         self.connected.load(Ordering::Relaxed)
     }
 
+    /// Publish, or say why not.
+    ///
+    /// `rumqttc::publish` only hands the packet to the client's queue: with the broker
+    /// down it accepts the packet and returns `Ok`, and the message is dropped when the
+    /// event loop notices. That made a command look sent while nothing left the process.
+    /// Checking the connection first is the difference between "queued on the wire" and
+    /// "believed".
     pub async fn publish(&self, topic: &str, payload: Vec<u8>) -> Result<(), AppError> {
+        if !self.is_connected() {
+            return Err(AppError::Broker(Box::new(std::io::Error::other(
+                "broker is not connected",
+            ))));
+        }
         self.client
             .publish(topic, QoS::AtLeastOnce, false, payload)
             .await

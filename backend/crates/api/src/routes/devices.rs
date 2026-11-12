@@ -174,7 +174,10 @@ pub(crate) async fn publish_command(
         action: None,
     };
 
-    state
+    let payload = serde_json::to_vec(&msg)
+        .map_err(|e| ApiError(kernel::AppError::Internal(e.to_string())))?;
+
+    match state
         .mqtt
         .publish(
             &protocol::topics::cmd(
@@ -182,11 +185,33 @@ pub(crate) async fn publish_command(
                 &publishable.home_id.to_string(),
                 &device_id.to_string(),
             ),
-            serde_json::to_vec(&msg)
-                .map_err(|e| ApiError(kernel::AppError::Internal(e.to_string())))?,
+            payload,
         )
         .await
-        .map_err(ApiError)
+    {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            tracing::warn!(
+                error = ?e,
+                command = %outcome.command.id,
+                "broker unavailable; command refused rather than lost"
+            );
+            // 202 would be a promise the platform cannot keep. Settle the command as
+            // failed with a reason, so nobody later blames the device for our outage,
+            // and tell the caller it was not sent.
+            state
+                .devices
+                .fail_undelivered(outcome.command.id, "broker_unavailable")
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(error = ?e, command = %outcome.command.id, "could not settle");
+                });
+            kernel::metrics::command_undelivered();
+            Err(ApiError(kernel::AppError::broker_unavailable(
+                outcome.command.id,
+            )))
+        }
+    }
 }
 
 async fn command(

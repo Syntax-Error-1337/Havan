@@ -14,10 +14,20 @@ pub struct Cache {
 }
 
 impl Cache {
+    /// A cache that is *gone* must fail in a second or two, not hang the request that
+    /// touched it. Observed in the chaos drill: with Valkey stopped, a login request never
+    /// answered at all — the client waited on a TCP connect that would never complete, and
+    /// the caller's deadline expired instead of the cache saying "no".
+    ///
+    /// Both timeouts are set on the connection manager so every command is bounded, not
+    /// only the ones somebody remembered to wrap.
     pub async fn connect(url: &str) -> Result<Self, AppError> {
         let client = redis::Client::open(url).map_err(|e| AppError::Cache(Box::new(e)))?;
+        let config = redis::aio::ConnectionManagerConfig::new()
+            .set_connection_timeout(Duration::from_secs(2))
+            .set_response_timeout(Duration::from_secs(2));
         let conn = client
-            .get_connection_manager()
+            .get_connection_manager_with_config(config)
             .await
             .map_err(|e| AppError::Cache(Box::new(e)))?;
         Ok(Self { conn })
@@ -25,10 +35,15 @@ impl Cache {
 
     pub async fn ping(&self) -> bool {
         let mut conn = self.conn.clone();
-        redis::cmd("PING")
-            .query_async::<String>(&mut conn)
-            .await
-            .is_ok()
+        match tokio::time::timeout(
+            Duration::from_secs(2),
+            redis::cmd("PING").query_async::<String>(&mut conn),
+        )
+        .await
+        {
+            Ok(result) => result.is_ok(),
+            Err(_) => false,
+        }
     }
 
     /// Mark a device online with a TTL. The TTL is the mechanism: a device that

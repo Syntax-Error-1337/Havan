@@ -468,6 +468,25 @@ impl CommandRepo for PgDevices {
         }))
     }
 
+    async fn fail_undelivered(&self, command_id: Uuid, reason: &str) -> Result<(), AppError> {
+        // System scope: this settles one row by id on behalf of an outage, and the row's
+        // own vendor is already fixed — there is no tenant to guess at.
+        let mut tx = self.pg.scoped(&TenantCtx::system("command-settle")).await?;
+        // `unreachable`, the status the schema already has for a command that never got
+        // to a device. Not `timeout`: that word blames the hardware for our outage.
+        sqlx::query(
+            r#"UPDATE commands SET status = 'unreachable', error_code = $2
+                WHERE id = $1 AND status = 'queued'"#,
+        )
+        .bind(command_id)
+        .bind(reason)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
     async fn sweep_timeouts(&self, older_than_secs: i64) -> Result<Vec<Settled>, AppError> {
         let mut tx = self.pg.scoped(&TenantCtx::system("sweep-timeouts")).await?;
 

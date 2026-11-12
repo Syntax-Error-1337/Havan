@@ -31,6 +31,7 @@ struct Registry {
     routes: Mutex<BTreeMap<String, RouteStats>>,
     statuses: Mutex<BTreeMap<(String, u16), u64>>,
     commands_dispatched: AtomicU64,
+    commands_undelivered: AtomicU64,
     ws_connections: AtomicU64,
     rate_limited: AtomicU64,
     started_unix: AtomicU64,
@@ -74,6 +75,14 @@ pub fn observe_http(route: &str, status: u16, seconds: f64) {
 pub fn command_dispatched() {
     registry()
         .commands_dispatched
+        .fetch_add(1, Ordering::Relaxed);
+}
+
+/// Commands the platform refused to queue because there was nowhere to send them. Kept
+/// apart from `dispatched`: the difference between the two is the outage.
+pub fn command_undelivered() {
+    registry()
+        .commands_undelivered
         .fetch_add(1, Ordering::Relaxed);
 }
 
@@ -141,6 +150,13 @@ pub fn render() -> String {
     out.push_str("# HELP haven_commands_dispatched_total Commands accepted from clients.\n");
     out.push_str("# TYPE haven_commands_dispatched_total counter\n");
     out.push_str(&format!("haven_commands_dispatched_total {commands}\n"));
+
+    let undelivered = reg.commands_undelivered.load(Ordering::Relaxed);
+    out.push_str(
+        "# HELP haven_commands_undelivered_total Commands refused because the broker was down.\n",
+    );
+    out.push_str("# TYPE haven_commands_undelivered_total counter\n");
+    out.push_str(&format!("haven_commands_undelivered_total {undelivered}\n"));
 
     out.push_str("# HELP haven_ws_connections WebSocket streams open right now.\n");
     out.push_str("# TYPE haven_ws_connections gauge\n");
