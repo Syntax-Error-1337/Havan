@@ -31,6 +31,29 @@ Two things worth reading out of that table:
   thing to watch is that it does not become the screen's bottleneck on a device
   with a slower disk.
 
+## Query plans
+
+Timings say *how long*; plans say *why*, and they are the thing to re-check after
+the data grows. `scripts/plans.sql` runs them; the findings at 100 devices and 17k
+telemetry rows:
+
+| Path | Plan |
+|---|---|
+| device list | Bitmap Index Scan on `devices_home_idx`, then a sort of 100 rows |
+| points for the home | Hash join, devices from the index, `device_points` scanned (489 rows in the whole table) |
+| history, 1 day | **Index Only Scan** on `(device_id, point_id, ts)` — 1.0 ms for 593 rows |
+| history, 30 days | Seq scan of the chunks — correct, because the window covers nearly every row |
+
+Two things worth knowing:
+
+- **The 30-day seq scan is not a missing index.** Forcing `enable_seqscan=off`
+  makes the planner use the BRIN on `ts` instead, which is slower — it is reading
+  the table because the answer needs the table.
+- **The points query scans `device_points`**, which is every point of every tenant.
+  That is a planner choice on 489 rows and it will switch to a nested loop on the
+  device index as the table grows; it is the one plan here that will change shape
+  without anyone touching the code, so it is the one to re-run first.
+
 ## What is deliberately not optimised
 
 - **The websocket patches the cache instead of refetching.** `point.changed`
@@ -40,3 +63,4 @@ Two things worth reading out of that table:
   that "simplifies" it into `invalidateQueries` has a baseline to fail against.
 - **Per-point throttling is handled at insert** (`history: interval:N`), not by
   batching in the writer. See `docs/02-THING-MODEL.md`.
+
