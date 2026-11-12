@@ -1,4 +1,5 @@
 import { AppText, Row, Toggle } from '../../../shared/ui';
+import { commandNotice } from '../model/notices';
 import { useSetPoint } from '../model/queries';
 import { primaryPoint, type Device } from '../model/types';
 
@@ -20,13 +21,22 @@ export function DeviceCard({ device, onPress }: { device: Device; onPress: () =>
 
   const toggle = () => {
     if (!point?.writable) return;
-    const next = typeof point.value === 'boolean' ? !point.value : isOn ? 0 : 100;
+    // The kind decides the value, not the current one. A bool point that has never
+    // reported a value has `value: null`, and inferring "off means 0" from that sent a
+    // number to a bool point — the server refused it with "'switch.power' expects a bool
+    // value", which is exactly what the app did the first time this row was tapped.
+    const next = point.kind === 'bool' ? !isOn : isOn ? 0 : 100;
     setPoint.mutate({ code: point.code, value: next });
   };
 
-  const subtitle = point
+  const label = point
     ? `${point.code}${point.unit ? ` · ${point.unit}` : ''}${device.online ? '' : ' · offline'}`
     : device.category;
+
+  // A failed command used to flip the switch back in silence, which reads as a broken
+  // switch. The reason goes where the row already has a second line, so nothing moves
+  // and nothing has to be dismissed.
+  const subtitle = setPoint.isError ? commandNotice(setPoint.error) : label;
 
   return (
     <Row
