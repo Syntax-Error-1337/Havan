@@ -28,7 +28,7 @@ APP_URL="postgres://haven_app:haven_app@$(echo "$OWNER_URL" | sed -E 's|.*@([^/]
 q() { docker exec -i "$CONTAINER" psql -U "$OWNER_USER" "$@"; }
 
 echo "== scratch database $DB =="
-q -d postgres -q -c "DROP DATABASE IF EXISTS $DB;"
+q -d postgres -q -c "DROP DATABASE IF EXISTS $DB WITH (FORCE);"
 q -d postgres -q -c "CREATE DATABASE $DB OWNER $OWNER_USER;"
 docker exec -i "$CONTAINER" psql -U "$OWNER_USER" -d "$DB" -q < deploy/postgres/init.sql
 

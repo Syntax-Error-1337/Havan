@@ -277,5 +277,7 @@ Reconnect with jittered backoff 1→30 s and re-subscribe; the client refetches
    semantic validation, `400` for malformed JSON.
 3. **No secrets in URLs.** Tokens go in headers or the WS first frame.
 4. **Every list is cursor-paginated**, even when it is small today.
-5. **OpenAPI is generated** (`utoipa`) and committed at `docs/openapi.json`;
-   the app and portal clients are generated from it, never hand-written twice.
+5. **One client, generated not hand-written.** There is no OpenAPI spec yet:
+   `utoipa` is not a dependency and nothing is generated, so the app and portal
+   each call this surface directly and `docs/05-API.md` is the contract between
+   them. A spec and generated clients belong with the SDK work, not before it.

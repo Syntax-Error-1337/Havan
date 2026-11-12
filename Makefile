@@ -12,16 +12,34 @@ BACKEND := backend
 # Cargo 1.99 takes `--manifest-path` after the subcommand, so every recipe
 # changes directory instead of threading a flag through a variable.
 CARGO := cd $(BACKEND) && cargo
+# The suite runs against `haven_test`, never the dev database. Otherwise a worker
+# left running on the dev database leases the automations a test just seeded — the
+# test then reports "never leased" and the code looks broken when the environment
+# is. The test database is created by `make testdb`, which `check` and `test` depend on.
+# `MIGRATE_DATABASE_URL` matters here too: the scheduler tests seed fixtures through
+# the app role and lease through the owner connection, so both must name the test
+# database. Leaking the dev URL into one of them made the tests lease a different
+# database and report "never leased".
+# All three URLs name the same database, which is the invariant CI relies on: a test
+# that seeds through one connection and reads through another must not be talking to
+# two databases. `DATABASE_URL` is the app role (so RLS applies), `MIGRATE_DATABASE_URL`
+# the owner (so fixtures can write DDL-adjacent rows).
+# The assignments come *after* `cd … &&` on purpose: `VAR=x cd dir && cargo` sets VAR
+# for `cd`, which ignores it, and cargo then runs with the dev database from .env.
+CARGO_TEST := cd $(BACKEND) && DATABASE_URL=$(TEST_DATABASE_URL) \
+	TEST_DATABASE_URL=$(TEST_DATABASE_URL) MIGRATE_DATABASE_URL=$(TEST_MIGRATE_DATABASE_URL) \
+	TEST_REDIS_URL=$(TEST_REDIS_URL) cargo
 
 .PHONY: help
 help: ## show this help
 	@# `include .env` puts a second file in MAKEFILE_LIST, and grep then prefixes
 	@# every line with its filename — which made this list read "Makefile  format".
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
+	@# `[a-zA-Z_-]+` hid any target with a digit in it — `e2e` never appeared.
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: up
-up: ## start postgres, redis, vernemq, minio
+up: ## start postgres, valkey, vernemq, seaweedfs
 	docker compose -f deploy/docker-compose.yml up -d
 	@echo "waiting for postgres..." && \
 	  until docker exec haven-db pg_isready -U haven -d haven >/dev/null 2>&1; do sleep 1; done
@@ -39,8 +57,15 @@ testdb: ## create, migrate and grant the test database
 	@docker exec haven-db psql -U haven -d postgres -tc \
 	  "SELECT 1 FROM pg_database WHERE datname='haven_test'" | grep -q 1 || \
 	  docker exec haven-db createdb -U haven haven_test
-	@MIGRATE_DATABASE_URL=$(subst /haven,/haven_test,$(MIGRATE_DATABASE_URL)) \
-	  DATABASE_URL=$(TEST_DATABASE_URL) $(CARGO) run -q -p migrate
+	@cd $(BACKEND) && MIGRATE_DATABASE_URL=$(TEST_MIGRATE_DATABASE_URL) \
+	  DATABASE_URL=$(TEST_DATABASE_URL) cargo run -q -p migrate
+	@# The migration run used to fail silently and leave a half-built database —
+	@# the suite then tested last week's schema. Count, compare, refuse.
+	@applied=$$(docker exec haven-db psql -U haven -d haven_test -tAc 'SELECT count(*) FROM _sqlx_migrations;'); \
+	 files=$$(ls backend/migrations/*.sql | wc -l | tr -d ' '); \
+	 if [ "$$applied" != "$$files" ]; then \
+	   echo "haven_test has $$applied of $$files migrations — the run did not finish" >&2; exit 1; \
+	 fi
 	@docker exec -i haven-db psql -U haven -d haven_test -q -c \
 	  "GRANT USAGE ON SCHEMA public TO haven_app, haven_system; \
 	   GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO haven_app, haven_system; \
@@ -60,26 +85,22 @@ worker: ## run the worker (foreground)
 	$(CARGO) run -p worker
 
 .PHONY: check
-check: ## fmt + clippy + tests
+check: testdb ## fmt + clippy + tests
 	$(CARGO) fmt --all --check
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
-	$(CARGO) test --workspace
+	$(CARGO_TEST) test --workspace
 
 .PHONY: test
-test: ## tests only
-	$(CARGO) test --workspace
+test: testdb ## tests only
+	$(CARGO_TEST) test --workspace
 
 .PHONY: fmt
 fmt: ## format
 	$(CARGO) fmt --all
 
 .PHONY: e2e
-e2e: ## end-to-end cloud flow (needs the stack up)
-	$(CARGO) test -p api --test e2e -- --nocapture
-
-.PHONY: openapi
-openapi: ## regenerate docs/openapi.json from the code
-	$(CARGO) run -q -p api --bin haven-api -- --print-openapi > docs/openapi.json
+e2e: ## the customer journey over HTTP (needs stack, seed, api and worker up)
+	./scripts/e2e.sh
 
 .PHONY: app
 app: ## start the Expo app
@@ -99,8 +120,8 @@ ci-backend: ## the backend suite as CI runs it: scratch db, deploy roles, haven_
 	./scripts/ci-backend.sh
 
 .PHONY: bench
-bench: ## baseline the read paths for the current home
-	./scripts/bench.sh /tmp/tok.txt "$$(cat /tmp/hid.txt)" "$$(cat /tmp/did.txt)"
+bench: ## baseline the read paths on a fresh 100-device bench home
+	./scripts/bench.sh
 
 .PHONY: seed
 seed: ## demo vendor, portal login and three products (development only)

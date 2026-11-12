@@ -56,6 +56,9 @@ make portal    # Vite
 
 make seed      # demo vendor, portal login, three products
 make db-reset  # drop, re-migrate, re-seed
+make check     # fmt + clippy + the whole suite, on haven_test
+make e2e       # the customer journey over HTTP, against the running stack
+make bench     # read-path timings on a fresh 100-device home
 ```
 
 `make db-reset` terminates the connections it finds (`DROP DATABASE … WITH (FORCE)`):
@@ -117,7 +120,7 @@ the broker in production; the dev listener is plaintext on purpose.
 | API | `http://127.0.0.1:8080` (`/healthz`; `/metrics` is Phase 8 and not built yet) |
 | App, browser | `http://localhost:8082` (`make app-web`) |
 | App, Metro / Expo Go | `exp://<lan-ip>:8081` (`make app`) |
-| Vendor portal | `http://127.0.0.1:5174` |
+| Vendor portal | `http://127.0.0.1:5173` (`make portal`) |
 
 Every published dev port is bound to `127.0.0.1`. Valkey has no password, VerneMQ
 allows anonymous clients and SeaweedFS has no access control — publishing them on
