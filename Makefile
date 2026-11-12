@@ -108,7 +108,9 @@ seed: ## demo vendor, portal login and three products (development only)
 
 .PHONY: db-reset
 db-reset: ## drop and rebuild the dev database from migrations
-	@docker exec -i haven-db psql -U haven -d postgres -c 'DROP DATABASE IF EXISTS haven;'
+	@# FORCE, because the API, the worker and any open psql hold connections and a
+	@# plain DROP refuses — which is what a reset is supposed to survive.
+	@docker exec -i haven-db psql -U haven -d postgres -c 'DROP DATABASE IF EXISTS haven WITH (FORCE);'
 	docker exec -i haven-db psql -U haven -d postgres -c 'CREATE DATABASE haven OWNER haven;'
 	docker exec -i haven-db psql -U haven -d haven -q < deploy/postgres/init.sql
 	$(MAKE) migrate

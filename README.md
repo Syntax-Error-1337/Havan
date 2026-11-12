@@ -53,7 +53,14 @@ make worker    # MQTT ingest + schedulers
 make sim       # virtual devices
 make app       # Expo
 make portal    # Vite
+
+make seed      # demo vendor, portal login, three products
+make db-reset  # drop, re-migrate, re-seed
 ```
+
+`make db-reset` terminates the connections it finds (`DROP DATABASE … WITH (FORCE)`):
+the API and worker hold pools, and a reset that only works when everything is
+stopped is a reset nobody runs. Both reconnect on their next query.
 
 ## What we borrow, and from where
 
