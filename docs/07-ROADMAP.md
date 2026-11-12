@@ -18,18 +18,22 @@ against a product catalog row, `GET /homes/{id}/dashboard`.
 `api/tests/dashboard.rs` shows a stranger receiving `404` from the dashboard and from a
 room rename, and `ci-backend` runs the whole suite as `haven_app` so the policies bite.
 
-## Phase 2 — Catalog, claim, shadow (day 7–11)
+## Phase 2 — Catalog, claim, shadow (day 7–11) — **done**
 
 Products (seeded with 3 reference SKUs), capability catalog, pairing tickets,
 `/provision/claim`, device + points creation, MQTT ingest, shadow write, WS
 `point.changed`. **Done:** the simulator claims a device with a ticket and its
-state appears in the app's dashboard within 1 s.
+state appears in the app's dashboard within 1 s — and `make e2e` proves the refusal paths
+too (a forged ticket and a replayed claim both fail), so the claim is not just the happy
+path.
 
-## Phase 3 — Commands (day 12–14)
+## Phase 3 — Commands (day 12–14) — **done**
 
 Command endpoint, validation, idempotency, desired shadow, publish, ack
 handling, settle, WS `command.settled`. **Done:** toggle a light from the app;
-the sim acks; the UI settles; a rejected value shows the device's message.
+the sim acks; the UI settles; a rejected value shows the device's message. Since Phase 8 it
+also refuses rather than pretends when the broker is down, and redelivers inside two
+minutes.
 
 ## Phase 4 — App MVP (day 15–22) — **done, except the phone pass**
 
