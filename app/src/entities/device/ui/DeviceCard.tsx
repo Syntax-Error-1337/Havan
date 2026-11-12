@@ -1,21 +1,22 @@
-import { Pressable } from 'react-native';
-import { Box, AppText } from '../../../shared/ui';
-import { useTheme, tokens } from '../../../app-shell/theme';
+import { AppText, Row, Toggle } from '../../../shared/ui';
 import { useSetPoint } from '../model/queries';
 import { primaryPoint, type Device } from '../model/types';
 
 /**
- * The dashboard tile. It renders the device's *primary* point only; the full
- * capability set lives on the detail screen. A tile that tries to draw
- * everything is a tile nobody can scan.
+ * One device, as an iOS list row.
+ *
+ * It used to be a bordered tile with a long-press to toggle — a gesture nothing on
+ * the screen advertised. A grouped row with a switch is the shape people already
+ * know, and it works the same for a bulb and a plug without inventing a control.
+ *
+ * Only the primary point appears; the full capability set lives on the detail
+ * screen, because a row that draws everything is a row nobody can scan.
  */
 export function DeviceCard({ device, onPress }: { device: Device; onPress: () => void }) {
-  const { color } = useTheme();
   const point = primaryPoint(device);
   const setPoint = useSetPoint(device.id);
 
-  const isOn =
-    point?.value === true || (typeof point?.value === 'number' && point.value > 0);
+  const isOn = point?.value === true || (typeof point?.value === 'number' && point.value > 0);
 
   const toggle = () => {
     if (!point?.writable) return;
@@ -23,43 +24,31 @@ export function DeviceCard({ device, onPress }: { device: Device; onPress: () =>
     setPoint.mutate({ code: point.code, value: next });
   };
 
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={toggle}
-      accessibilityRole="button"
-      accessibilityLabel={`${device.name}, ${isOn ? 'on' : 'off'}${
-        device.online ? '' : ', offline'
-      }`}
-      style={({ pressed }) => ({
-        flex: 1,
-        minHeight: 96,
-        borderRadius: tokens.radius.lg,
-        backgroundColor: color.surface,
-        borderWidth: 1,
-        borderColor: isOn ? color.accent : color.border,
-        padding: tokens.space.lg,
-        justifyContent: 'space-between',
-        opacity: pressed ? 0.85 : 1,
-      })}
-    >
-      <Box row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <AppText weight="600" numberOfLines={1} style={{ flexShrink: 1 }}>
-          {device.name}
-        </AppText>
-        <Box
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: device.online ? color.success : color.muted,
-          }}
-        />
-      </Box>
+  const subtitle = point
+    ? `${point.code}${point.unit ? ` · ${point.unit}` : ''}${device.online ? '' : ' · offline'}`
+    : device.category;
 
-      <AppText variant="caption" tone="muted" numberOfLines={1}>
-        {point ? `${point.code}${point.unit ? ` · ${point.unit}` : ''}` : device.category}
-      </AppText>
-    </Pressable>
+  return (
+    <Row
+      title={device.name}
+      subtitle={subtitle}
+      onPress={onPress}
+      right={
+        point?.writable ? (
+          <Toggle
+            value={isOn}
+            onChange={toggle}
+            // An offline device cannot act on a command; leaving the switch live
+            // promises something the platform cannot deliver until it reconnects.
+            disabled={!device.online || setPoint.isPending}
+            label={`${device.name} ${isOn ? 'on' : 'off'}`}
+          />
+        ) : (
+          <AppText variant="body" tone="muted">
+            {point?.value === undefined || point?.value === null ? '—' : String(point.value)}
+          </AppText>
+        )
+      }
+    />
   );
 }

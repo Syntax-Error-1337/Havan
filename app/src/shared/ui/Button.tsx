@@ -20,10 +20,13 @@ export function Button({
 }: ButtonProps) {
   const { color } = useTheme();
   const isDisabled = disabled || loading;
+  // `ghost` is a bar button: iOS puts navigation actions in the tint colour with
+  // no border and no fill. A row of outlined pills is a web toolbar, and it makes
+  // every action compete with the one real action on the screen.
   const bg =
     variant === 'primary' ? color.accent : variant === 'danger' ? color.danger : 'transparent';
   const fg =
-    variant === 'primary' ? color.onAccent : variant === 'danger' ? '#FFFFFF' : color.text;
+    variant === 'primary' ? color.onAccent : variant === 'danger' ? '#FFFFFF' : color.accent;
 
   return (
     <Pressable
@@ -33,10 +36,10 @@ export function Button({
       style={[
         {
           minHeight: tokens.touch.min,
-          paddingHorizontal: tokens.space.xl,
+          paddingHorizontal: variant === 'ghost' ? tokens.space.md : tokens.space.xl,
           borderRadius: tokens.radius.md,
           backgroundColor: bg,
-          borderWidth: variant === 'ghost' ? 1 : 0,
+          borderWidth: 0,
           borderColor: color.border,
           alignItems: 'center',
           justifyContent: 'center',

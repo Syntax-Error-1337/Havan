@@ -34,6 +34,7 @@
     "@testing-library/react-native": "^14.1.0",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.3.0",
+    "expo-mcp": "~0.2.1",
     "jest": "~30.5.2",
     "jest-expo": "~58.0.14",
     "react-test-renderer": "^19.3.0",
@@ -47,7 +48,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "start:mcp": "EXPO_UNSTABLE_MCP_SERVER=1 expo start"
   },
   "private": true
 }

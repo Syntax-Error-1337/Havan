@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, SectionList, TextInput } from 'react-native';
+import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Box, Button, Screen, AppText } from '../../shared/ui';
+import { Box, Button, Screen, AppText, Section } from '../../shared/ui';
 import { DeviceCard, useDevices } from '../../entities/device';
 import { useCreateHome, useCreateRoom, useHomes, useRooms } from '../../entities/home';
 import { useUnreadCount } from '../../entities/notification';
@@ -163,36 +163,19 @@ export function DashboardPage() {
           <Button label="Try again" variant="ghost" onPress={() => refetch()} />
         </Box>
       ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={(d) => d.id}
-          contentContainerStyle={{
-            gap: tokens.space.sm,
-            paddingBottom: tokens.space.xxl,
-            paddingTop: tokens.space.sm,
-          }}
-          stickySectionHeadersEnabled={false}
-          renderSectionHeader={({ section }) => (
-            <AppText
-              variant="caption"
-              tone="muted"
-              style={{
-                paddingHorizontal: tokens.space.lg,
-                paddingTop: tokens.space.md,
-                paddingBottom: tokens.space.xs,
-                textTransform: 'uppercase',
-                letterSpacing: 0.6,
-              }}
-            >
-              {section.title}
-            </AppText>
-          )}
-          renderItem={({ item }) => (
-            <Box style={{ paddingHorizontal: tokens.space.lg }}>
-              <DeviceCard device={item} onPress={() => router.push(`/device/${item.id}`)} />
-            </Box>
-          )}
-        />
+        <ScrollView contentContainerStyle={{ paddingTop: tokens.space.sm, paddingBottom: tokens.space.xxl }}>
+          {sections.map((section) => (
+            <Section key={section.title} title={section.title}>
+              {section.data.map((device) => (
+                <DeviceCard
+                  key={device.id}
+                  device={device}
+                  onPress={() => router.push(`/device/${device.id}`)}
+                />
+              ))}
+            </Section>
+          ))}
+        </ScrollView>
       )}
     </Screen>
   );

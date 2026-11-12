@@ -52,7 +52,7 @@ export function Box({
 }
 
 export type AppTextProps = TextProps & {
-  variant?: 'caption' | 'body' | 'title' | 'display';
+  variant?: 'tiny' | 'caption' | 'subhead' | 'body' | 'title' | 'display';
   tone?: 'text' | 'muted' | 'accent' | 'danger' | 'success';
   weight?: '400' | '500' | '600' | '700';
 };
@@ -71,6 +71,9 @@ export function AppText({
         {
           color: color[tone],
           fontSize: tokens.font[variant],
+          // The SF styles are a pairing: a 17 pt body has 22 pt of leading, and
+          // setting one without the other is how text looks "off" on iOS.
+          lineHeight: tokens.lineHeight[variant],
           fontWeight: weight,
           fontFamily: Platform.select({ ios: 'System', default: 'sans-serif' }),
         },

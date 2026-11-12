@@ -295,3 +295,40 @@ failed six tests on the default 5 s timeout that pass in a second locally, so
 `jest.config.js` sets 15 s with that reason written down. A timeout should mean
 "this test hung", not "this machine is cold".
 
+## Design language
+
+The app speaks iOS, not "a dark theme". `src/shared/config/tokens.ts` is the whole
+system, and the numbers in it come from Apple's Human Interface Guidelines rather
+than from taste:
+
+- **Type** — the SF text styles at default Dynamic Type: largeTitle 34/41,
+  title2 22/28, body 17/22, footnote 13/18, caption2 11/13. Every `AppText` sets a
+  size *and* its leading, because a 17 pt body with the wrong line height is what
+  makes text look "off" on iOS. `allowFontScaling` stays on: a person who raised
+  the system text size gets larger text and the layout copes.
+- **Colour** — system colours and the label hierarchy, one palette per appearance,
+  and the app **follows the system setting** (`useColorScheme`) instead of forcing
+  dark. Light is `#F2F2F7` grouped background with white cards; dark is pure black
+  with `#1C1C1E` cards and `#0A84FF` tint. Secondary text is label at 60%.
+- **Layout** — 4 pt grid, 16 pt margins, and a **44 pt minimum hit target**, which
+  is the smallest a finger hits reliably.
+- **Structure** — `Section` is a grouped list (inset card, hairlines inset to the
+  text, 13 pt uppercase header) and `Row` is a cell with a title, a secondary line
+  and exactly one trailing control. This is the shape iOS users already know.
+- **State** — a control that cannot act is disabled and visibly so: an offline
+  device's switch is dimmed, because a live-looking switch promises a command the
+  platform cannot deliver.
+
+### Expo MCP
+
+`expo-mcp` is a dev dependency and `npm run start:mcp` starts the dev server with
+`EXPO_UNSTABLE_MCP_SERVER=1`, which is what exposes the local capabilities
+(screenshot, tap by testID, router sitemap) to an MCP client.
+
+Two honest limits on this machine: the **remote** server (`https://mcp.expo.dev/mcp`,
+OAuth) needs an MCP client to register it — Hermes has no Expo entry in its
+connector catalog — and the **local** capabilities need an iOS Simulator, which
+needs a full Xcode install. This machine has only CommandLineTools, so screens are
+verified through the web build instead. On a Mac with Xcode the same code path
+gives real screenshots and taps.
+
