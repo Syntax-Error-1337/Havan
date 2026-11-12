@@ -39,6 +39,11 @@ async fn main() -> anyhow::Result<()> {
     opts.set_clean_session(false);
     let (client, mut eventloop) = AsyncClient::new(opts, 64);
 
+    // Whether the broker is currently connected. `rumqttc::AsyncClient::publish` accepts
+    // packets while disconnected and drops them, so redelivery has to ask this, not the
+    // client — otherwise it would mark commands delivered that never left the process.
+    let connected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
     let runner = std::sync::Arc::new(automation::Runner::new(
         infra::PgAutomation::new(pg.clone()),
         client.clone(),
@@ -59,6 +64,7 @@ async fn main() -> anyhow::Result<()> {
     // answers must still reach a settled state, or the app spins forever.
     {
         let ingest = ingest.clone();
+        let commands = commands.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(Duration::from_secs(5));
             loop {
@@ -71,6 +77,72 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                     Err(e) => tracing::warn!(error = ?e, "timeout sweep failed"),
+                }
+            }
+        });
+    }
+
+    // Redelivery: a command refused during a broker outage is not lost, it is late.
+    // Bounded in both directions — only the last two minutes, and only while the broker
+    // is actually back — because a command delivered ten minutes late turns a light on
+    // for no reason, and a redelivery loop that hammers a dead broker is its own outage.
+    {
+        let commands = commands.clone();
+        let client = client.clone();
+        let connected = connected.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                tick.tick().await;
+                if !connected.load(Ordering::Relaxed) {
+                    continue;
+                }
+                match commands.due_for_redelivery(120, 20).await {
+                    Ok(due) if due.is_empty() => {}
+                    Ok(due) => {
+                        for r in due {
+                            let Some(value) = r
+                                .value
+                                .as_ref()
+                                .and_then(protocol::envelope::DpValue::from_json)
+                            else {
+                                // A command whose payload no longer parses cannot be
+                                // replayed; leave it for the timeout sweep to settle.
+                                continue;
+                            };
+                            let msg = protocol::envelope::CommandMsg {
+                                v: protocol::WIRE_VERSION,
+                                id: r.command_id,
+                                ts: kernel::now_s(),
+                                op: protocol::envelope::CommandOp::Set,
+                                dp: r.dp.clone(),
+                                value: Some(value),
+                                action: None,
+                            };
+                            let Ok(payload) = serde_json::to_vec(&msg) else {
+                                continue;
+                            };
+                            let topic = topics::cmd(
+                                &r.vendor_id.to_string(),
+                                &r.home_id.to_string(),
+                                &r.device_id.to_string(),
+                            );
+                            match client
+                                .publish(&topic, QoS::AtLeastOnce, false, payload)
+                                .await
+                            {
+                                Ok(()) => match commands.mark_redelivered(r.command_id).await {
+                                    Ok(true) => info!(command = %r.command_id, "redelivered"),
+                                    Ok(false) => {
+                                        info!(command = %r.command_id, "already redelivered")
+                                    }
+                                    Err(e) => warn!(error = ?e, "could not mark redelivered"),
+                                },
+                                Err(e) => warn!(error = ?e, "redelivery publish failed"),
+                            }
+                        }
+                    }
+                    Err(e) => warn!(error = ?e, "redelivery sweep failed"),
                 }
             }
         });
@@ -112,6 +184,9 @@ async fn main() -> anyhow::Result<()> {
             }
             event = eventloop.poll() => {
                 match event {
+                    Ok(Event::Incoming(Packet::Disconnect)) => {
+                        connected.store(false, Ordering::Relaxed);
+                    }
                     Ok(Event::Incoming(Packet::Publish(p))) => {
                         match topics::parse(&p.topic) {
                             Some(topic) => {
@@ -134,6 +209,7 @@ async fn main() -> anyhow::Result<()> {
                     // nothing, with no error anywhere. Subscribing again on
                     // CONNACK costs one idempotent frame.
                     Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                        connected.store(true, Ordering::Relaxed);
                         if let Err(e) = client
                             .subscribe(topics::INGEST_SHARED_FILTER, QoS::AtLeastOnce)
                             .await
@@ -145,6 +221,9 @@ async fn main() -> anyhow::Result<()> {
                     }
                     Ok(_) => {}
                     Err(e) => {
+                        // A dropped connection is not a delivery. Say so before backing off,
+                        // or redelivery keeps publishing into a dead socket.
+                        connected.store(false, Ordering::Relaxed);
                         warn!(error = %e, "mqtt loop error; reconnecting");
                         tokio::time::sleep(Duration::from_secs(2)).await;
                     }

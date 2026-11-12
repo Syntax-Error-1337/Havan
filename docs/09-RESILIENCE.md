@@ -1,7 +1,7 @@
 # What happens when a dependency dies
 
 The drill: `make chaos` (or `make chaos WHAT=mqtt`). It stops a local container, measures
-what the platform does, starts it again, and asserts the answers below. 17 assertions,
+what the platform does, starts it again, and asserts the answers below. 18 assertions,
 all passing.
 
 The point is not that things fail — with a dependency gone they must. The point is *how*:
@@ -11,7 +11,7 @@ loses a write, and recovery without restarting the API.
 | Dependency gone | `/healthz` | Reads | Commands | Recovery |
 |---|---|---|---|---|
 | Valkey | `redis: false`, `503` | work | work, `202` | automatic |
-| VerneMQ | `mqtt: false`, `503` | work | **`503`, nothing sent** | automatic |
+| VerneMQ | `mqtt: false`, `503` | work | **`503`, nothing sent** | automatic, and the command is delivered late |
 | Postgres | `db: false`, `503` | **`503`** | `503` | automatic |
 
 Liveness (`/livez`) never touches a dependency: a probe that fails because Postgres is slow
@@ -50,11 +50,35 @@ the caller gets `503` with the command id and "was not sent", and
 `haven_commands_undelivered_total` counts them. The difference between that counter and
 `haven_commands_dispatched_total` is the outage.
 
+## Late delivery
+
+A `503` is only honest if the command is not lost, so the worker redelivers it.
+
+`commands.attempts` counts every delivery attempt. The refusal records one
+(`unreachable / broker_unavailable`), and a five-second sweep in the worker picks up
+refused commands from the **last two minutes** and republishes them once the broker is
+back, marking `dispatched` and incrementing `attempts`.
+
+Bounded in both directions on purpose:
+
+- **two minutes**, because a command delivered ten minutes late turns a light on for no
+  reason — the person has moved on and the house acts on a stale intention;
+- **only while connected**, tracked by a flag the worker's own event loop sets on `ConnAck`
+  and clears on disconnect, because `rumqttc::publish` accepts packets into a dead socket
+  and would otherwise let the sweep mark commands delivered that never left the process.
+
+`mark_redelivered` is conditional on the row still being `unreachable`, so two workers
+racing over the same row send it once.
+
+Verified live: broker stopped → `503`, row `unreachable attempts=1 broker_unavailable` →
+broker started → within one sweep the row is `dispatched attempts=2` and the worker logs
+`redelivered`. The drill asserts exactly this, on the specific command that was refused.
+
 ## What is not covered
 
-- **Durable redelivery.** A command refused during an outage is not retried later; the
-  customer's client is told to retry. A redelivery queue would make `202` truthful through
-  a broker blip, and needs a delivery-attempt column before it can exist.
+- **Long outages.** Past two minutes a refused command is not retried at all — it stays
+  `unreachable` and the customer's client is the retry mechanism. That is a decision, not
+  an oversight: an unbounded queue would replay a morning's presses at lunchtime.
 - **Partial failure.** This kills whole containers. A broker that accepts connections and
   drops messages, or a database that answers slowly rather than not at all, is a different
   drill.

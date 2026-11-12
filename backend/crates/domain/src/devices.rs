@@ -67,6 +67,20 @@ pub struct CommandOutcome {
     pub publish: Option<Publishable>,
 }
 
+/// A command that never left the process, in the shape needed to try again.
+///
+/// Everything is copied rather than joined later: redelivery runs in the worker, minutes
+/// after the request, and must not depend on a session or a tenant scope.
+#[derive(Debug, Clone)]
+pub struct Redelivery {
+    pub command_id: Uuid,
+    pub vendor_id: Uuid,
+    pub home_id: Uuid,
+    pub device_id: Uuid,
+    pub dp: Option<String>,
+    pub value: Option<serde_json::Value>,
+}
+
 /// One row of the command log, as the worker sees it after settling.
 #[derive(Debug, Clone)]
 pub struct Settled {
@@ -168,6 +182,21 @@ pub trait CommandRepo {
         reported: serde_json::Value,
         code: Option<&str>,
     ) -> impl Future<Output = Result<Option<Settled>, AppError>> + Send;
+
+    /// Commands refused because the broker was down, recent enough that delivering them
+    /// late is still what the person asked for.
+    fn due_for_redelivery(
+        &self,
+        younger_than_secs: i64,
+        limit: i64,
+    ) -> impl Future<Output = Result<Vec<Redelivery>, AppError>> + Send;
+
+    /// Mark a redelivered command dispatched. Conditional on the row still being
+    /// `unreachable`, so two workers racing over the same row send it once.
+    fn mark_redelivered(
+        &self,
+        command_id: Uuid,
+    ) -> impl Future<Output = Result<bool, AppError>> + Send;
 
     /// Settle a command that never left the process because the broker was unavailable.
     ///

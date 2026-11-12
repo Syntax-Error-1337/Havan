@@ -302,6 +302,18 @@ are scoped to the vendor and return serial numbers, state, firmware and last-see
 not the owner, not the home name. Pagination is keyset on `(created_at, id)`; an
 unknown `state` filter is `422` rather than an empty page that looks like "no devices".
 
+## Sending a command
+
+`POST /devices/{id}/commands` answers `202` with `{ command_id, status }` — recorded and
+dispatched, not applied. Only the device's ack settles it.
+
+With the broker unavailable it answers **`503`**, naming the command: `the device broker is
+unavailable; command <id> was not sent`. The command is recorded as
+`unreachable / broker_unavailable` with `attempts = 1`, and the worker **redelivers it** if
+the broker returns within two minutes (`dispatched`, `attempts = 2`). Past that window it
+stays `unreachable` and the client retries — a command replayed hours later would act on an
+intention nobody still holds. `haven_commands_undelivered_total` counts the refusals.
+
 ## Rolling back a bad image
 
 `POST /vendor/campaigns/{id}/rollback` answers `201` with

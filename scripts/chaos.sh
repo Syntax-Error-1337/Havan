@@ -145,6 +145,8 @@ if [ "$WHAT" = all ] || [ "$WHAT" = mqtt ]; then
   # be a command the customer believes was sent, and nothing would ever deliver it.
   if [ "$s" = "503" ]; then
     ok "commands refuse rather than report a false send ($s)"
+    refused=$(python3 -c "import re,sys;m=re.search(r'command ([0-9a-f-]{36})', open('$STATE/cmd.json').read());print(m.group(1) if m else '')" 2>/dev/null)
+    echo "$refused" > "$STATE/refused"
     grep -q "not sent" "$STATE/cmd.json" 2>/dev/null \
       && ok "the refusal says the command was not sent" \
       || bad "the refusal does not say what happened: $(head -c 120 "$STATE/cmd.json")"
@@ -164,6 +166,21 @@ if [ "$WHAT" = all ] || [ "$WHAT" = mqtt ]; then
   wait_healthy mqtt 45 && ok "broker recovered" || bad "broker did not recover"
   s=$(command_status)
   [ "$s" = "202" ] && ok "commands dispatch again ($s)" || bad "commands answered $s after recovery"
+
+  # The refused command is not the customer's problem: the worker delivers it when the
+  # broker comes back, within the two-minute window. This is the assertion that makes the
+  # 503 honest — "not sent" is only acceptable if it is later sent.
+  refused=$(cat "$STATE/refused" 2>/dev/null)
+  waited=0
+  [ -n "$refused" ] || bad "could not tell which command was refused"
+  until [ "$(docker exec haven-db psql -U haven -d haven -tAc \
+      "select status from commands where id='$refused'" 2>/dev/null | tr -d ' ')" = "dispatched" ]; do
+    [ "$waited" -ge 20 ] && break
+    sleep 1
+    waited=$((waited + 1))
+  done
+  [ "$waited" -lt 20 ] && ok "the refused command was delivered once the broker returned (${waited}s)" \
+    || bad "the refused command was never redelivered — a 503 that loses the command"
 fi
 
 # ---------------------------------------------------------------- db

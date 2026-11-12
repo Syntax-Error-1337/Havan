@@ -22,6 +22,20 @@ pub enum DpValue {
 }
 
 impl DpValue {
+    /// JSON in, wire value out. Lives here rather than in the API because redelivery
+    /// rebuilds envelopes from stored rows and must produce byte-identical packets.
+    pub fn from_json(value: &serde_json::Value) -> Option<Self> {
+        match value {
+            serde_json::Value::Bool(b) => Some(DpValue::Bool(*b)),
+            serde_json::Value::Number(n) => n
+                .as_i64()
+                .map(DpValue::Int)
+                .or_else(|| n.as_f64().map(DpValue::Float)),
+            serde_json::Value::String(s) => Some(DpValue::Text(s.clone())),
+            _ => None,
+        }
+    }
+
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             DpValue::Int(i) => Some(*i as f64),

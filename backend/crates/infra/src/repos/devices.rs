@@ -1,9 +1,22 @@
 use std::collections::HashMap;
 
 use crate::pg::Pg;
-use domain::devices::{Command, CommandRepo, Device, DeviceRepo, Point, PointValue, Settled};
+use domain::devices::{
+    Command, CommandRepo, Device, DeviceRepo, Point, PointValue, Redelivery, Settled,
+};
 use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
+
+/// A refused command as PostgreSQL returns it. Named, because a six-tuple in a `let` is a
+/// type nobody can read at the call site.
+type RedeliveryRow = (
+    Uuid,
+    Uuid,
+    Option<Uuid>,
+    Uuid,
+    Option<String>,
+    Option<serde_json::Value>,
+);
 
 #[derive(Clone)]
 pub struct PgDevices {
@@ -474,8 +487,11 @@ impl CommandRepo for PgDevices {
         let mut tx = self.pg.scoped(&TenantCtx::system("command-settle")).await?;
         // `unreachable`, the status the schema already has for a command that never got
         // to a device. Not `timeout`: that word blames the hardware for our outage.
+        // `attempts` counts the try that failed, so the row says "we tried once and the
+        // broker was gone" rather than looking like a command nobody ever attempted.
         sqlx::query(
-            r#"UPDATE commands SET status = 'unreachable', error_code = $2
+            r#"UPDATE commands
+                  SET status = 'unreachable', error_code = $2, attempts = attempts + 1
                 WHERE id = $1 AND status = 'queued'"#,
         )
         .bind(command_id)
@@ -485,6 +501,67 @@ impl CommandRepo for PgDevices {
         .map_err(db)?;
         tx.commit().await.map_err(db)?;
         Ok(())
+    }
+
+    async fn due_for_redelivery(
+        &self,
+        younger_than_secs: i64,
+        limit: i64,
+    ) -> Result<Vec<Redelivery>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("redelivery")).await?;
+        let rows: Vec<RedeliveryRow> = sqlx::query_as(
+            r#"SELECT c.id, c.vendor_id, d.home_id, c.device_id,
+                          c.payload->>'dp', c.payload->'value'
+                     FROM commands c JOIN devices d ON d.id = c.device_id
+                    WHERE c.status = 'unreachable'
+                      AND d.home_id IS NOT NULL
+                      -- Only the recent past. A command from ten minutes ago is not a
+                      -- command any more: delivering it late turns a light on for no reason.
+                      AND c.requested_at > now() - make_interval(secs => $1)
+                    ORDER BY c.requested_at
+                    LIMIT $2"#,
+        )
+        .bind(younger_than_secs as f64)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(
+                |(command_id, vendor_id, home_id, device_id, dp, value): RedeliveryRow| {
+                    // `home_id` is filtered in SQL; re-checked because the type is Option and
+                    // an unwrap here would be the one place a null takes the worker down.
+                    home_id.map(|home_id| Redelivery {
+                        command_id,
+                        vendor_id,
+                        home_id,
+                        device_id,
+                        dp,
+                        value: value.filter(|v| !v.is_null()),
+                    })
+                },
+            )
+            .collect())
+    }
+
+    async fn mark_redelivered(&self, command_id: Uuid) -> Result<bool, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("redelivery")).await?;
+        let updated = sqlx::query(
+            r#"UPDATE commands
+                  SET status = 'dispatched', attempts = attempts + 1, dispatched_at = now()
+                WHERE id = $1 AND status = 'unreachable'"#,
+        )
+        .bind(command_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+        tx.commit().await.map_err(db)?;
+        // False means another worker got there first, which is fine and worth knowing.
+        Ok(updated == 1)
     }
 
     async fn sweep_timeouts(&self, older_than_secs: i64) -> Result<Vec<Settled>, AppError> {
