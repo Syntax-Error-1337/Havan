@@ -70,10 +70,18 @@ is refused without a location, arms for 15:48Z (London sunset −30 min) once th
 has coordinates; a webhook fires `202`, executes as `trigger_kind = webhook` with
 `[trigger, action]` steps and produces the notification.
 
-## Phase 7 — SDK and certification (day 36–45)
+## Phase 7 — SDK and certification (day 36–45) — **reference implementation done**
 
-C component on ESP32-S3 reference board, Rust crate, `haven-cert`. **Done:** the
-reference firmware passes checklist items 1–8 and the portal shows the badge.
+- **Done:** `backend/crates/haven-sdk` — topics built not formatted, subscriptions
+  re-made on every connect, command application with typed refusals, shadow/event/ack
+  and OTA progress helpers, claim. 16 unit tests. The simulator is now a ~130-line
+  device built on it, which is the size a vendor's application logic should be.
+- **Not done:** the C component (needs a board and a toolchain), `haven-cert` (mTLS
+  enrolment), and the certification checklist — the checklists in
+  `docs/03-SDK-CONTRACT.md` stay prose until there is hardware.
+
+**Done means:** the reference firmware passes checklist items 1–8 and the portal shows
+the badge. Neither is reachable without an ESP32-S3 on a desk.
 
 ## Phase 8 — Hardening (day 46–55)
 

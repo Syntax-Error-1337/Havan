@@ -853,6 +853,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "haven-sdk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "kernel",
+ "protocol",
+ "reqwest",
+ "rumqttc",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2239,6 +2255,7 @@ name = "simulator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "haven-sdk",
  "kernel",
  "protocol",
  "reqwest",

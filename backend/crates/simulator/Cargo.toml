@@ -9,6 +9,7 @@ name = "haven-sim"
 path = "src/main.rs"
 
 [dependencies]
+haven-sdk.workspace = true
 protocol.workspace = true
 kernel.workspace = true
 tokio.workspace = true

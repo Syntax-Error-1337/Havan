@@ -366,3 +366,10 @@ customer reading a version that is no longer true.
 
 The offer envelope accepts `campaign_id` or `rollout_id`; the report likewise.
 
+## Reference implementation
+
+`backend/crates/haven-sdk` implements this contract in Rust, and
+`backend/crates/simulator` is a complete device built on it. The C component a vendor
+flashes must reproduce the same behaviour; treat the crate as the executable half of this
+document. `sdk/README.md` lists what it guarantees and what is still missing (mTLS
+enrolment, certification).

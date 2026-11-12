@@ -8,6 +8,7 @@ members = [
   "crates/api",
   "crates/worker",
   "crates/migrate",
+  "crates/haven-sdk",
   "crates/simulator",
   "crates/devseed",
 ]
@@ -20,6 +21,7 @@ rust-version = "1.85"
 authors = ["Haven"]
 
 [workspace.dependencies]
+haven-sdk = { path = "crates/haven-sdk" }
 protocol = { path = "crates/protocol" }
 kernel = { path = "crates/kernel" }
 domain = { path = "crates/domain" }
