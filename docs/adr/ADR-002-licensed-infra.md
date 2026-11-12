@@ -41,3 +41,27 @@ paid licence. The first draft of the stack had three such components.
 - A customer contract explicitly permits TSL/BSL components.
 - Ingest passes ~15 k rows/s per Postgres node and ClickHouse becomes cheaper
   than sharding.
+
+## The gate
+
+`make licences` reads what is actually installed — `cargo metadata` for the workspace, and
+every entry in the three `package-lock.json` files (the lock file *is* the dependency graph;
+anything else under `node_modules` is npm's own test fixture) — and fails on a licence
+outside the allowlist.
+
+It accepts two kinds, and the difference matters:
+
+- **Permissive, automatic** — the six in AGENTS.md §1 plus `Unicode-3.0`,
+  `BlueOak-1.0.0`, `CDLA-Permissive-2.0`, `Python-2.0` and `CC-BY-4.0`. These reach us
+  transitively and cannot be avoided: ICU4X's Unicode licence arrives with `url`/`idna` and
+  with rustls's certificate parsing, BlueOak and Python-2.0 with the node tooling,
+  CDLA-Permissive is Mozilla's root-store *data*, CC-BY is `caniuse-lite`'s browser
+  database. None is copyleft.
+- **Build-only** (`MPL-2.0`) — `lightningcss`, used unmodified as Metro's CSS transform. MPL
+  obligations attach to the files you modify, and a build tool is not code we host, which is
+  the line §1 draws. If an MPL package ever appears in the runtime path of the API, the
+  worker, the app bundle or the portal bundle, that is a decision to take explicitly rather
+  than a rule to reinterpret — the script prints it as a failure in that case.
+
+A new dependency still needs a licence line in the PR description; the gate makes that
+checkable instead of remembered.

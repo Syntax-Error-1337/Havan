@@ -44,6 +44,7 @@ Read in order:
 8. [07-ROADMAP.md](docs/07-ROADMAP.md) — phases and what "done" means
 9. [08-PERFORMANCE.md](docs/08-PERFORMANCE.md) — measured timings, and the method behind them
 10. [09-RESILIENCE.md](docs/09-RESILIENCE.md) — what each outage does, and the four bugs it found
+11. [10-RELEASE-CHECKLIST.md](docs/10-RELEASE-CHECKLIST.md) — the gates, and the three items that need hardware
 
 ## Running it
 
@@ -61,6 +62,8 @@ make db-reset  # drop, re-migrate, re-seed
 make check     # fmt + clippy + the whole suite, on haven_test
 make e2e       # the customer journey over HTTP, against the running stack
 make bench     # read-path timings on a fresh 100-device home
+make licences  # every dependency is permissively licensed (AGENTS.md, ADR-002)
+make load      # ingest throughput and loss (RATE= SECONDS=)
 make chaos     # stop Redis/MQTT/Postgres in turn and assert the degraded behaviour
                # (WHAT=redis|mqtt|db to run one). Leaves the stack running.
 ```
