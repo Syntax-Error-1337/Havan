@@ -102,6 +102,10 @@ ci-backend: ## the backend suite as CI runs it: scratch db, deploy roles, haven_
 bench: ## baseline the read paths for the current home
 	./scripts/bench.sh /tmp/tok.txt "$$(cat /tmp/hid.txt)" "$$(cat /tmp/did.txt)"
 
+.PHONY: seed
+seed: ## demo vendor, portal login and three products (development only)
+	$(CARGO) run -p devseed
+
 .PHONY: db-reset
 db-reset: ## drop and rebuild the dev database from migrations
 	@docker exec -i haven-db psql -U haven -d postgres -c 'DROP DATABASE IF EXISTS haven;'

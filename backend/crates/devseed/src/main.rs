@@ -13,6 +13,9 @@ const VENDOR_SLUG: &str = "acme";
 const VENDOR_NAME: &str = "Acme Devices";
 const PORTAL_EMAIL: &str = "admin@acme.test";
 const PORTAL_PASSWORD: &str = "acme-demo-password";
+/// Fixed, not random: the portal's login form pre-fills this vendor and the
+/// README quotes it. A seed whose identity changes per run cannot be documented.
+const VENDOR_ID: Uuid = Uuid::from_u128(0x11111111_1111_7111_8111_111111111111);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -29,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
            ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
            RETURNING id"#,
     )
-    .bind(kernel::new_id())
+    .bind(VENDOR_ID)
     .bind(VENDOR_SLUG)
     .bind(VENDOR_NAME)
     .fetch_one(&mut *tx)

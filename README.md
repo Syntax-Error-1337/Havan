@@ -65,6 +65,25 @@ assistant and this is a multi-tenant commercial cloud.
 
 Apache-2.0 material that is copied verbatim keeps its notice (see `NOTICE`).
 
+## Signing in on a fresh checkout
+
+**Vendor portal** (`make portal`) — seeded, deterministic, and printed by the seed:
+
+| | |
+|---|---|
+| email | `admin@acme.test` |
+| password | `acme-demo-password` |
+| vendor id | `11111111-1111-7111-8111-111111111111` (slug `acme`) |
+
+`make seed` creates that vendor, that user and three published products. The vendor
+id is a constant rather than a fresh UUID per run, because an identity that changes
+every seed cannot be documented — and the portal's login form pre-fills it.
+
+**Customer app** — there is deliberately no seeded account. Customers register
+themselves (`POST /v1/auth/register {email, password}`, or "Create one" on the login
+screen), then create a home. A shared demo password in a customer app is the one
+credential that must not exist: it is the account a device is bound to.
+
 ## What CI proves
 
 Four jobs on every push: `backend` (fmt, clippy, migrations, the full suite),
