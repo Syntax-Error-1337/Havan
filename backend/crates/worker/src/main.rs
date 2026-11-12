@@ -176,11 +176,25 @@ async fn main() -> anyhow::Result<()> {
     let seen = AtomicU64::new(0);
     let rejected = AtomicU64::new(0);
 
+    // Reports are written in batches: one transaction for up to `Batch::CAPACITY` reports
+    // per device, flushed when full or when a quarter-second has passed. The time bound is
+    // what keeps a quiet fleet live — a device that reports once must not wait for 250
+    // messages that will never arrive.
+    let mut batch = ingest::Batch::default();
+    let mut flush = tokio::time::interval(Duration::from_millis(250));
+    flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 info!("shutting down");
+                // Whatever is buffered is still the truth a device reported; write it
+                // before leaving, or a deploy silently loses the last quarter-second.
+                batch.flush(&ingest).await;
                 break;
+            }
+            _ = flush.tick() => {
+                batch.flush(&ingest).await;
             }
             event = eventloop.poll() => {
                 match event {
@@ -191,7 +205,12 @@ async fn main() -> anyhow::Result<()> {
                         match topics::parse(&p.topic) {
                             Some(topic) => {
                                 let n = seen.fetch_add(1, Ordering::Relaxed) + 1;
-                                ingest.on_message(&topic, &p.payload).await;
+                                ingest
+                                    .on_message_batched(&topic, &p.payload, &mut batch)
+                                    .await;
+                                if batch.is_full() {
+                                    batch.flush(&ingest).await;
+                                }
                                 if n.is_multiple_of(1000) {
                                     info!(seen = n, "ingested");
                                 }

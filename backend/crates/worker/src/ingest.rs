@@ -43,6 +43,30 @@ impl Ingest {
         }
     }
 
+    /// Route one message. Events go to the batch buffer, everything else is applied now:
+    /// an ack settles a command the app is waiting on, and 20 ms of latency there is 20 ms
+    /// the person sees.
+    pub async fn on_message_batched(
+        &self,
+        topic: &DeviceTopic<'_>,
+        payload: &[u8],
+        batch: &mut Batch,
+    ) {
+        if !matches!(topic.lane, Lane::Evt) {
+            self.on_message(topic, payload).await;
+            return;
+        }
+
+        let Ok(device_id) = Uuid::parse_str(topic.device) else {
+            tracing::warn!(device = %topic.device, "device segment is not a uuid");
+            return;
+        };
+        match serde_json::from_slice::<EventMsg>(payload) {
+            Ok(msg) => batch.push(device_id, msg),
+            Err(e) => tracing::warn!(%device_id, error = %e, "evt rejected"),
+        }
+    }
+
     pub async fn on_message(&self, topic: &DeviceTopic<'_>, payload: &[u8]) {
         // Device identity comes from the topic, never from the payload.
         let Ok(device_id) = Uuid::parse_str(topic.device) else {
@@ -231,4 +255,65 @@ impl Ingest {
 
 fn warn_apply(device_id: Uuid, e: AppError) {
     tracing::warn!(%device_id, error = ?e, "ingest failed; dropping this report");
+}
+
+/// Reports waiting to be written, grouped by device.
+///
+/// Grouped because the unit of work is a transaction: fifty reports for one device in one
+/// transaction is one commit instead of fifty, which is what the ingest path spends its
+/// time on (docs/08-PERFORMANCE.md). Two devices never share a transaction — a slow one
+/// must not hold up the other.
+#[derive(Default)]
+pub struct Batch {
+    pending: std::collections::HashMap<Uuid, Vec<infra::repos::ingest::Report>>,
+    reports: usize,
+}
+
+impl Batch {
+    /// How many reports are worth a transaction. Small enough that latency stays in the
+    /// tens of milliseconds, large enough that a chatty device stops paying a commit a
+    /// message.
+    pub const CAPACITY: usize = 250;
+
+    pub fn push(&mut self, device_id: Uuid, msg: EventMsg) {
+        self.pending
+            .entry(device_id)
+            .or_default()
+            .push(infra::repos::ingest::Report {
+                ts: msg.ts,
+                online: None,
+                pts: msg.pts,
+            });
+        self.reports += 1;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pending.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.reports
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.reports >= Self::CAPACITY
+    }
+
+    /// Write everything buffered and fan it out. Errors are logged per device: one bad
+    /// device must not stop the rest, which is the same rule the single-message path had.
+    pub async fn flush(&mut self, ingest: &Ingest) {
+        if self.pending.is_empty() {
+            return;
+        }
+
+        let pending = std::mem::take(&mut self.pending);
+        self.reports = 0;
+
+        for (device_id, reports) in pending {
+            match ingest.writer.apply_reports(device_id, &reports).await {
+                Ok(outcome) => ingest.publish(outcome).await,
+                Err(e) => tracing::warn!(%device_id, error = ?e, "batch apply failed"),
+            }
+        }
+    }
 }

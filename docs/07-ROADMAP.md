@@ -102,11 +102,15 @@ the badge. Neither is reachable without an ESP32-S3 on a desk.
   commands reported sent while the broker was down) are fixed.
 - **Late delivery:** a command refused during an outage is redelivered when the broker
   returns, within two minutes, counted in `commands.attempts`.
+- **Ingest measured, then made 4× faster.** `make load` publishes through the real protocol
+  path and counts what lands. It found the wall at ~150–200 messages/second per worker, with
+  the broker shedding the rest; batching reports into one transaction per device
+  (`apply_reports`) moved the sustainable rate to **~600–700/s**, and the same 800/s run went
+  from 65 % shed to 0.7 %. Numbers and method in `docs/08-PERFORMANCE.md`.
 - **Not done:** certificate-expiry alerts (there are no device certificates until
-  `haven-cert` exists — Phase 7), the 20k events/s load test and the multi-replica chaos
-  case. The load test is the one item that could be attempted here with a synthetic
-  publisher, but a number from a laptop against a local broker would say nothing about a
-  deployment.
+  `haven-cert` exists — Phase 7) and the multi-replica chaos case. The 20 000 events/s
+  figure is now arithmetic rather than a hope: ~30 workers at the measured rate, which is a
+  deployment decision, not a code change.
 
 **Done means:** chaos run with the documented behaviour observed — **yes**, 18/18
 assertions, with the four bugs it found fixed in the same pass.

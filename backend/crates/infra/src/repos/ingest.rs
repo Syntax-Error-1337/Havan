@@ -57,6 +57,18 @@ pub struct IngestOutcome {
     pub dropped_points: usize,
 }
 
+/// A point's three value columns, which `change` compares as one unit.
+type Value = (Option<f64>, Option<bool>, Option<String>);
+
+/// One report, as the batching path needs it: a timestamp, whether it also carries
+/// presence, and the datapoints.
+#[derive(Debug, Clone)]
+pub struct Report {
+    pub ts: i64,
+    pub online: Option<bool>,
+    pub pts: std::collections::BTreeMap<String, DpValue>,
+}
+
 pub struct PgIngest {
     pg: Pg,
 }
@@ -80,6 +92,205 @@ impl PgIngest {
         self.apply(device_id, msg.ts, None, &msg.pts).await
     }
 
+    /// Apply many reports for one device in **one transaction**.
+    ///
+    /// The single-report path cost one transaction, one metadata query and two statements
+    /// per point, which measured out at ~150 messages/second per worker and shed the rest
+    /// at the broker (docs/08-PERFORMANCE.md). Batching removes the per-message commit and
+    /// collapses the point updates to the value each point ended on; telemetry still gets a
+    /// row per changed report, because that is the history, not a cache.
+    pub async fn apply_reports(
+        &self,
+        device_id: Uuid,
+        reports: &[Report],
+    ) -> Result<IngestOutcome, AppError> {
+        let Some(last) = reports.last() else {
+            return Err(AppError::validation("no reports to apply"));
+        };
+        let mut tx = self.tx().await?;
+
+        let row: Option<(Option<Uuid>, Uuid)> =
+            sqlx::query_as("SELECT home_id, vendor_id FROM devices WHERE id = $1")
+                .bind(device_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+        let Some((home_id, vendor_id)) = row else {
+            return Err(AppError::not_found("device"));
+        };
+
+        // Once for the batch, not once per message.
+        let metas: Vec<PointRow> = sqlx::query_as(
+            "SELECT id, code, dp, kind, history, value_num, value_bool, value_text
+               FROM device_points WHERE device_id = $1",
+        )
+        .bind(device_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        let by_dp: HashMap<&str, &PointRow> = metas.iter().map(|m| (m.dp.as_str(), m)).collect();
+
+        // The value each point starts the batch on: `change` means change since the last
+        // report, which may be one earlier in this same batch.
+        let mut current: HashMap<String, Value> = metas
+            .iter()
+            .map(|m| {
+                (
+                    m.dp.clone(),
+                    (m.value_num, m.value_bool, m.value_text.clone()),
+                )
+            })
+            .collect();
+
+        let mut updated: Vec<PointUpdate> = Vec::new();
+        let mut touched: HashMap<String, usize> = HashMap::new();
+        let mut dropped = 0usize;
+
+        let mut rows_ts: Vec<time::OffsetDateTime> = Vec::new();
+        let mut rows_point: Vec<Uuid> = Vec::new();
+        let mut rows_num: Vec<Option<f64>> = Vec::new();
+        let mut rows_bool: Vec<Option<bool>> = Vec::new();
+        let mut rows_text: Vec<Option<String>> = Vec::new();
+
+        for report in reports {
+            let at = time::OffsetDateTime::from_unix_timestamp(report.ts)
+                .unwrap_or_else(|_| kernel::now());
+
+            for (dp, value) in &report.pts {
+                let Some(point) = by_dp.get(dp.as_str()).copied() else {
+                    dropped += 1;
+                    continue;
+                };
+
+                let (num, boolean, text) = split_value(&point.kind, value);
+                let unchanged = current.get(dp.as_str()) == Some(&(num, boolean, text.clone()));
+
+                let policy = History::parse(&point.history);
+                let store = match policy {
+                    History::Off => false,
+                    History::Change => !unchanged,
+                    // `interval:N` keeps the per-row guard below: the throttle is measured
+                    // against what is already stored, which a batch cannot know.
+                    History::All | History::Interval(_) => true,
+                };
+
+                if store {
+                    match policy {
+                        History::Interval(secs) => {
+                            let throttle = secs.min(i32::MAX as u32) as i32;
+                            sqlx::query(
+                                r#"INSERT INTO telemetry (ts, device_id, point_id, vendor_id, num, bool, txt)
+                                   SELECT $1, $2, $3, $4, $5, $6, $7
+                                    WHERE NOT EXISTS (
+                                          SELECT 1 FROM telemetry
+                                           WHERE device_id = $2 AND point_id = $3
+                                             AND ts > now() - make_interval(secs => $8))"#,
+                            )
+                            .bind(at)
+                            .bind(device_id)
+                            .bind(point.id)
+                            .bind(vendor_id)
+                            .bind(num)
+                            .bind(boolean)
+                            .bind(text.as_deref())
+                            .bind(throttle)
+                            .execute(&mut *tx)
+                            .await
+                            .map_err(db)?;
+                        }
+                        _ => {
+                            rows_ts.push(at);
+                            rows_point.push(point.id);
+                            rows_num.push(num);
+                            rows_bool.push(boolean);
+                            rows_text.push(text.clone());
+                        }
+                    }
+                }
+
+                current.insert(dp.clone(), (num, boolean, text));
+
+                // One fan-out per point per batch: apps want the state the device ended on,
+                // not fifty notifications of a dimmer sweeping through its range.
+                match touched.get(dp.as_str()) {
+                    Some(index) => {
+                        let entry = &mut updated[*index];
+                        entry.value = value.clone();
+                        entry.ts = report.ts;
+                        entry.changed |= !unchanged;
+                    }
+                    None => {
+                        touched.insert(dp.clone(), updated.len());
+                        updated.push(PointUpdate {
+                            device_id,
+                            code: point.code.clone(),
+                            value: value.clone(),
+                            ts: report.ts,
+                            changed: !unchanged,
+                        });
+                    }
+                }
+            }
+        }
+
+        // The value each point ended on, in one statement per point rather than one per
+        // report — a device reporting its whole shadow every second does not need the same
+        // UPDATE fifty times.
+        for dp in touched.keys() {
+            let (num, boolean, text) = current[dp].clone();
+            sqlx::query(
+                r#"UPDATE device_points
+                      SET value_num = $2, value_bool = $3, value_text = $4, updated_at = now()
+                    WHERE device_id = $1 AND dp = $5"#,
+            )
+            .bind(device_id)
+            .bind(num)
+            .bind(boolean)
+            .bind(text.as_deref())
+            .bind(dp)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        }
+
+        if !rows_ts.is_empty() {
+            sqlx::query(
+                r#"INSERT INTO telemetry (ts, device_id, point_id, vendor_id, num, bool, txt)
+                   SELECT * FROM UNNEST(
+                       $1::timestamptz[], $2::uuid[], $3::uuid[], $4::uuid[],
+                       $5::float8[], $6::bool[], $7::text[])"#,
+            )
+            .bind(&rows_ts)
+            .bind(vec![device_id; rows_ts.len()])
+            .bind(&rows_point)
+            .bind(vec![vendor_id; rows_ts.len()])
+            .bind(&rows_num)
+            .bind(&rows_bool)
+            .bind(&rows_text)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        }
+
+        let online = last.online.unwrap_or(true);
+        sqlx::query(r#"UPDATE devices SET online = $2, last_seen_at = now() WHERE id = $1"#)
+            .bind(device_id)
+            .bind(online)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(IngestOutcome {
+            device_id,
+            home_id,
+            online,
+            updated,
+            dropped_points: dropped,
+        })
+    }
+
     /// Apply a retained shadow, which also carries presence.
     pub async fn apply_shadow(
         &self,
@@ -97,129 +308,13 @@ impl PgIngest {
         online: Option<bool>,
         pts: &std::collections::BTreeMap<String, DpValue>,
     ) -> Result<IngestOutcome, AppError> {
-        let mut tx = self.tx().await?;
-
-        let row: Option<(Option<Uuid>, Uuid)> =
-            sqlx::query_as("SELECT home_id, vendor_id FROM devices WHERE id = $1")
-                .bind(device_id)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(db)?;
-
-        let Some((home_id, vendor_id)) = row else {
-            return Err(AppError::not_found("device"));
-        };
-
-        // shortcut: one metadata query per report. Upgrade to a per-device cache
-        // when the fleet passes a few hundred reports/second per worker.
-        let metas: Vec<PointRow> = sqlx::query_as(
-            "SELECT id, code, dp, kind, history, value_num, value_bool, value_text
-               FROM device_points WHERE device_id = $1",
-        )
-        .bind(device_id)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(db)?;
-
-        let by_dp: HashMap<&str, &PointRow> = metas.iter().map(|m| (m.dp.as_str(), m)).collect();
-
-        let at = time::OffsetDateTime::from_unix_timestamp(ts).unwrap_or_else(|_| kernel::now());
-
-        let mut updated = Vec::with_capacity(pts.len());
-        let mut dropped = 0;
-
-        for (dp, value) in pts {
-            let Some(point) = by_dp.get(dp.as_str()).copied() else {
-                dropped += 1;
-                continue;
-            };
-
-            let (num, boolean, text) = split_value(&point.kind, value);
-            let unchanged = point.value_num == num
-                && point.value_bool == boolean
-                && point.value_text.as_deref() == text.as_deref();
-
-            sqlx::query(
-                r#"UPDATE device_points
-                     SET value_num = $2, value_bool = $3, value_text = $4, updated_at = now()
-                   WHERE id = $1"#,
-            )
-            .bind(point.id)
-            .bind(num)
-            .bind(boolean)
-            .bind(text.as_deref())
-            .execute(&mut *tx)
-            .await
-            .map_err(db)?;
-
-            // `change` means a row on a change, not on every report: a device
-            // that re-reports its whole shadow every 30 s must not cost 2 880
-            // rows a day per point.
-            let policy = History::parse(&point.history);
-            let store = match policy {
-                History::Off => false,
-                History::Change => !unchanged,
-                History::All | History::Interval(_) => true,
-            };
-            if store {
-                // `interval:N` is a throttle, not a flag: at most one row per point
-                // per N seconds. A temperature sensor that reports every second was
-                // writing 86 400 rows a day under a policy that promised 288 — the
-                // policy existed and did nothing, which is worse than not having it.
-                let throttle: Option<i32> = match policy {
-                    History::Interval(secs) => Some(secs.min(i32::MAX as u32) as i32),
-                    _ => None,
-                };
-
-                sqlx::query(
-                    r#"INSERT INTO telemetry (ts, device_id, point_id, vendor_id, num, bool, txt)
-                       SELECT $1, $2, $3, $4, $5, $6, $7
-                        WHERE $8::integer IS NULL
-                           OR NOT EXISTS (
-                                SELECT 1 FROM telemetry
-                                 WHERE device_id = $2 AND point_id = $3
-                                   AND ts > now() - make_interval(secs => $8)
-                              )"#,
-                )
-                .bind(at)
-                .bind(device_id)
-                .bind(point.id)
-                .bind(vendor_id)
-                .bind(num)
-                .bind(boolean)
-                .bind(text.as_deref())
-                .bind(throttle)
-                .execute(&mut *tx)
-                .await
-                .map_err(db)?;
-            }
-
-            updated.push(PointUpdate {
-                device_id,
-                code: point.code.clone(),
-                value: value.clone(),
-                ts,
-                changed: !unchanged,
-            });
-        }
-
-        let online = online.unwrap_or(true);
-        sqlx::query(r#"UPDATE devices SET online = $2, last_seen_at = now() WHERE id = $1"#)
-            .bind(device_id)
-            .bind(online)
-            .execute(&mut *tx)
-            .await
-            .map_err(db)?;
-
-        tx.commit().await.map_err(db)?;
-
-        Ok(IngestOutcome {
-            device_id,
-            home_id,
+        let report = Report {
+            ts,
             online,
-            updated,
-            dropped_points: dropped,
-        })
+            pts: pts.clone(),
+        };
+        self.apply_reports(device_id, std::slice::from_ref(&report))
+            .await
     }
 }
 

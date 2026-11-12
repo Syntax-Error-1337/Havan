@@ -76,7 +76,8 @@ points to `history = 'all'` for the duration and restores the exact policies aft
 (not "change" — a fleet configured for `interval:300` would otherwise be left writing 300×
 the rows it was set up for).
 
-Three runs on this machine, one worker:
+
+### Before batching
 
 | published | achieved | telemetry rows | expected | result |
 |---|---|---|---|---|
@@ -84,23 +85,43 @@ Three runs on this machine, one worker:
 | 800/s | 613/s | 5 572 | 16 000 | **65 % shed** |
 | 2 000/s | 1 661/s | 7 088 | 59 996 | **88 % shed** |
 
-**A single worker tops out around 150–200 messages/second.** Above that the broker does not
-block the publisher: VerneMQ drops the slow subscriber's queue (the compose file pins
-`DOCKER_VERNEMQ_MAX_INFLIGHT_MESSAGES: 32`), so a burst is shed, not queued. The pipeline
-is honest about it — the row count stops moving — but the message is gone.
+A single worker topped out around **150–200 messages/second**. Above that the broker did
+not block the publisher: VerneMQ dropped the slow subscriber's queue (the compose file pins
+`DOCKER_VERNEMQ_MAX_INFLIGHT_MESSAGES: 32`), so a burst was shed, not queued. The pipeline
+was honest about it — the row count stopped moving — but the message was gone.
 
-The cause is visible in `infra::repos::ingest::apply`: one transaction per report, one
-metadata `SELECT` of the device's points per report, then an `UPDATE` and a conditional
-`INSERT` per point, then a fan-out publish. The code carries a `shortcut:` comment
-predicting exactly this ("upgrade to a per-device cache when the fleet passes a few hundred
-reports/second per worker"), and the measurement puts the wall where the comment did.
+The cause was in `infra::repos::ingest::apply`: **one transaction per report**, one metadata
+`SELECT` of the device's points per report, then an `UPDATE` and a conditional `INSERT` per
+point, then a fan-out publish. The code carried a `shortcut:` comment predicting exactly
+this, and the measurement put the wall where the comment did.
 
-**This is why the roadmap's "20k events/s" was never a claim we could make:** at ~150
-msg/s per worker it would take ~130 workers before the write path, not the broker, is the
-limit. The fix is batching — group reports into one transaction, cache point metadata per
-device with a short TTL, and only then raise the broker's queue limits, which otherwise
-just move the memory cost.
+### After batching (`apply_reports`)
 
-Honest limits of the number itself: one connection publishes for every device (kinder to
-the broker than a real field), everything is local, and the worker shares the machine with
+Reports are buffered per device (`worker::ingest::Batch` — 250 reports or 250 ms, whichever
+comes first) and written in **one transaction**: one metadata query, one `UPDATE
+device_points` per point holding the value the batch *ended* on, telemetry as a single
+`UNNEST` insert, and one fan-out per point instead of one per report. `interval:N` keeps its
+per-row guard, because a throttle is measured against what is already stored and a batch
+cannot know that.
+
+| published | achieved | telemetry rows | expected | result |
+|---|---|---|---|---|
+| 200/s | 153/s | 4 000 | 4 000 | no loss |
+| 800/s | 615/s | 15 892 | 16 000 | 0.7 % shed |
+| 1 000/s | 769/s | 17 836 | 20 000 | 11 % shed |
+| 1 500/s | 1 154/s | 18 494 | 30 000 | 38 % shed |
+| 3 000/s | 2 306/s | 17 664 | 59 976 | 70 % shed |
+
+**The same 800/s run went from 65 % shed to 0.7 %.** Sustainable throughput per worker moved
+from ~150–200 to roughly **600–700 messages/second** — about 4× — and degradation above that
+is gradual rather than a cliff.
+
+What still limits it: one transaction per device per flush, and one Redis fan-out per changed
+point per batch. Two levers remain — a larger batch window (latency against throughput) and
+more workers, which the shared subscription already supports: 20 000 events/s is now roughly
+30 workers rather than 130. The metadata cache the old comment suggested is still unbuilt;
+batching removed most of what it would have saved.
+
+Honest limits of the number itself: one connection publishes for every device (kinder to the
+broker than a real field), everything is local, and the worker shares the machine with
 Postgres, VerneMQ and the generator.
