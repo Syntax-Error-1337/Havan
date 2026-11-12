@@ -27,6 +27,7 @@ struct CreateBody {
 async fn create(
     State(state): State<AppState>,
     vendor: VendorAuth,
+    peer: crate::limits::Peer,
     Json(body): Json<CreateBody>,
 ) -> ApiResult<(StatusCode, Json<ApiKey>)> {
     if body.name.trim().is_empty() {
@@ -43,6 +44,24 @@ async fn create(
         .create(vendor.vendor_id, &key)
         .await
         .map_err(ApiError)?;
+
+    state
+        .audit
+        .record(
+            domain::audit::AuditEntry::new(
+                vendor.vendor_id,
+                domain::audit::ActorKind::User,
+                "api_key.created",
+                "api_key",
+            )
+            .by(vendor.user_id)
+            .on(id)
+            .with_request(&vendor.request_id)
+            .from_ip(peer.ip())
+            // The secret itself is never in the trail; the name is enough to identify it.
+            .detail(serde_json::json!({ "name": key.name })),
+        )
+        .await;
 
     Ok((
         StatusCode::CREATED,
@@ -71,6 +90,7 @@ async fn list(State(state): State<AppState>, vendor: VendorAuth) -> ApiResult<Js
 async fn revoke(
     State(state): State<AppState>,
     vendor: VendorAuth,
+    peer: crate::limits::Peer,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
     state
@@ -78,5 +98,23 @@ async fn revoke(
         .revoke(vendor.vendor_id, id)
         .await
         .map_err(ApiError)?;
+
+    // Revoking a key is the action a vendor is most likely to be asked about later.
+    state
+        .audit
+        .record(
+            domain::audit::AuditEntry::new(
+                vendor.vendor_id,
+                domain::audit::ActorKind::User,
+                "api_key.revoked",
+                "api_key",
+            )
+            .by(vendor.user_id)
+            .on(id)
+            .with_request(&vendor.request_id)
+            .from_ip(peer.ip()),
+        )
+        .await;
+
     Ok(StatusCode::NO_CONTENT)
 }

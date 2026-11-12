@@ -4,6 +4,7 @@
 //! for their slice, which is what keeps the rules testable without a database.
 
 pub mod api_key;
+pub mod audit;
 pub mod automation;
 pub mod catalog;
 pub mod devices;
@@ -18,6 +19,7 @@ pub mod pairing;
 pub mod scenes;
 pub mod serials;
 
+pub use audit::PgAudit;
 pub use automation::PgAutomation;
 pub use catalog::PgCatalog;
 pub use devices::PgDevices;

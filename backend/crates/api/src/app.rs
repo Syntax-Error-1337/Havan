@@ -43,6 +43,7 @@ pub struct AppState {
     pub scenes: Arc<PgScenes>,
     pub serials: Arc<PgSerials>,
     pub fleet: Arc<domain::fleet::FleetService<infra::PgFleet>>,
+    pub audit: Arc<domain::audit::AuditService<infra::PgAudit>>,
 }
 
 impl AppState {
@@ -71,6 +72,9 @@ impl AppState {
         let fleet = Arc::new(domain::fleet::FleetService::new(Arc::new(
             infra::PgFleet::new(pg.clone()),
         )));
+        let audit = Arc::new(domain::audit::AuditService::new(Arc::new(
+            infra::PgAudit::new(pg.clone()),
+        )));
         let automations = Arc::new(AutomationService::new(Arc::new(PgAutomation::new(
             pg.clone(),
         ))));
@@ -92,6 +96,7 @@ impl AppState {
             scenes,
             serials,
             fleet,
+            audit,
         }
     }
 }

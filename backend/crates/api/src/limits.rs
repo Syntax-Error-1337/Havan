@@ -49,6 +49,12 @@ impl Peer {
             None => "unknown".to_string(),
         }
     }
+
+    /// The address as it can be stored, or `None`. Deliberately not [`Peer::key`]: the
+    /// audit column is `inet`, and "unknown" is not an address.
+    pub fn ip(&self) -> Option<String> {
+        self.0.map(|ip| ip.to_string())
+    }
 }
 
 /// A fixed window: `limit` failures per `window_secs`, per key.

@@ -218,6 +218,7 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 |---|---|---|
 | GET | `/vendor/devices?product_key=&state=&cursor=&limit=` | fleet page; `state` = online/offline/bound/unbound |
 | GET | `/vendor/analytics` | totals, online, bound, new 7/30 d, by product, by firmware |
+| GET | `/vendor/audit?limit=&cursor=` | the vendor's append-only trail, newest first |
 | GET/POST | `/vendor/products` | |
 | GET/PATCH | `/vendor/products/{id}` | |
 | POST | `/vendor/products/{id}/validate` | the six rules from the thing model |
@@ -300,6 +301,22 @@ enumerate rules by watching which one answers differently.
 are scoped to the vendor and return serial numbers, state, firmware and last-seen —
 not the owner, not the home name. Pagination is keyset on `(created_at, id)`; an
 unknown `state` filter is `422` rather than an empty page that looks like "no devices".
+
+## The audit trail
+
+Administrative actions append a row to `audit_log`: publishing a product, minting or
+revoking an API key, starting or halting a rollout. Each row carries the vendor, the
+actor (`user` / `api_key` / `system`), the action in the past tense
+(`api_key.revoked`), the target, the request id, the source address and a small JSON
+detail.
+
+It is **append-only by construction**: the module has no update or delete path and the
+migration grants neither — an audit row that can be edited is not evidence. Reads are the
+vendor's own, keyset-paginated on `(ts, id)`, and row-level security means one vendor
+cannot see or write into another's trail.
+
+Not a request log, deliberately: a table that records every read is a table nobody can
+afford to keep, and `/metrics` already answers "how many, how slow".
 
 ## Rate limits
 

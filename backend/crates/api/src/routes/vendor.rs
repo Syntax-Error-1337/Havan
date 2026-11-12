@@ -28,6 +28,8 @@ pub fn router() -> Router<AppState> {
         // deliberately without customer identity — see `domain::fleet`.
         .route("/vendor/devices", get(fleet))
         .route("/vendor/analytics", get(analytics))
+        // Who did what. Read-only, newest first, keyset-paginated.
+        .route("/vendor/audit", get(audit))
 }
 
 #[derive(Deserialize)]
@@ -144,15 +146,33 @@ async fn validate(
 async fn publish(
     State(state): State<AppState>,
     vendor: VendorAuth,
+    peer: crate::limits::Peer,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
 ) -> ApiResult<Json<Product>> {
-    Ok(Json(
-        state
-            .catalog
-            .publish(vendor.vendor_id, id)
-            .await
-            .map_err(ApiError)?,
-    ))
+    let product = state
+        .catalog
+        .publish(vendor.vendor_id, id)
+        .await
+        .map_err(ApiError)?;
+
+    state
+        .audit
+        .record(
+            domain::audit::AuditEntry::new(
+                vendor.vendor_id,
+                domain::audit::ActorKind::User,
+                "product.published",
+                "product",
+            )
+            .by(vendor.user_id)
+            .on(id)
+            .with_request(&vendor.request_id)
+            .from_ip(peer.ip())
+            .detail(serde_json::json!({ "product_key": product.product_key })),
+        )
+        .await;
+
+    Ok(Json(product))
 }
 
 /// Kept so `Auth` stays referenced in this module's imports for the shared
@@ -243,6 +263,26 @@ async fn analytics(
         state
             .fleet
             .stats(vendor.vendor_id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+struct AuditQuery {
+    limit: Option<i64>,
+    cursor: Option<Uuid>,
+}
+
+async fn audit(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    axum::extract::Query(q): axum::extract::Query<AuditQuery>,
+) -> ApiResult<Json<domain::audit::AuditPage>> {
+    Ok(Json(
+        state
+            .audit
+            .page(vendor.vendor_id, q.cursor, q.limit)
             .await
             .map_err(ApiError)?,
     ))

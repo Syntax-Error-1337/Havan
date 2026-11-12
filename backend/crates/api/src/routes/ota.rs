@@ -198,6 +198,7 @@ async fn one(
 async fn start(
     State(state): State<AppState>,
     vendor: VendorAuth,
+    peer: crate::limits::Peer,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let queued = state
@@ -205,6 +206,25 @@ async fn start(
         .start_campaign(vendor.vendor_id, id)
         .await
         .map_err(ApiError)?;
+
+    // A rollout that reaches devices is the action most worth being able to explain
+    // later, after something goes wrong with it.
+    state
+        .audit
+        .record(
+            domain::audit::AuditEntry::new(
+                vendor.vendor_id,
+                domain::audit::ActorKind::User,
+                "campaign.started",
+                "ota_campaign",
+            )
+            .by(vendor.user_id)
+            .on(id)
+            .with_request(&vendor.request_id)
+            .from_ip(peer.ip())
+            .detail(serde_json::json!({ "queued": queued })),
+        )
+        .await;
 
     Ok(Json(serde_json::json!({ "queued": queued })))
 }
@@ -217,6 +237,7 @@ async fn start(
 async fn halt(
     State(state): State<AppState>,
     vendor: VendorAuth,
+    peer: crate::limits::Peer,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let skipped = state
@@ -224,6 +245,25 @@ async fn halt(
         .halt_campaign(vendor.vendor_id, id)
         .await
         .map_err(ApiError)?;
+
+    state
+        .audit
+        .record(
+            domain::audit::AuditEntry::new(
+                vendor.vendor_id,
+                domain::audit::ActorKind::User,
+                "campaign.halted",
+                "ota_campaign",
+            )
+            .by(vendor.user_id)
+            .on(id)
+            .with_request(&vendor.request_id)
+            .from_ip(peer.ip())
+            // In-flight jobs are deliberately left alone when a campaign halts; saying
+            // how many were skipped makes that visible in the trail rather than implied.
+            .detail(serde_json::json!({ "skipped": skipped })),
+        )
+        .await;
 
     Ok(Json(serde_json::json!({ "skipped": skipped })))
 }
