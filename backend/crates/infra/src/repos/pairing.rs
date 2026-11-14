@@ -1,6 +1,7 @@
 use crate::pg::Pg;
 use domain::pairing::{
-    ClaimPlan, DeviceRecord, PairingRepo, ProductRecord, SerialTake, TicketClaims, TicketRow,
+    ClaimPlan, DeviceRecord, ExpiringCertificate, PairingRepo, ProductRecord, SerialTake,
+    TicketClaims, TicketRow,
 };
 use kernel::{AppError, TenantCtx};
 use sqlx::{Postgres, Transaction};
@@ -176,6 +177,67 @@ impl PairingRepo for PgPairing {
                 name,
             }),
         )
+    }
+
+    async fn store_certificate(
+        &self,
+        device_id: Uuid,
+        cert_serial: &str,
+        not_after: time::OffsetDateTime,
+    ) -> Result<(), AppError> {
+        let mut tx = self.tx().await?;
+        sqlx::query("UPDATE devices SET cert_serial = $2, cert_not_after = $3 WHERE id = $1")
+            .bind(device_id)
+            .bind(cert_serial)
+            .bind(not_after)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
+    async fn expiring_certificates(&self, days: i64) -> Result<Vec<ExpiringCertificate>, AppError> {
+        // System scope: an expiry sweep crosses vendors by definition, and it carries no
+        // tenant of its own.
+        let mut tx = self.pg.scoped(&TenantCtx::system("cert-expiry")).await?;
+        let rows: Vec<(
+            Uuid,
+            Uuid,
+            Option<Uuid>,
+            String,
+            String,
+            time::OffsetDateTime,
+        )> = sqlx::query_as(
+            r#"SELECT id, vendor_id, home_id, name, serial, cert_not_after
+                     FROM devices
+                    WHERE cert_not_after IS NOT NULL
+                      AND cert_not_after < now() + make_interval(days => $1)
+                      -- A device that was released or reset has no one to warn.
+                      AND state = 'claimed'
+                    ORDER BY cert_not_after"#,
+        )
+        .bind(days as i32)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        let now = kernel::now();
+        Ok(rows
+            .into_iter()
+            .map(
+                |(device_id, vendor_id, home_id, name, serial, not_after)| ExpiringCertificate {
+                    device_id,
+                    vendor_id,
+                    home_id,
+                    name,
+                    serial,
+                    not_after,
+                    days_left: (not_after - now).whole_days() as i64,
+                },
+            )
+            .collect())
     }
 
     async fn claim(&self, plan: ClaimPlan) -> Result<(Uuid, usize), AppError> {

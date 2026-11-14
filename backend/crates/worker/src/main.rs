@@ -7,6 +7,8 @@
 
 use anyhow::Context;
 use domain::devices::CommandRepo;
+use domain::notification::NotificationRepo;
+use domain::pairing::PairingRepo;
 use protocol::topics;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use std::sync::Arc;
@@ -143,6 +145,52 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
                     Err(e) => warn!(error = ?e, "redelivery sweep failed"),
+                }
+            }
+        });
+    }
+
+    // Certificate expiry. A device whose certificate lapses stops connecting, and the
+    // failure looks like broken hardware — so the warning has to arrive while someone can
+    // still act on it. Six hours is often enough for a bucket that changes by day, and cheap
+    // enough that a restart does not feel expensive.
+    {
+        let pairing = infra::PgPairing::new(pg.clone());
+        let notifications = infra::PgNotifications::new(pg.clone());
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(6 * 3600));
+            loop {
+                tick.tick().await;
+                let due = match pairing.expiring_certificates(30).await {
+                    Ok(due) => due,
+                    Err(e) => {
+                        warn!(error = ?e, "certificate expiry sweep failed");
+                        continue;
+                    }
+                };
+
+                for cert in due {
+                    let Some(bucket) = haven_cert::warn_bucket(cert.days_left) else {
+                        continue;
+                    };
+                    let warning = domain::notification::CertificateWarning {
+                        device_id: cert.device_id,
+                        home_id: cert.home_id,
+                        name: cert.name,
+                        serial: cert.serial,
+                        days_left: cert.days_left,
+                        bucket,
+                    };
+                    match notifications.notify_certificate_expiry(&warning).await {
+                        Ok(0) => {}
+                        Ok(told) => info!(
+                            device = %cert.device_id,
+                            days_left = cert.days_left,
+                            told,
+                            "certificate expiring"
+                        ),
+                        Err(e) => warn!(error = ?e, "could not warn about an expiring certificate"),
+                    }
                 }
             }
         });

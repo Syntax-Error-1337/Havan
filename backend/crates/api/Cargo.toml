@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 kernel.workspace = true
 infra.workspace = true
+haven-cert.workspace = true
 protocol.workspace = true
 domain.workspace = true
 axum.workspace = true

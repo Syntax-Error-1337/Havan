@@ -44,9 +44,20 @@ pub struct AppState {
     pub serials: Arc<PgSerials>,
     pub fleet: Arc<domain::fleet::FleetService<infra::PgFleet>>,
     pub audit: Arc<domain::audit::AuditService<infra::PgAudit>>,
+    /// The device CA. Created on first use rather than at boot, so a machine that only
+    /// serves app traffic never generates a private key it does not need — and so the
+    /// tests that never issue a certificate do not write one to disk.
+    ca: Arc<tokio::sync::OnceCell<haven_cert::Ca>>,
 }
 
 impl AppState {
+    /// The certificate authority, loaded or created once.
+    pub async fn ca(&self) -> Result<&haven_cert::Ca, kernel::AppError> {
+        self.ca
+            .get_or_try_init(|| async { haven_cert::Ca::load_or_create(&self.cfg.ca_dir).await })
+            .await
+    }
+
     pub fn new(cfg: Arc<Config>, pg: Pg, cache: Cache, mqtt: Mqtt) -> Self {
         let pool = pg.pool().clone();
         let identity = Arc::new(IdentityService::new(
@@ -97,6 +108,7 @@ impl AppState {
             serials,
             fleet,
             audit,
+            ca: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 }

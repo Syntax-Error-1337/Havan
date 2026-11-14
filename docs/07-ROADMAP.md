@@ -80,8 +80,12 @@ has coordinates; a webhook fires `202`, executes as `trigger_kind = webhook` wit
   re-made on every connect, command application with typed refusals, shadow/event/ack
   and OTA progress helpers, claim. 16 unit tests. The simulator is now a ~130-line
   device built on it, which is the size a vendor's application logic should be.
-- **Not done:** the C component (needs a board and a toolchain), `haven-cert` (mTLS
-  enrolment), and the certification checklist — the checklists in
+- **Certificates — done:** `haven-cert` issues a device certificate from a self-signed CA
+  kept on disk, `POST /provision/certificate` hands one to a device that proves its secret,
+  and the serial and expiry are recorded. Verified with `openssl verify`: the issued
+  certificate chains to the CA, subject `CN=<device-id>/OU=vendor:<id>`, one year.
+- **Not done:** the C component (needs a board and a toolchain), the broker's mTLS listener
+  configuration, and the certification checklist — the checklists in
   `docs/03-SDK-CONTRACT.md` stay prose until there is hardware.
 
 **Done means:** the reference firmware passes checklist items 1–8 and the portal shows
@@ -111,8 +115,11 @@ the badge. Neither is reachable without an ESP32-S3 on a desk.
   the broker shedding the rest; batching reports into one transaction per device
   (`apply_reports`) moved the sustainable rate to **~600–700/s**, and the same 800/s run went
   from 65 % shed to 0.7 %. Numbers and method in `docs/08-PERFORMANCE.md`.
-- **Not done:** certificate-expiry alerts (there are no device certificates until
-  `haven-cert` exists — Phase 7) and the multi-replica chaos case. The 20 000 events/s
+- **Certificate-expiry alerts — done:** a six-hourly worker sweep warns the home's members at
+  30, 14, 7 and 0 days, deduped per device and bucket so a person is told once per bucket.
+  Verified live: a device set to 13 days left produced one `security` notification with the
+  action in the body, and a second sweep produced none.
+- **Not done:** the multi-replica chaos case. The 20 000 events/s
   figure is now arithmetic rather than a hope: ~30 workers at the measured rate, which is a
   deployment decision, not a code change.
 

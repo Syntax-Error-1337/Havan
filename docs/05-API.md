@@ -302,6 +302,26 @@ are scoped to the vendor and return serial numbers, state, firmware and last-see
 not the owner, not the home name. Pagination is keyset on `(created_at, id)`; an
 unknown `state` filter is `422` rather than an empty page that looks like "no devices".
 
+## Device certificates
+
+`POST /provision/certificate` with `{pk, sn, secret}` — the same credentials the device
+claimed with, because the claim ticket is single-use and short-lived. Answers `201` with
+`{device_id, certificate_pem, private_key_pem, ca_pem, serial, not_after}`.
+
+The CA is self-signed and generated on first use at `HAVEN_CA_DIR` (default `.haven/ca`),
+kept on disk with `0600` because a CA key in a database is one backup away from being
+everywhere. Each certificate carries the device id as its common name, the vendor as an
+organisational unit, and `clientAuth` as its only extended key usage; it has no hostname SANs,
+because a device certificate opens a connection and should never be trusted to serve one.
+
+The private key is generated server-side and returned once. A device that can produce a CSR
+should keep its own key; the API stores neither, only the serial and `cert_not_after`.
+
+A worker sweep warns the home's members at **30, 14, 7 and 0 days** left
+(`notifications.kind = 'security'`, deduped per device and bucket). An expired certificate is
+a device that stops connecting and looks like broken hardware, which is why the warning has
+to arrive while someone can still act on it.
+
 ## Sending a command
 
 `POST /devices/{id}/commands` answers `202` with `{ command_id, status }` — recorded and

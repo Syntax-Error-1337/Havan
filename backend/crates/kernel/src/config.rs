@@ -25,6 +25,9 @@ pub struct Config {
     pub database_url: String,
     pub redis_url: String,
     pub mqtt_url: String,
+    /// Where the device certificate authority is kept. On disk, not in a table: a CA
+    /// private key in the database is one backup away from being everywhere.
+    pub ca_dir: std::path::PathBuf,
     pub public_url: String,
     /// HMAC key for access tokens. ≥ 32 bytes.
     pub jwt_secret: Secret,
@@ -147,6 +150,7 @@ impl Config {
             _ => Env::Dev,
         };
 
+        let ca_dir = std::path::PathBuf::from(var_or(get, "HAVEN_CA_DIR", ".haven/ca"));
         let bind_raw = var_or(get, "HAVEN_BIND", "127.0.0.1:8080");
         let bind: SocketAddr = bind_raw
             .parse()
@@ -178,6 +182,7 @@ impl Config {
         Ok(Config {
             env,
             bind,
+            ca_dir,
             database_url: var_or(
                 get,
                 "DATABASE_URL",
@@ -207,6 +212,7 @@ mod tests {
         let cfg = Config {
             env: Env::Dev,
             bind: "127.0.0.1:8080".parse().unwrap(),
+            ca_dir: std::path::PathBuf::from(".haven/ca"),
             database_url: "postgres://u:p@h/db".into(),
             redis_url: "redis://h".into(),
             mqtt_url: "mqtt://h".into(),

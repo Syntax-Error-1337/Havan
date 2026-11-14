@@ -20,6 +20,7 @@ path = "src/main.rs"
 [dependencies]
 kernel.workspace = true
 infra.workspace = true
+haven-cert.workspace = true
 domain.workspace = true
 protocol.workspace = true
 tokio.workspace = true

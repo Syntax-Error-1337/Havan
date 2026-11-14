@@ -1,5 +1,5 @@
-use domain::notification::{Notification, NotificationRepo};
-use kernel::AppError;
+use domain::notification::{CertificateWarning, Notification, NotificationRepo};
+use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
 
 use crate::pg::Pg;
@@ -113,6 +113,52 @@ impl NotificationRepo for PgNotifications {
         } else {
             Err(AppError::not_found("notification"))
         }
+    }
+
+    async fn notify_certificate_expiry(
+        &self,
+        warning: &CertificateWarning,
+    ) -> Result<u64, AppError> {
+        let Some(home_id) = warning.home_id else {
+            return Ok(0);
+        };
+
+        let mut tx = self.pg.scoped(&TenantCtx::system("cert-expiry")).await?;
+
+        // One row per member, and none if that member already has this warning. Done in SQL
+        // because the alternative is a read, a compare and an insert per person, which is
+        // three ways to race.
+        let inserted = sqlx::query(
+            r#"INSERT INTO notifications (id, user_id, kind, title, body, data)
+               SELECT gen_random_uuid(), m.user_id, 'security', $2, $3,
+                      jsonb_build_object(
+                          'device_id', $4::text,
+                          'serial', $5::text,
+                          'bucket_days', $6::int,
+                          'days_left', $7::int)
+                 FROM home_members m
+                WHERE m.home_id = $1
+                  AND NOT EXISTS (
+                        SELECT 1 FROM notifications n
+                         WHERE n.user_id = m.user_id
+                           AND n.kind = 'security'
+                           AND n.data->>'device_id' = $4::text
+                           AND n.data->>'bucket_days' = $6::text)"#,
+        )
+        .bind(home_id)
+        .bind(warning.title())
+        .bind(warning.body())
+        .bind(warning.device_id.to_string())
+        .bind(&warning.serial)
+        .bind(warning.bucket as i32)
+        .bind(warning.days_left as i32)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        tx.commit().await.map_err(db)?;
+        Ok(inserted)
     }
 
     async fn mark_all_read(&self, user_id: Uuid) -> Result<u64, AppError> {

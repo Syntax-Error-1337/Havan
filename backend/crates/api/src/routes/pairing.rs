@@ -18,6 +18,9 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/homes/{id}/pairing-tickets", post(mint))
         .route("/provision/claim", post(claim))
+        // Certificate issuance: the device proves who it is with the secret it was given at
+        // claim time, and walks away with a certificate for every MQTT connection after.
+        .route("/provision/certificate", post(certificate))
 }
 
 #[derive(Serialize)]
@@ -161,4 +164,85 @@ mod tests {
         );
         assert_eq!(mqtt_endpoint("mqtts://h"), ("h".to_string(), 1883));
     }
+}
+
+#[derive(Deserialize)]
+struct CertificateBody {
+    pk: String,
+    sn: String,
+    secret: String,
+}
+
+#[derive(Serialize)]
+struct CertificateResponse {
+    device_id: Uuid,
+    /// The device's client certificate.
+    certificate_pem: String,
+    /// Generated here because most first integrations cannot do a CSR yet. A device that can
+    /// keeps its own key and presents a CSR instead; the API never stores this.
+    private_key_pem: String,
+    /// What the broker is configured to trust, so a device does not have to ship it.
+    ca_pem: String,
+    serial: String,
+    /// RFC 3339, like every other timestamp the API emits — the default `time` serde
+    /// representation is a nine-element array, which is not a date anyone can read.
+    #[serde(with = "time::serde::rfc3339")]
+    not_after: time::OffsetDateTime,
+}
+
+/// Device-facing: no bearer token. The device secret is the credential, and it is checked
+/// against the hash stored at claim time — the same check, the same failure message.
+async fn certificate(
+    State(state): State<AppState>,
+    peer: Peer,
+    Json(body): Json<CertificateBody>,
+) -> ApiResult<(StatusCode, Json<CertificateResponse>)> {
+    // Issuance is expensive (key generation + signing) and a misconfigured device retries in
+    // a loop, so it gets the same per-serial limiter as claiming.
+    let key = format!("rl:cert:{}:{}", peer.key(), body.sn);
+    limits::check(&state, &key, limits::CLAIM).await?;
+
+    let device = match state
+        .pairing
+        .authenticate(&body.pk, &body.sn, &body.secret)
+        .await
+    {
+        Ok(device) => device,
+        Err(e) => {
+            limits::record(&state, &key, limits::CLAIM).await;
+            return Err(ApiError(e));
+        }
+    };
+
+    let ca = state.ca().await.map_err(ApiError)?;
+    let issued = ca
+        .issue(device.device_id, device.vendor_id)
+        .map_err(ApiError)?;
+
+    // Recorded before it is returned: a certificate the platform cannot see the expiry of is
+    // a device that stops connecting with no warning anywhere.
+    state
+        .pairing
+        .record_certificate(device.device_id, &issued.serial, issued.not_after)
+        .await
+        .map_err(ApiError)?;
+
+    tracing::info!(
+        device = %device.device_id,
+        serial = %issued.serial,
+        not_after = %issued.not_after,
+        "issued a device certificate"
+    );
+
+    Ok((
+        StatusCode::CREATED,
+        Json(CertificateResponse {
+            device_id: device.device_id,
+            certificate_pem: issued.certificate_pem,
+            private_key_pem: issued.private_key_pem,
+            ca_pem: ca.certificate_pem().to_string(),
+            serial: issued.serial,
+            not_after: issued.not_after,
+        }),
+    ))
 }

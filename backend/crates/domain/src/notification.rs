@@ -46,4 +46,51 @@ pub trait NotificationRepo {
     ) -> impl Future<Output = Result<bool, AppError>> + Send;
 
     fn mark_all_read(&self, user_id: Uuid) -> impl Future<Output = Result<u64, AppError>> + Send;
+
+    /// Tell every member of a home that a device's certificate is running out.
+    ///
+    /// Deduped per (device, warning bucket): the sweep runs on a timer, and a person who has
+    /// already been told "14 days left" must not be told again every six hours for a day. The
+    /// bucket is part of the payload so the same device can be warned again at 7 and at 0.
+    fn notify_certificate_expiry(
+        &self,
+        device: &CertificateWarning,
+    ) -> impl Future<Output = Result<u64, AppError>> + Send;
+}
+
+/// What the sweep has to say about one device.
+#[derive(Debug, Clone)]
+pub struct CertificateWarning {
+    pub device_id: Uuid,
+    pub home_id: Option<Uuid>,
+    pub name: String,
+    pub serial: String,
+    pub days_left: i64,
+    pub bucket: i64,
+}
+
+impl CertificateWarning {
+    pub fn title(&self) -> String {
+        if self.days_left <= 0 {
+            format!("{} can no longer connect", self.name)
+        } else {
+            format!("{} stops connecting in {} days", self.name, self.days_left)
+        }
+    }
+
+    /// The body says what to do, not what happened: a warning that does not name an action
+    /// is a warning people learn to dismiss.
+    pub fn body(&self) -> String {
+        if self.days_left <= 0 {
+            format!(
+                "The certificate for {} ({}) has expired. Re-enrol the device to restore its connection.",
+                self.name, self.serial
+            )
+        } else {
+            format!(
+                "The certificate for {} ({}) expires in {} days. Re-enrol the device before then, or it will drop off the platform.",
+                self.name, self.serial, self.days_left
+            )
+        }
+    }
 }

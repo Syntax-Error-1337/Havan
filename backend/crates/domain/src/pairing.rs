@@ -35,6 +35,19 @@ pub struct ProductRecord {
     pub thing_model: ThingModel,
 }
 
+/// A device whose certificate is running out, with who to tell.
+#[derive(Debug, Clone)]
+pub struct ExpiringCertificate {
+    pub device_id: Uuid,
+    pub vendor_id: Uuid,
+    pub home_id: Option<Uuid>,
+    pub name: String,
+    pub serial: String,
+    pub not_after: time::OffsetDateTime,
+    /// Whole days left; negative when it has already expired.
+    pub days_left: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct DeviceRecord {
     pub id: Uuid,
@@ -51,6 +64,14 @@ pub struct ClaimRequest {
     pub secret: String,
     pub ticket: String,
     pub fw: Option<String>,
+}
+
+/// A device that proved who it is, for the operations that follow a claim.
+#[derive(Debug, Clone)]
+pub struct Authenticated {
+    pub device_id: Uuid,
+    pub vendor_id: Uuid,
+    pub home_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,6 +115,23 @@ pub trait PairingRepo {
         product_id: Uuid,
         serial: &str,
     ) -> impl Future<Output = Result<Option<DeviceRecord>, AppError>> + Send;
+
+    /// Record the certificate issued to a device: serial and expiry.
+    ///
+    /// The private key never comes near this table — the device keeps it, and a key we
+    /// could read is a key that can impersonate the device.
+    fn store_certificate(
+        &self,
+        device_id: Uuid,
+        cert_serial: &str,
+        not_after: time::OffsetDateTime,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Devices whose certificate expires within `days`, oldest expiry first.
+    fn expiring_certificates(
+        &self,
+        days: i64,
+    ) -> impl Future<Output = Result<Vec<ExpiringCertificate>, AppError>> + Send;
 
     /// Claim a serial from the vendor's manifest, atomically.
     ///
@@ -221,6 +259,62 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
     }
 
     /// The device-side half of pairing.
+    /// Record the certificate issued to a device. The service owns this so the API does not
+    /// reach into the repo (and so a caller cannot forget it is a write).
+    pub async fn record_certificate(
+        &self,
+        device_id: Uuid,
+        cert_serial: &str,
+        not_after: time::OffsetDateTime,
+    ) -> Result<(), AppError> {
+        self.repo
+            .store_certificate(device_id, cert_serial, not_after)
+            .await
+    }
+
+    /// Who a device is, proven by the secret it was given when it claimed.
+    ///
+    /// Certificate issuance happens *after* claiming, and a ticket is single-use and short
+    /// lived — so the credential here is the device's own secret, checked the same way the
+    /// claim path checks it. Nothing else about the device is trusted: the product and serial
+    /// are looked up, not believed.
+    pub async fn authenticate(
+        &self,
+        product_key: &str,
+        serial: &str,
+        secret: &str,
+    ) -> Result<Authenticated, AppError> {
+        let product = self
+            .repo
+            .product_by_key(product_key)
+            .await?
+            .ok_or_else(|| AppError::not_found("product"))?;
+
+        let device = self
+            .repo
+            .device_by_serial(product.id, serial)
+            .await?
+            .ok_or_else(|| AppError::not_found("device"))?;
+
+        if !crate::identity::verify_password(secret, &device.secret_hash) {
+            return Err(AppError::forbidden("device secret is incorrect"));
+        }
+        if device.state != "claimed" {
+            return Err(AppError::forbidden(
+                "this device has not been claimed into a home yet",
+            ));
+        }
+        let Some(home_id) = device.home_id else {
+            return Err(AppError::forbidden("this device is not in a home"));
+        };
+
+        Ok(Authenticated {
+            device_id: device.id,
+            vendor_id: product.vendor_id,
+            home_id,
+        })
+    }
+
     pub async fn claim(&self, req: ClaimRequest) -> Result<ClaimedDevice, AppError> {
         let claims = self.verify_ticket(&req.ticket)?;
 
@@ -383,6 +477,22 @@ mod tests {
     }
 
     impl PairingRepo for Fake {
+        async fn store_certificate(
+            &self,
+            _device_id: Uuid,
+            _cert_serial: &str,
+            _not_after: time::OffsetDateTime,
+        ) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        async fn expiring_certificates(
+            &self,
+            _days: i64,
+        ) -> Result<Vec<ExpiringCertificate>, AppError> {
+            Ok(Vec::new())
+        }
+
         async fn mint_ticket(&self, c: &TicketClaims) -> Result<(), AppError> {
             self.tickets.lock().unwrap().push(TicketRow {
                 jti: c.jti,
