@@ -514,6 +514,10 @@ static void on_station_got_ip(const WiFiEventStationModeGotIP &e) {
 static void start_wifi() {
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
+    // Modem sleep parks the radio between beacons; a TLS handshake that lands in a sleep window
+    // stalls and the association drops. This device is mains-powered and sends little, so the
+    // power saving buys nothing and costs connections.
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
 #ifdef HAVEN_WIFI_PHY_11G
     // 802.11g only. An access point that offers HT/40 MHz alongside a WPA/WPA2 mixed cipher set is
     // where an ESP8266's association tends to die, and dropping to 11g costs throughput this
@@ -546,6 +550,12 @@ void setup() {
     start_wifi();
 
     mqtt.setServer(HAVEN_HOST, HAVEN_MQTT_PORT);
+    // PubSubClient's default keepalive is 15 seconds, which is *shorter* than this loop's own
+    // work: a heartbeat that builds and publishes a shadow, plus a TLS handshake when it
+    // reconnects, is enough to miss a keepalive. The broker then publishes the will
+    // (`online: false`) and drops the session mid-publish — which presented as a device that
+    // applied a command, acked it, and immediately reported the old value, every ten seconds.
+    mqtt.setKeepAlive(90);
     mqtt.setCallback(on_message);
     // Room for a command envelope and the shadow that follows it.
     mqtt.setBufferSize(HAVEN_ENVELOPE_MAX);
