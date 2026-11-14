@@ -16,14 +16,21 @@ certificate → mutual TLS on 8883 → shadow → command → ack / typed refusa
 | Device certificate | ✅ `cert_serial` set, `cert_not_after = 2027-11-14` |
 | MQTT over mutual TLS | ❌ BearSSL rejects the handshake (evidence below) |
 
-**The MQTT failure, as an experiment rather than a guess.** With
-`require_certificate=on` the device logs `mqtt: failed state=-2`; with it `off` the failure
-disappears without the firmware changing. A plain TCP probe to the same port succeeds from the
-same board (`tcp ok, heap 36352`), and `openssl s_client` from the Mac completes the mutual
-handshake with the same CA. So the network, the port and the server certificate are fine and the
-**client-certificate path on BearSSL is what fails**. The next thing to examine is
-`setClientECCert` against this core's BearSSL build; the ESP32-S3 path does not have this
-problem, which is one more reason the certification board matters.
+**The MQTT failure had two causes, and only the second one is on this board.**
+
+The first was the platform's: `HAVEN_CA_DIR` defaulted to a path relative to the process's
+working directory, so an API started from `backend/` signed device certificates with
+`backend/.haven/ca` while the broker trusted `.haven/ca`. Every certificate the device received
+was one the broker had never heard of, and the rejection arrives as a TLS alert that says nothing
+about CAs. `make` now pins one CA for the API, the broker and `make broker-tls`, and the resolved
+path is absolute and logged. That is the failure that made a working certificate look broken.
+
+The second is real and is about memory: the handshake allocates ~20 KB out of ~36 KB free
+(`heap 36792` before, `16592` after the failed attempt), so the exchange dies partway with no
+BearSSL error code. 2 KB session buffers plus freeing the PEM strings after the objects are built
+keeps the heap healthy, but the association also drops during the attempt, and the outcome is
+unproven rather than fixed. The server-side half of this is proven independently: a certificate
+issued for this device completes mutual TLS from the Mac against the same broker.
 
 Wi-Fi associates and then drops (`status 7` / `status 6`, RSSI −43…−51, so not a signal
 problem). `WiFi.begin()` aborts an association already in flight — retrying faster than the join

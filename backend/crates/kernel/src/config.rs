@@ -150,7 +150,15 @@ impl Config {
             _ => Env::Dev,
         };
 
-        let ca_dir = std::path::PathBuf::from(var_or(get, "HAVEN_CA_DIR", ".haven/ca"));
+        // Resolved to an absolute path and logged at startup. Left relative, this default follows
+        // the process's working directory: the API started from `backend/` signed certificates
+        // with `backend/.haven/ca` while the broker trusted `.haven/ca`, so every device got a
+        // certificate the broker refused and the failure looked like a TLS bug on the device for
+        // an hour. Two CAs that both look plausible is the expensive kind of mistake.
+        let ca_dir = match std::path::PathBuf::from(var_or(get, "HAVEN_CA_DIR", ".haven/ca")) {
+            p if p.is_absolute() => p,
+            p => std::env::current_dir().map(|cwd| cwd.join(&p)).unwrap_or(p),
+        };
         let bind_raw = var_or(get, "HAVEN_BIND", "127.0.0.1:8080");
         let bind: SocketAddr = bind_raw
             .parse()

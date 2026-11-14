@@ -20,8 +20,8 @@ use std::path::{Path, PathBuf};
 
 use kernel::AppError;
 use rcgen::{
-    BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, KeyPair, KeyUsagePurpose,
-    SanType,
+    BasicConstraints, CertificateParams, CertificateSigningRequestParams, DistinguishedName,
+    DnType, IsCa, KeyPair, KeyUsagePurpose, SanType,
 };
 use time::OffsetDateTime;
 
@@ -35,7 +35,8 @@ pub const DEVICE_DAYS: i64 = 365;
 pub struct Issued {
     pub serial: String,
     pub certificate_pem: String,
-    pub private_key_pem: String,
+    /// Absent when the device supplied a CSR: the key never existed here, which is the point.
+    pub private_key_pem: Option<String>,
     pub not_after: OffsetDateTime,
 }
 
@@ -206,10 +207,106 @@ impl Ca {
         Ok(Issued {
             serial: serial_of(&cert),
             certificate_pem: cert.pem(),
-            private_key_pem: key.serialize_pem(),
+            private_key_pem: Some(key.serialize_pem()),
             not_after: now + time::Duration::days(days),
         })
     }
+
+    /// Issue a certificate for a key the **device** generated.
+    ///
+    /// A CSR is evidence that the requester holds a private key; it is not a form the requester
+    /// fills in. So the subject, the key usages, the EKU and the SAN are all rebuilt here from
+    /// the device row, and only the public key is taken from the request — a CSR that asks to be
+    /// called `CN=ca.example` gets a certificate called after its device id, because the only
+    /// thing the platform needs from the request is proof of possession.
+    ///
+    /// This is also the path for devices whose TLS stack cannot use the ECDSA key the platform
+    /// would otherwise generate: an RSA CSR is signed as an RSA certificate.
+    pub fn issue_from_csr(
+        &self,
+        csr_pem: &str,
+        device_id: uuid::Uuid,
+        vendor_id: uuid::Uuid,
+        days: i64,
+    ) -> Result<Issued, AppError> {
+        let request = CertificateSigningRequestParams::from_pem(csr_pem).map_err(|e| {
+            AppError::validation(format!("certificate: could not read the CSR: {e}"))
+        })?;
+
+        let mut params = CertificateParams::default();
+        let mut dn = DistinguishedName::new();
+        dn.push(DnType::CommonName, device_id.to_string());
+        dn.push(
+            DnType::OrganizationalUnitName,
+            format!("vendor:{vendor_id}"),
+        );
+        params.distinguished_name = dn;
+        params.is_ca = IsCa::ExplicitNoCa;
+        params.key_usages = vec![
+            KeyUsagePurpose::DigitalSignature,
+            KeyUsagePurpose::KeyEncipherment,
+        ];
+        params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ClientAuth];
+        params.subject_alt_names = vec![SanType::DnsName(
+            format!("{device_id}.device.haven.invalid")
+                .try_into()
+                .map_err(|e| crypto("device SAN", e))?,
+        )];
+
+        let now = OffsetDateTime::now_utc();
+        params.not_before = now - time::Duration::minutes(5);
+        params.not_after = now + time::Duration::days(days);
+
+        let serial = uuid::Uuid::now_v7();
+        params.serial_number = Some(rcgen::SerialNumber::from_slice(serial.as_bytes()));
+
+        let cert = CertificateSigningRequestParams {
+            params,
+            public_key: request.public_key,
+        }
+        .signed_by(&self.cert, &self.key)
+        .map_err(|e| crypto("sign CSR", e))?;
+
+        let certificate_pem = cert.pem();
+        // Verify what we are about to hand out, with an independent parser and the CA's own
+        // public key. Not paranoia: rcgen 0.13 encodes an **RSA** subject public key with two
+        // algorithm OIDs in one AlgorithmIdentifier, producing a certificate whose signature
+        // OpenSSL reports as `certificate signature failure` and whose handshake VerneMQ closes
+        // with `bad certificate`. A certificate nothing can validate is worse than a refusal with
+        // a reason, so a CSR whose key type this library cannot encode is refused here.
+        verify_issued(certificate_pem.as_bytes(), self.cert_pem.as_bytes()).map_err(|why| {
+            AppError::validation(format!(
+                "certificate: the CSR's key type is not one this platform can sign ({why}); \
+                 omit `csr_pem` and the platform will generate an EC key pair instead"
+            ))
+        })?;
+
+        Ok(Issued {
+            serial: serial_of(&cert),
+            certificate_pem,
+            private_key_pem: None,
+            not_after: now + time::Duration::days(days),
+        })
+    }
+}
+
+/// Check a certificate against the CA that supposedly signed it, with a parser that is not rcgen.
+///
+/// Cheap (two DER parses and one ECDSA verification) next to what it prevents, and it turns a
+/// library gap into a 422 with a sentence a device owner can act on.
+fn verify_issued(certificate_pem: &[u8], ca_pem: &[u8]) -> Result<(), String> {
+    use x509_parser::prelude::{FromDer, X509Certificate};
+
+    let cert_pem = pem::parse(certificate_pem).map_err(|e| format!("unreadable PEM: {e}"))?;
+    let ca_pem = pem::parse(ca_pem).map_err(|e| format!("unreadable CA PEM: {e}"))?;
+
+    let (_, cert) = X509Certificate::from_der(cert_pem.contents())
+        .map_err(|e| format!("unreadable certificate: {e}"))?;
+    let (_, ca) = X509Certificate::from_der(ca_pem.contents())
+        .map_err(|e| format!("unreadable CA certificate: {e}"))?;
+
+    cert.verify_signature(Some(ca.public_key()))
+        .map_err(|e| format!("the CA's signature does not verify: {e}"))
 }
 
 /// The certificate's serial, as hex.
@@ -284,7 +381,12 @@ mod tests {
         assert_ne!(a.certificate_pem, b.certificate_pem);
         assert_ne!(a.serial, b.serial);
         assert!(a.certificate_pem.contains("BEGIN CERTIFICATE"));
-        assert!(a.private_key_pem.contains("PRIVATE KEY"));
+        assert!(
+            a.private_key_pem
+                .as_deref()
+                .unwrap_or("")
+                .contains("PRIVATE KEY")
+        );
     }
 
     #[tokio::test]
@@ -300,8 +402,114 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_sweep_warns_on_the_days_a_person_can_act() {
+    /// A CSR as a device would build it: its own key, and a subject it chose.
+    fn csr_for(cn: &str) -> String {
+        let key = KeyPair::generate().expect("key");
+        let mut params = CertificateParams::default();
+        let mut dn = DistinguishedName::new();
+        dn.push(DnType::CommonName, cn);
+        params.distinguished_name = dn;
+        params
+            .serialize_request(&key)
+            .expect("csr")
+            .pem()
+            .expect("pem")
+    }
+
+    #[tokio::test]
+    async fn a_csr_gets_the_identity_the_platform_chose_not_the_one_it_asked_for() {
+        let (ca, _dir) = ca().await;
+        let device_id = uuid::Uuid::now_v7();
+        let vendor_id = uuid::Uuid::now_v7();
+
+        // A device that asks to be called something else gets its device id anyway.
+        let issued = ca
+            .issue_from_csr(&csr_for("ca.example"), device_id, vendor_id, DEVICE_DAYS)
+            .expect("issue from csr");
+
+        assert!(issued.certificate_pem.contains("BEGIN CERTIFICATE"));
+        // No key existed here, so none is returned — the point of the CSR path.
+        assert!(issued.private_key_pem.is_none());
+        assert!(!issued.serial.is_empty());
+
+        // The subject is the device id, and the impostor name is not in it.
+        let der = pem::parse(&issued.certificate_pem)
+            .expect("der")
+            .into_contents();
+        use x509_parser::prelude::FromDer;
+        let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&der).expect("parse");
+        let cn = cert
+            .subject()
+            .iter_common_name()
+            .next()
+            .and_then(|cn| cn.as_str().ok())
+            .unwrap_or_default();
+        assert_eq!(cn, device_id.to_string());
+        assert!(!issued.certificate_pem.contains("ca.example"));
+    }
+
+    #[tokio::test]
+    async fn a_csr_that_is_not_a_csr_is_refused_rather_than_signed() {
+        let (ca, _dir) = ca().await;
+        let err = ca.issue_from_csr(
+            "-----BEGIN CERTIFICATE REQUEST-----\nnot base64\n-----END CERTIFICATE REQUEST-----",
+            uuid::Uuid::now_v7(),
+            uuid::Uuid::now_v7(),
+            DEVICE_DAYS,
+        );
+
+        // A validation error, not a 500: the caller sent something wrong.
+        assert!(
+            matches!(err, Err(AppError::Coded { .. })),
+            "expected a validation error, got {err:?}"
+        );
+    }
+
+    /// An EC CSR, which is what a device with a modern TLS stack sends.
+    fn ec_csr_for(cn: &str) -> String {
+        let key = KeyPair::generate().expect("key");
+        let mut params = CertificateParams::default();
+        let mut dn = DistinguishedName::new();
+        dn.push(DnType::CommonName, cn);
+        params.distinguished_name = dn;
+        params
+            .serialize_request(&key)
+            .expect("csr")
+            .pem()
+            .expect("pem")
+    }
+
+    #[tokio::test]
+    async fn an_ec_csr_is_signed_and_verifies_against_the_ca() {
+        let (ca, _dir) = ca().await;
+        let issued = ca
+            .issue_from_csr(
+                &ec_csr_for("someone-else"),
+                uuid::Uuid::now_v7(),
+                uuid::Uuid::now_v7(),
+                DEVICE_DAYS,
+            )
+            .expect("issue");
+
+        // Verified by a real verifier, not by inspecting our own output: a certificate whose
+        // signature does not check out is the failure this test exists to catch.
+        use x509_parser::prelude::FromDer;
+        let der = pem::parse(&issued.certificate_pem)
+            .expect("der")
+            .into_contents();
+        let (_, cert) = x509_parser::certificate::X509Certificate::from_der(&der).expect("parse");
+        let ca_der = pem::parse(ca.certificate_pem())
+            .expect("ca der")
+            .into_contents();
+        let (_, ca_cert) =
+            x509_parser::certificate::X509Certificate::from_der(&ca_der).expect("ca parse");
+
+        cert.verify_signature(Some(ca_cert.public_key()))
+            .expect("the CA's signature must verify");
+    }
+
+    #[tokio::test]
+    async fn the_sweep_warns_on_the_days_a_person_can_act() {
         assert_eq!(warn_bucket(120), None);
         assert_eq!(warn_bucket(31), None);
         assert_eq!(warn_bucket(30), Some(30));

@@ -937,12 +937,14 @@ name = "haven-cert"
 version = "0.1.0"
 dependencies = [
  "kernel",
+ "pem",
  "rcgen",
  "tempfile",
  "time",
  "tokio",
  "tracing",
  "uuid",
+ "x509-parser",
 ]
 
 [[package]]

@@ -171,6 +171,11 @@ struct CertificateBody {
     pk: String,
     sn: String,
     secret: String,
+    /// The device's own key, as a PKCS#10 request. Present: the platform signs this key and never
+    /// sees a private key. Absent: the platform generates the pair, which is what a first
+    /// integration that cannot do the CSR dance needs.
+    #[serde(default)]
+    csr_pem: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -178,9 +183,11 @@ struct CertificateResponse {
     device_id: Uuid,
     /// The device's client certificate.
     certificate_pem: String,
-    /// Generated here because most first integrations cannot do a CSR yet. A device that can
-    /// keeps its own key and presents a CSR instead; the API never stores this.
-    private_key_pem: String,
+    /// Only when the platform generated the key. A device that sends a CSR keeps its private key
+    /// and this field is absent — which is why it is `Option` rather than an empty string a client
+    /// might try to parse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    private_key_pem: Option<String>,
     /// What the broker is configured to trust, so a device does not have to ship it.
     ca_pem: String,
     serial: String,
@@ -214,10 +221,29 @@ async fn certificate(
         }
     };
 
+    // A CSR is a few kilobytes at most; anything larger is not one, and refusing it before the
+    // parser sees it keeps a malformed request cheap.
+    if body
+        .csr_pem
+        .as_ref()
+        .is_some_and(|csr| csr.len() > 8 * 1024)
+    {
+        return Err(ApiError(kernel::AppError::validation(
+            "certificate: the CSR is larger than 8 KiB",
+        )));
+    }
+
     let ca = state.ca().await.map_err(ApiError)?;
-    let issued = ca
-        .issue(device.device_id, device.vendor_id)
-        .map_err(ApiError)?;
+    let issued = match body.csr_pem.as_deref() {
+        Some(csr) => ca.issue_from_csr(
+            csr,
+            device.device_id,
+            device.vendor_id,
+            haven_cert::DEVICE_DAYS,
+        ),
+        None => ca.issue(device.device_id, device.vendor_id),
+    }
+    .map_err(ApiError)?;
 
     // Recorded before it is returned: a certificate the platform cannot see the expiry of is
     // a device that stops connecting with no warning anywhere.
@@ -231,6 +257,7 @@ async fn certificate(
         device = %device.device_id,
         serial = %issued.serial,
         not_after = %issued.not_after,
+        csr = body.csr_pem.is_some(),
         "issued a device certificate"
     );
 

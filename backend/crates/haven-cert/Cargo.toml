@@ -11,6 +11,10 @@ rcgen.workspace = true
 time.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+# Reads back every certificate before it is returned, so a library that encodes something no
+# verifier accepts becomes a 422 instead of a device that cannot connect. MIT/Apache-2.0.
+x509-parser = { version = "0.16", features = ["verify"] }
+pem = "3"
 
 [dev-dependencies]
 # A temporary directory for the CA in tests. MIT/Apache-2.0.

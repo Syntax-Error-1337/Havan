@@ -14,6 +14,12 @@ BACKEND := backend
 # which is why the broker certificate is reissued when it moves and the firmware takes it as a
 # build flag rather than a constant.
 LAN_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
+
+# One CA for everything: the API signs with it, the broker trusts it, and `make broker-tls` issues
+# the broker's own certificate from it. Pinned to the repository root here because a relative
+# default follows the process's working directory — starting the API from `backend/` once created
+# a second CA there, and every device certificate it issued was refused by the broker.
+export HAVEN_CA_DIR ?= $(CURDIR)/.haven/ca
 # Cargo 1.99 takes `--manifest-path` after the subcommand, so every recipe
 # changes directory instead of threading a flag through a variable.
 CARGO := cd $(BACKEND) && cargo

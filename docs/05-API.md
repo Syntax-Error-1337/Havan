@@ -339,6 +339,20 @@ ticket, so the transport is named in the first line of every worker start.
 claimed with, because the claim ticket is single-use and short-lived. Answers `201` with
 `{device_id, certificate_pem, private_key_pem, ca_pem, serial, not_after}`.
 
+An optional **`csr_pem`** (PKCS#10) makes the platform sign a key the device generated, and the
+response then has no `private_key_pem` — the key never leaves the device, which is the whole point
+of a CSR. The subject, key usages, `clientAuth` EKU and SAN are still written by the platform from
+the device row, so a request asking to be called `CN=ca.example` gets a certificate called after
+its device id. EC (P-256/P-384) and RSA CSRs both work; every certificate is verified against the
+CA with an independent parser before it is returned, so a signing gap becomes a `422` with a
+sentence instead of a device that fails to connect.
+
+One CA, and only one: `HAVEN_CA_DIR` is resolved to an absolute path and logged at startup, and
+`make` pins it to the repository root for the API, the worker, `make broker-tls` and the broker.
+A relative default follows the process's working directory, and an API started from `backend/`
+once signed device certificates with a CA the broker had never heard of — which presents as a TLS
+alert on the device and looks like a firmware bug.
+
 The CA is self-signed and generated on first use at `HAVEN_CA_DIR` (default `.haven/ca`),
 kept on disk with `0600` because a CA key in a database is one backup away from being
 everywhere. Each certificate carries the device id as its common name, the vendor as an
