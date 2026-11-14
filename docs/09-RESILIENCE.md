@@ -97,3 +97,17 @@ broker started → within one sweep the row is `dispatched attempts=2` and the w
   fails.
 - **Real hardware.** No device is involved, so "the command reached the device" is out of
   scope by construction.
+
+## Broker authentication drill
+
+`make broker-auth` claims two devices and asserts what the 8884 listener answers: a device's own
+secret is accepted, a wrong secret and an anonymous client are refused, the device may publish
+inside `haven/<vendor>/<home>/<device>/…`, and it may neither subscribe to `haven/#` nor publish to
+a sibling's topic. It also checks that the refusal came from the platform's ACL rather than from an
+unreachable endpoint, because a hook that cannot be reached refuses everything and would pass a
+naive test.
+
+The drill exists because these failures are silent. A permissive ACL, a hook that is never
+consulted, and a listener that accepts anonymous clients all look like success from the client —
+`plugins.vmq_acl` being enabled and answering first was exactly that, and it went unnoticed until a
+wildcard subscribe returned SUBACK 0.

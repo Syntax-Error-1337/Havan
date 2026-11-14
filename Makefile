@@ -160,6 +160,10 @@ load: ## how much ingest this stack takes, and whether it loses any (RATE= SECON
 api-replicas: ## two API instances: do they agree about a dependency that died?
 	@bash scripts/api-replicas.sh
 
+.PHONY: broker-auth
+broker-auth: ## assert the broker authenticates a device and confines it to its own topics
+	@bash scripts/broker-auth.sh
+
 multi-replica: ## two workers, one fleet: exclusive ingest and a single redelivery
 	@bash scripts/multi-replica.sh
 
