@@ -1,4 +1,6 @@
-use domain::notification::{CertificateWarning, Notification, NotificationRepo};
+use domain::notification::{
+    CertificateWarning, Delivery, Notification, NotificationRepo, PushRepo, PushToken,
+};
 use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
 
@@ -172,5 +174,145 @@ impl NotificationRepo for PgNotifications {
         .rows_affected();
 
         Ok(affected)
+    }
+}
+
+impl PushRepo for PgNotifications {
+    async fn undelivered(&self, limit: i64) -> Result<Vec<Delivery>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("push")).await?;
+        let rows: Vec<(Uuid, Uuid, String, String, String, serde_json::Value)> = sqlx::query_as(
+            r#"SELECT id, user_id, kind, title, body, data
+                 FROM notifications
+                WHERE delivered_at IS NULL
+                  AND delivery_attempts < $2
+                ORDER BY created_at
+                LIMIT $1"#,
+        )
+        .bind(limit)
+        .bind(domain::notification::MAX_ATTEMPTS)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, user_id, kind, title, body, data)| Delivery {
+                id,
+                user_id,
+                kind,
+                title,
+                body,
+                data,
+            })
+            .collect())
+    }
+
+    async fn tokens_for(&self, user_id: Uuid) -> Result<Vec<PushToken>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("push")).await?;
+        let rows: Vec<(Uuid, Uuid, String, String, Option<String>)> = sqlx::query_as(
+            r#"SELECT id, user_id, platform, token, app_version
+                 FROM push_tokens WHERE user_id = $1"#,
+        )
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, user_id, platform, token, app_version)| PushToken {
+                id,
+                user_id,
+                platform,
+                token,
+                app_version,
+            })
+            .collect())
+    }
+
+    async fn mark_delivered(&self, id: Uuid) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("push")).await?;
+        sqlx::query("UPDATE notifications SET delivered_at = now() WHERE id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
+    async fn mark_attempt(&self, id: Uuid, error: &str) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("push")).await?;
+        // Settled in the same statement: a row that has used its attempts is marked delivered
+        // with the reason kept, so it leaves the queue but the history is still there.
+        sqlx::query(
+            r#"UPDATE notifications
+                  SET delivery_attempts = delivery_attempts + 1,
+                      delivery_error = $2,
+                      delivered_at = CASE
+                          WHEN delivery_attempts + 1 >= $3 THEN now()
+                          ELSE delivered_at END
+                WHERE id = $1"#,
+        )
+        .bind(id)
+        .bind(error.chars().take(300).collect::<String>())
+        .bind(domain::notification::MAX_ATTEMPTS)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
+    async fn prune_token(&self, id: Uuid) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("push")).await?;
+        sqlx::query("DELETE FROM push_tokens WHERE id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
+    async fn register_token(
+        &self,
+        user_id: Uuid,
+        platform: &str,
+        token: &str,
+        app_version: Option<&str>,
+    ) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("push")).await?;
+        sqlx::query(
+            r#"INSERT INTO push_tokens (id, user_id, platform, token, app_version)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (user_id, token)
+               DO UPDATE SET platform = EXCLUDED.platform, app_version = EXCLUDED.app_version"#,
+        )
+        .bind(kernel::new_id())
+        .bind(user_id)
+        .bind(platform)
+        .bind(token)
+        .bind(app_version)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
+    async fn remove_token(&self, user_id: Uuid, token: &str) -> Result<bool, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("push")).await?;
+        let removed = sqlx::query("DELETE FROM push_tokens WHERE user_id = $1 AND token = $2")
+            .bind(user_id)
+            .bind(token)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?
+            .rows_affected();
+        tx.commit().await.map_err(db)?;
+        Ok(removed > 0)
     }
 }

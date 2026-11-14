@@ -94,9 +94,10 @@ What to verify, in this order:
 
 ## What is deliberately not on this list
 
-- **Push delivery.** `push_tokens` is a table with no sender. A notification today reaches
-  the app over the websocket while it is open, and not at all when it is closed. That is a
-  product gap to state honestly, not a bug to hide.
+- **A live push.** Delivery is implemented and exercised through the log transport; the APNs
+  transport needs an Apple developer account, a `.p8` key and a real device token before
+  "the phone buzzed" can be claimed. The queue semantics, the JWT and the request shape are
+  tested.
 - **Matter, voice, cameras, energy.** v2 in `docs/07-ROADMAP.md`.
 - **A production deploy.** `deploy/docker-compose.yml` binds every port to loopback and
   runs a broker that allows anonymous connections; it is a development stack and says so.

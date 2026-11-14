@@ -94,3 +94,74 @@ impl CertificateWarning {
         }
     }
 }
+
+/// A notification that still has to reach a phone.
+#[derive(Debug, Clone)]
+pub struct Delivery {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub data: serde_json::Value,
+}
+
+/// A device token, and who it belongs to.
+#[derive(Debug, Clone)]
+pub struct PushToken {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    /// `ios` or `android` — the provider is chosen from this, not guessed from the token.
+    pub platform: String,
+    pub token: String,
+    pub app_version: Option<String>,
+}
+
+/// How many times one notification may be attempted before it is abandoned.
+///
+/// Three, over the sweep interval: enough to ride out a token refresh or a provider hiccup,
+/// few enough that a permanently broken token does not sit in the queue for a day.
+pub const MAX_ATTEMPTS: i32 = 3;
+
+pub trait PushRepo {
+    /// Undelivered notifications, oldest first, that are still worth trying.
+    fn undelivered(
+        &self,
+        limit: i64,
+    ) -> impl Future<Output = Result<Vec<Delivery>, AppError>> + Send;
+
+    fn tokens_for(
+        &self,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<Vec<PushToken>, AppError>> + Send;
+
+    /// Nothing left to do: delivered, or nobody to deliver to.
+    fn mark_delivered(&self, id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// A failure worth retrying. After [`MAX_ATTEMPTS`] the row is settled as undeliverable
+    /// rather than retried forever.
+    fn mark_attempt(
+        &self,
+        id: Uuid,
+        error: &str,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// The provider said this token is dead. Deleting it is the only correct response.
+    fn prune_token(&self, id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Register or refresh a device token. Idempotent: an app that registers on every launch
+    /// must not accumulate rows.
+    fn register_token(
+        &self,
+        user_id: Uuid,
+        platform: &str,
+        token: &str,
+        app_version: Option<&str>,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    fn remove_token(
+        &self,
+        user_id: Uuid,
+        token: &str,
+    ) -> impl Future<Output = Result<bool, AppError>> + Send;
+}

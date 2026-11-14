@@ -150,6 +150,43 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Push delivery. The transport is chosen once, at startup, and the choice is logged: a
+    // deployment that believes it is pushing while it is only logging is a support ticket.
+    {
+        let repo = Arc::new(infra::PgNotifications::new(pg.clone()));
+
+        let apns = std::env::var("HAVEN_APNS_KEY_FILE").ok().map(|file| {
+            let key = std::fs::read_to_string(&file).unwrap_or_default();
+            worker::push::Apns::new(
+                std::env::var("HAVEN_APNS_ENDPOINT")
+                    .unwrap_or_else(|_| "https://api.sandbox.push.apple.com".into()),
+                std::env::var("HAVEN_APNS_TOPIC").unwrap_or_else(|_| "com.haven.app".into()),
+                &std::env::var("HAVEN_APNS_KEY_ID").unwrap_or_default(),
+                &std::env::var("HAVEN_APNS_TEAM_ID").unwrap_or_default(),
+                &key,
+            )
+        });
+
+        match apns {
+            Some(Ok(apns)) => {
+                info!("push transport: apns");
+                spawn_sender(Arc::new(worker::push::Sender::new(repo, Arc::new(apns))));
+            }
+            Some(Err(e)) => {
+                // Credentials that do not parse are a configuration error worth stopping for:
+                // falling back to logging would mean alerts quietly stop being real.
+                return Err(e).context("HAVEN_APNS_KEY_FILE is set but unusable");
+            }
+            None => {
+                info!("push transport: log (set HAVEN_APNS_KEY_FILE to deliver for real)");
+                spawn_sender(Arc::new(worker::push::Sender::new(
+                    repo,
+                    Arc::new(worker::push::LogTransport),
+                )));
+            }
+        }
+    }
+
     // Certificate expiry. A device whose certificate lapses stops connecting, and the
     // failure looks like broken hardware — so the warning has to arrive while someone can
     // still act on it. Six hours is often enough for a bucket that changes by day, and cheap
@@ -321,6 +358,33 @@ fn split_url(url: &str) -> anyhow::Result<(String, u16)> {
         Some((h, p)) => (h.to_string(), p.parse()?),
         None => (rest.to_string(), default_port),
     })
+}
+
+/// One delivery loop, whichever transport was chosen.
+fn spawn_sender<P, T>(sender: Arc<worker::push::Sender<P, T>>)
+where
+    P: domain::notification::PushRepo + Send + Sync + 'static,
+    T: worker::push::PushTransport + 'static,
+{
+    tokio::spawn(async move {
+        // Thirty seconds: fast enough that an alert is not stale, slow enough that an empty
+        // queue costs nothing.
+        let mut tick = tokio::time::interval(Duration::from_secs(30));
+        loop {
+            tick.tick().await;
+            match sender.tick(50).await {
+                Ok(sweep) if sweep != worker::push::Sweep::default() => info!(
+                    delivered = sweep.delivered,
+                    no_tokens = sweep.no_tokens,
+                    failed = sweep.failed,
+                    pruned = sweep.pruned_tokens,
+                    "push sweep"
+                ),
+                Ok(_) => {}
+                Err(e) => warn!(error = ?e, "push sweep failed"),
+            }
+        }
+    });
 }
 
 #[cfg(test)]

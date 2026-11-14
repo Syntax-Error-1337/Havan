@@ -302,6 +302,32 @@ are scoped to the vendor and return serial numbers, state, firmware and last-see
 not the owner, not the home name. Pagination is keyset on `(created_at, id)`; an
 unknown `state` filter is `422` rather than an empty page that looks like "no devices".
 
+## Alerts, and pushing them to a phone
+
+`GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all` —
+the in-app list, unchanged.
+
+`POST /notifications/tokens` with `{platform: "ios"|"android", token, app_version}` registers
+a device token (idempotent — an app registers on every launch), and
+`DELETE /notifications/tokens/{token}` removes it on sign-out, so the next person holding the
+phone does not receive the previous owner's alerts. A platform outside those two and a token
+shorter than 16 characters are refused here rather than stored and retried forever.
+
+A worker sweep delivers undelivered notifications every thirty seconds:
+
+- a notification with **no tokens** is marked delivered, not left pending — there is nobody to
+  tell and a queue that keeps such rows grows without bound;
+- **unregistered** from the provider prunes the token and settles the message;
+- **any other error** counts an attempt, and after three the row is settled as undeliverable
+  with the reason kept.
+
+APNs uses token (`.p8`) authentication over HTTP/2: an ES256 JWT, `apns-topic` from
+`HAVEN_APNS_TOPIC`, `apns-push-type: alert`. Enable it with `HAVEN_APNS_KEY_FILE`,
+`HAVEN_APNS_KEY_ID`, `HAVEN_APNS_TEAM_ID` and optionally `HAVEN_APNS_ENDPOINT` (defaults to
+the sandbox). **Without those credentials the worker uses a log transport** and says so at
+startup — a deployment that believes it is pushing while it is only logging is a support
+ticket, so the transport is named in the first line of every worker start.
+
 ## Device certificates
 
 `POST /provision/certificate` with `{pk, sn, secret}` — the same credentials the device

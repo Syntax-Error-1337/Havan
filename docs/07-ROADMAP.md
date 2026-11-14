@@ -119,7 +119,13 @@ the badge. Neither is reachable without an ESP32-S3 on a desk.
   30, 14, 7 and 0 days, deduped per device and bucket so a person is told once per bucket.
   Verified live: a device set to 13 days left produced one `security` notification with the
   action in the body, and a second sweep produced none.
-- **Not done:** the multi-replica chaos case. The 20 000 events/s
+- **Push delivery — done:** `notifications.delivered_at` + a worker sender with a transport
+  boundary (`log` by default, `apns` when credentials exist). No-token rows settle instead of
+  retrying, a dead token is pruned, and other failures retry three times. Verified live: a
+  registered iOS token received the certificate warning through the log transport and the
+  queue drained to zero.
+- **Not done:** the multi-replica chaos case, and a **live** APNs call (needs an Apple
+  developer account and a real device token; the JWT and request shape are unit-tested). The 20 000 events/s
   figure is now arithmetic rather than a hope: ~30 workers at the measured rate, which is a
   deployment decision, not a code change.
 
