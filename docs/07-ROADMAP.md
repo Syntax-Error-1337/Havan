@@ -130,10 +130,15 @@ the badge. Neither is reachable without an ESP32-S3 on a desk.
   registered iOS token received the certificate warning through the log transport and the
   queue drained to zero. The app registers its own token on sign-in and removes it on sign-out,
   so the loop is closed from the device side too.
-- **Not done:** the multi-replica chaos case, and a **live** APNs call (needs an Apple
-  developer account and a real device token; the JWT and request shape are unit-tested). The 20 000 events/s
-  figure is now arithmetic rather than a hope: ~30 workers at the measured rate, which is a
-  deployment decision, not a code change.
+- **Multi-replica — done:** `make multi-replica` runs two workers against one fleet and asserts
+  the two properties a single worker cannot show: each message is ingested exactly once through
+  the shared subscription, and a refused command is claimed and published by exactly one of them.
+  Verified live: 480 messages → 960 rows for 960 expected (no double ingest), and one redelivery
+  with `attempts=2` and a single `redelivered command=` line across both logs. The claim-before-
+  publish `UPDATE` is what makes the loser silent.
+- **Not done:** a **live** APNs call (needs an Apple developer account and a real device token;
+  the JWT and request shape are unit-tested). The 20 000 events/s figure is arithmetic rather
+  than a hope: ~30 workers at the measured rate, a deployment decision rather than a code change.
 
 **Done means:** chaos run with the documented behaviour observed — **yes**, 18/18
 assertions, with the four bugs it found fixed in the same pass.
