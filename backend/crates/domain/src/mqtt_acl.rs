@@ -12,7 +12,7 @@ use crate::pairing::Authenticated;
 /// The prefix every topic of one device starts with.
 pub fn device_prefix(device: &Authenticated) -> String {
     format!(
-        "haven/{}/{}/{}",
+        "haven/v1/{}/{}/{}",
         device.vendor_id, device.home_id, device.device_id
     )
 }
@@ -34,9 +34,9 @@ pub fn may_use_topic(device: &Authenticated, topic: &str) -> bool {
     let mut expected = prefix.split('/');
     let mut actual = topic.split('/');
 
-    // Compare the four fixed segments exactly, then require at least one more: a device may use
-    // `haven/v/h/d/evt` but not the bare `haven/v/h/d`.
-    for _ in 0..4 {
+    // Compare the five fixed segments exactly (`haven`, `v1`, vendor, home, device), then require
+    // at least one more: a device may use `haven/v1/v/h/d/evt` but not the bare prefix.
+    for _ in 0..5 {
         if expected.next() != actual.next() {
             return false;
         }
@@ -62,7 +62,7 @@ mod tests {
         let d = device();
         for lane in ["shadow", "evt", "ack", "cmd", "ota/progress"] {
             let topic = format!(
-                "haven/{}/{}/{}/{}",
+                "haven/v1/{}/{}/{}/{}",
                 d.vendor_id, d.home_id, d.device_id, lane
             );
             assert!(may_use_topic(&d, &topic), "{lane} should be allowed");
@@ -73,7 +73,7 @@ mod tests {
     fn another_device_in_the_same_home_is_not() {
         let d = device();
         let topic = format!(
-            "haven/{}/{}/44444444-4444-7444-8444-444444444444/cmd",
+            "haven/v1/{}/{}/44444444-4444-7444-8444-444444444444/cmd",
             d.vendor_id, d.home_id
         );
         assert!(!may_use_topic(&d, &topic));
@@ -85,14 +85,14 @@ mod tests {
         assert!(!may_use_topic(
             &d,
             &format!(
-                "haven/{}/00000000-0000-7000-8000-000000000000/{}/evt",
+                "haven/v1/{}/00000000-0000-7000-8000-000000000000/{}/evt",
                 d.vendor_id, d.device_id
             )
         ));
         assert!(!may_use_topic(
             &d,
             &format!(
-                "haven/00000000-0000-7000-8000-000000000000/{}/{}/evt",
+                "haven/v1/00000000-0000-7000-8000-000000000000/{}/{}/evt",
                 d.home_id, d.device_id
             )
         ));
@@ -101,10 +101,10 @@ mod tests {
     #[test]
     fn wildcards_and_broker_topics_are_refused() {
         let d = device();
-        assert!(!may_use_topic(&d, "haven/+/+/#"));
+        assert!(!may_use_topic(&d, "haven/v1/+/+/#"));
         assert!(!may_use_topic(
             &d,
-            &format!("haven/{}/{}/+/cmd", d.vendor_id, d.home_id)
+            &format!("haven/v1/{}/{}/+/cmd", d.vendor_id, d.home_id)
         ));
         assert!(!may_use_topic(&d, "$SYS/broker/uptime"));
     }

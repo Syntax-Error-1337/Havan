@@ -79,9 +79,21 @@ static const char *TICKET = "";
 static WiFiClientSecure tls;
 static PubSubClient mqtt(tls);
 static haven_link link;
-static char shadow_topic[96];
-static char event_topic[96];
-static char ack_topic[96];
+static const char *LINK_PATH = "/link.json";
+
+// Defined next to the certificate code further down; `provision()` runs before them and is the
+// caller that saves the link.
+static bool save_link();
+static bool load_link();
+// 128, not 96. One topic is `haven/` + three UUIDs + a lane: 6 + 36 + 1 + 36 + 1 + 36 + 4 = 120
+// characters, and a 96-byte buffer truncated the device id mid-way. The truncated topic is a valid
+// shape and an invalid topic, so the broker's ACL refused the *last will* — and MQTT requires
+// rejecting the whole CONNECT when a will is not authorized, which arrives at the device as
+// "return code 5, not authorized": the same answer a wrong password gets.
+static char cmd_topic[128];
+static char shadow_topic[128];
+static char event_topic[128];
+static char ack_topic[128];
 
 static bool power_on = false;
 static int brightness = 80;
@@ -171,7 +183,8 @@ static bool provision() {
     Serial.printf("claim: %d\n", status);
     if (status != 201) return false;
 
-    StaticJsonDocument<512> doc;
+    static StaticJsonDocument<512> doc;
+    doc.clear();
     if (deserializeJson(doc, response) != DeserializationError::Ok) return false;
 
     const char *vendor = doc["vendor_id"] | "";
@@ -182,7 +195,8 @@ static bool provision() {
     strncpy(link.device_id, device, sizeof link.device_id - 1);
 
     // The certificate request does not need the ticket: the secret is the credential.
-    StaticJsonDocument<256> req;
+    static StaticJsonDocument<256> req;
+    req.clear();
     req["pk"] = PRODUCT_KEY;
     req["sn"] = DEVICE_SERIAL;
     req["secret"] = SECRET;
@@ -194,8 +208,13 @@ static bool provision() {
     Serial.printf("certificate: %d\n", status);
     if (status != 201) return false;
 
-    StaticJsonDocument<4096> certs;
+    static StaticJsonDocument<4096> certs;
+    certs.clear();
     if (deserializeJson(certs, response) != DeserializationError::Ok) return false;
+
+    // Saved before the certificates: the identity is what makes them usable, and a device that
+    // keeps a certificate but forgets its ids is a device that cannot publish.
+    save_link();
 
     return store_pem("/device.crt", certs["certificate_pem"] | "") &&
            store_pem("/device.key", certs["private_key_pem"] | "") &&
@@ -218,6 +237,36 @@ static void free_tls() {
 }
 
 /// Point the TLS client at the stored material.
+/// The claim's result, kept on flash next to the certificates.
+///
+/// A device reboots constantly, and the certificate alone does not say which topics it may use:
+/// vendor, home and device id come from the claim response. Without this the first reboot
+/// reconnected as an anonymous station with empty ids, and the broker's answer — MQTT return code
+/// 5, "not authorized" — was the same one a wrong password gets.
+static bool save_link() {
+    File f = LittleFS.open(LINK_PATH, "w");
+    if (!f) return false;
+    f.printf("{\"vendor_id\":\"%s\",\"home_id\":\"%s\",\"device_id\":\"%s\"}",
+             link.vendor_id, link.home_id, link.device_id);
+    f.close();
+    Serial.println("link: saved");
+    return true;
+}
+
+static bool load_link() {
+    File f = LittleFS.open(LINK_PATH, "r");
+    if (!f) return false;
+    static StaticJsonDocument<512> doc;
+    doc.clear();
+    DeserializationError err = deserializeJson(doc, f);
+    f.close();
+    if (err) return false;
+    strncpy(link.vendor_id, doc["vendor_id"] | "", sizeof link.vendor_id - 1);
+    strncpy(link.home_id, doc["home_id"] | "", sizeof link.home_id - 1);
+    strncpy(link.device_id, doc["device_id"] | "", sizeof link.device_id - 1);
+    return link.vendor_id[0] && link.home_id[0] && link.device_id[0];
+}
+
 static bool load_tls() {
     String cert = load_pem("/device.crt");
     String key = load_pem("/device.key");
@@ -281,6 +330,24 @@ static void publish_shadow() {
     mqtt.publish(shadow_topic, payload, true);
 }
 
+/// Report the points on the event lane, which is what tells the platform the device exists.
+///
+/// The shadow is retained state for whoever reads it next; the event is the report that makes a
+/// device *online* and produces telemetry. A firmware that publishes only the shadow is a device
+/// the broker knows about and the platform does not — it sits there connected, looking offline.
+static void publish_event() {
+    haven_dp pts[2] = {
+        {DP_POWER, HAVEN_DP_BOOL, {.b = power_on}},
+        {DP_BRIGHTNESS, HAVEN_DP_INT, {.i = brightness}},
+    };
+    char payload[HAVEN_ENVELOPE_MAX];
+    if (haven_state_event(pts, 2, (int64_t)time(nullptr), payload, sizeof payload) != HAVEN_OK) {
+        Serial.println("event build failed");
+        return;
+    }
+    mqtt.publish(event_topic, payload, false);
+}
+
 /// The command lane: apply, or refuse with a reason the app can show.
 static void on_command(char *payload, unsigned int length) {
     StaticJsonDocument<512> cmd;
@@ -340,6 +407,8 @@ static void on_command(char *payload, unsigned int length) {
 }
 
 static void on_message(char *topic, byte *payload, unsigned int length) {
+    if (cmd_topic[0] && strcmp(topic, cmd_topic) != 0) return;
+
     // Copy into a NUL-terminated buffer: the payload is not terminated and JSON parsing on
     // whatever happens to follow it in RAM is a crash waiting for a field to be short.
     static char buffer[HAVEN_ENVELOPE_MAX];
@@ -347,9 +416,7 @@ static void on_message(char *topic, byte *payload, unsigned int length) {
     memcpy(buffer, payload, length);
     buffer[length] = '\0';
 
-    if (strcmp(topic, event_topic) == 0 || strcmp(topic, ack_topic) == 0) {
-        on_command(buffer, length);
-    }
+    on_command(buffer, length);
 }
 
 static bool mqtt_connect() {
@@ -373,7 +440,23 @@ static bool mqtt_connect() {
     const char *user = nullptr;
     const char *pass = nullptr;
 #endif
-    if (!mqtt.connect(link.device_id, user, pass, event_topic, 1, false, "offline")) {
+    // The last will is a real envelope with `online: false`, on the shadow lane. A literal
+    // "offline" string on the event lane is what the worker logged as
+    // `evt rejected ... expected value at line 1 column 1` — a will is parsed like any other
+    // message, so it has to be one.
+    static char will_payload[HAVEN_ENVELOPE_MAX];
+    {
+        haven_dp pts[2] = {
+            {DP_POWER, HAVEN_DP_BOOL, {.b = power_on}},
+            {DP_BRIGHTNESS, HAVEN_DP_INT, {.i = brightness}},
+        };
+        if (haven_shadow(pts, 2, (int64_t)time(nullptr), false, FIRMWARE, will_payload,
+                         sizeof will_payload) != HAVEN_OK) {
+            will_payload[0] = '\0';
+        }
+    }
+    if (!mqtt.connect(link.device_id, user, pass, shadow_topic[0] ? shadow_topic : event_topic, 1,
+                      true, will_payload)) {
         // The MQTT state alone cannot tell a TLS failure from a broker refusal, and the TLS
         // failure is the one a mutual-auth device actually hits. BearSSL's error code and the
         // free heap distinguish "the handshake was rejected" from "the handshake ran out of
@@ -384,18 +467,59 @@ static bool mqtt_connect() {
                       ESP.getFreeHeap());
         return false;
     }
-    mqtt.subscribe(event_topic, 1);
+    // The command lane. Subscribing to `event_topic` was the bug that made a device publish
+    // happily and never receive a single command: it was listening to its own reports.
+    mqtt.subscribe(cmd_topic, 1);
     publish_shadow();
+    // The report is what makes this device *online* on the platform; the shadow alone is state
+    // nobody is watching.
+    publish_event();
     return true;
 }
 
 static bool tls_ready = false;
 static bool clock_set = false;
 
+/// The SDK's disconnect reason, which `WiFi.status()` cannot express.
+///
+/// Status 6 is "wrong password" for a wrong password, for a four-way handshake that timed out, and
+/// for an AP that deauthenticated the station — three problems with one message, and the reason
+/// code is the only thing that tells them apart. 15 = handshake timeout (key or PMF mismatch),
+/// 8 = the AP sent a deauth, 2 = auth expired, 201 = no AP found, 203 = association refused.
+static const char *wifi_reason(uint8_t r) {
+    switch (r) {
+        case 2: return "AUTH_EXPIRE";
+        case 6: return "NOT_AUTHED";
+        case 7: return "NOT_ASSOCED";
+        case 8: return "ASSOC_LEAVE (AP deauthenticated us)";
+        case 15: return "4WAY_HANDSHAKE_TIMEOUT (key, TKIP or PMF mismatch)";
+        case 200: return "BEACON_TIMEOUT";
+        case 201: return "NO_AP_FOUND";
+        case 202: return "AUTH_FAIL";
+        case 203: return "ASSOC_FAIL";
+        case 204: return "HANDSHAKE_TIMEOUT";
+        default: return "other";
+    }
+}
+
+static void on_station_disconnected(const WiFiEventStationModeDisconnected &e) {
+    Serial.printf("wifi: disconnected reason=%u (%s)\n", e.reason, wifi_reason(e.reason));
+}
+
+static void on_station_got_ip(const WiFiEventStationModeGotIP &e) {
+    Serial.printf("wifi: got ip %s\n", e.ip.toString().c_str());
+}
+
 /// Bring up the station, once. Returns immediately; `loop()` waits for the result.
 static void start_wifi() {
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
+#ifdef HAVEN_WIFI_PHY_11G
+    // 802.11g only. An access point that offers HT/40 MHz alongside a WPA/WPA2 mixed cipher set is
+    // where an ESP8266's association tends to die, and dropping to 11g costs throughput this
+    // device does not need. A workaround, not the fix: the SSID should be WPA2-AES only.
+    WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+#endif
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     Serial.printf("wifi: joining %u-char ssid\n", (unsigned)strlen(WIFI_SSID));
 }
@@ -414,6 +538,11 @@ void setup() {
 
     LittleFS.begin();
 
+    // Registered before the first `begin()`: a failure that happens during association is exactly
+    // the one worth logging, and a listener added afterwards misses it.
+    WiFi.onStationModeDisconnected(on_station_disconnected);
+    WiFi.onStationModeGotIP(on_station_got_ip);
+
     start_wifi();
 
     mqtt.setServer(HAVEN_HOST, HAVEN_MQTT_PORT);
@@ -421,10 +550,8 @@ void setup() {
     // Room for a command envelope and the shadow that follows it.
     mqtt.setBufferSize(HAVEN_ENVELOPE_MAX);
 
-    snprintf(event_topic, sizeof event_topic, "haven/%s/%s/%s/evt", link.vendor_id, link.home_id,
-             link.device_id);
-    snprintf(ack_topic, sizeof ack_topic, "haven/%s/%s/%s/ack", link.vendor_id, link.home_id,
-             link.device_id);
+    haven_topic_event(&link, event_topic, sizeof event_topic);
+    haven_topic_ack(&link, ack_topic, sizeof ack_topic);
 }
 
 /// Wi-Fi, clock, certificate, broker — in that order, retried rather than fatal.
@@ -439,7 +566,8 @@ static void advance() {
         if (status != last_status) {
             last_status = status;
             // The code distinguishes "no such network" (1) from "wrong password" (6) from
-            // "connecting" (7) — the difference between a typo and a 5 GHz-only router.
+            // "connecting" (7) — the difference between a typo and a 5 GHz-only router. The
+            // reason behind a failure comes from the event callback above.
             Serial.printf("wifi: status %d, rssi %d\n", status, WiFi.RSSI());
         }
         // Twenty seconds, not five: `WiFi.begin()` aborts an association already in flight, so
@@ -464,6 +592,13 @@ static void advance() {
     }
 
     if (!tls_ready) {
+        if (!link.device_id[0] && !load_link()) {
+            Serial.println("no link on the device; claiming");
+            if (!provision() || !load_tls()) {
+                Serial.println("provisioning failed");
+                return;
+            }
+        }
         if (!load_tls()) {
             Serial.println("no certificate on the device; claiming");
             if (!provision() || !load_tls()) {
@@ -471,12 +606,10 @@ static void advance() {
                 return;
             }
         }
-        snprintf(event_topic, sizeof event_topic, "haven/%s/%s/%s/evt", link.vendor_id,
-                 link.home_id, link.device_id);
-        snprintf(ack_topic, sizeof ack_topic, "haven/%s/%s/%s/ack", link.vendor_id,
-                 link.home_id, link.device_id);
-        snprintf(shadow_topic, sizeof shadow_topic, "haven/%s/%s/%s/shadow", link.vendor_id,
-                 link.home_id, link.device_id);
+        haven_topic_event(&link, event_topic, sizeof event_topic);
+        haven_topic_ack(&link, ack_topic, sizeof ack_topic);
+        haven_topic_shadow(&link, shadow_topic, sizeof shadow_topic);
+    haven_topic_cmd(&link, cmd_topic, sizeof cmd_topic);
         tls_ready = true;
     }
 
@@ -512,5 +645,6 @@ void loop() {
     if (millis() - last_heartbeat > 30000) {
         last_heartbeat = millis();
         publish_shadow();
+        publish_event();
     }
 }

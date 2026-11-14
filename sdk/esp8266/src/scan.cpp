@@ -141,49 +141,19 @@ void loop() {
         order[j] = i;
     }
 
-    // The MAC test. If the access point has decided this station is misbehaving — a deauth flood
-    // guard after a day of reflashing — it stops answering association requests while still
-    // advertising beacons, which looks exactly like "the radio hears you but will not join". A
-    // fresh MAC that joins immediately proves it is the AP's opinion of the address and not the
-    // board, the credential or the encryption.
-    Serial.println("0) same credentials, a different MAC");
-    for (int attempt = 0; attempt < 3; attempt++) {
-        uint8_t mac[6];
-        WiFi.macAddress(mac);
-        mac[0] = 0x02;                       // locally administered
-        mac[5] = 0x10 + attempt;
-        // The interface has to be down for the address to change; the SDK returns false
-        // otherwise, which would look like "the MAC made no difference".
-        WiFi.mode(WIFI_OFF);
-        delay(200);
-        bool changed = wifi_set_macaddr(STATION_IF, mac);
-        Serial.printf("  mac change accepted: %s\n", changed ? "yes" : "no");
-        Serial.printf("  mac now %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0], mac[1], mac[2], mac[3],
-                      mac[4], mac[5]);
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(HAVEN_WIFI_SSID, HAVEN_WIFI_PASS);
-        for (int k = 0; k < 24; k++) {
-            delay(500);
-            if (WiFi.status() == WL_CONNECTED) break;
-        }
-        int st = (int)WiFi.status();
-        Serial.printf("  status=%d ip=%s\n", st, WiFi.localIP().toString().c_str());
-        if (st == WL_CONNECTED) {
-            Serial.printf("=== JOINED with a new MAC at %ddBm ===\n", WiFi.RSSI());
-            return;
-        }
-        WiFi.disconnect();
-        delay(800);
-    }
-
-    // First exactly what the firmware does: no channel, no BSSID, let the SDK choose.
-    Serial.println("1) plain begin(), as the firmware does it");
+    // Exactly what the firmware does: no channel, no BSSID, let the SDK choose. Every status
+    // change and every SDK event is printed, because the reason code is the answer.
+    Serial.println("plain begin(), as the firmware does it");
     WiFi.mode(WIFI_STA);
     WiFi.begin(HAVEN_WIFI_SSID, HAVEN_WIFI_PASS);
-    for (int k = 0; k < 40; k++) {
+    int last = -1;
+    for (int k = 0; k < 120; k++) {
         delay(500);
         int st = (int)WiFi.status();
-        if (k % 4 == 0) Serial.printf("  status=%d\n", st);
+        if (st != last) {
+            Serial.printf("  t=%4.1fs status=%d\n", k * 0.5, st);
+            last = st;
+        }
         if (st == WL_CONNECTED) break;
     }
     if (WiFi.status() == WL_CONNECTED) {

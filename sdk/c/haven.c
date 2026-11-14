@@ -47,9 +47,11 @@ static haven_status build_topic(const haven_link *link, const char *lane, char *
         return HAVEN_ERR_INVALID_UUID;
     }
 
-    /* haven/{vendor}/{home}/{device}/{lane} — the same shape the server parses, built in one
-     * place so a firmware bug cannot invent a sixth segment. */
-    int n = snprintf(out, out_len, "haven/%s/%s/%s/%s", link->vendor_id, link->home_id,
+    /* haven/v1/{vendor}/{home}/{device}/{lane} — the same shape the server subscribes to, built
+     * in one place so a firmware bug cannot invent a segment. The `v1` is not decoration: the
+     * worker subscribes to `$share/ingest/haven/v1/+/+/+/+`, so a topic without it is published
+     * to nobody and the device looks connected and offline at the same time. */
+    int n = snprintf(out, out_len, "haven/v1/%s/%s/%s/%s", link->vendor_id, link->home_id,
                      link->device_id, lane);
     return finish(n, out_len);
 }
@@ -162,7 +164,7 @@ haven_status haven_shadow(const haven_dp *pts, size_t count, int64_t ts, bool on
     (void)used;
 
     int n = snprintf(out, out_len,
-                     "{\"v\":%d,\"ts\":%lld,\"on\":%s,\"fw\":\"%s\",\"pts\":%s}",
+                     "{\"v\":%d,\"ts\":%lld,\"online\":%s,\"fw\":\"%s\",\"pts\":%s}",
                      HAVEN_WIRE_VERSION, (long long)ts, online ? "true" : "false", firmware,
                      points);
     return finish(n, out_len);
@@ -183,7 +185,8 @@ haven_status haven_ack(const char *command_id, const char *dp, const haven_dp *v
     if (st != HAVEN_OK) return st;
     (void)written;
 
-    int n = snprintf(out, out_len, "{\"v\":%d,\"ts\":%lld,\"id\":\"%s\",\"dp\":\"%s\",\"value\":",
+    int n = snprintf(out, out_len,
+                     "{\"v\":%d,\"ts\":%lld,\"ok\":true,\"id\":\"%s\",\"dp\":\"%s\",\"value\":",
                      HAVEN_WIRE_VERSION, (long long)ts, command_id, dp);
     if (n < 0) return HAVEN_ERR_INVALID_ARG;
     if ((size_t)n >= out_len) return HAVEN_ERR_TOO_SMALL;

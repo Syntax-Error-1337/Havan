@@ -45,7 +45,7 @@ static void topics_are_built_not_formatted(void) {
     haven_link l = link();
 
     CHECK(haven_topic_event(&l, out, sizeof out) == HAVEN_OK);
-    CHECK_STR(out, "haven/11111111-1111-7111-8111-111111111111/"
+    CHECK_STR(out, "haven/v1/11111111-1111-7111-8111-111111111111/"
                    "22222222-2222-7222-8222-222222222222/"
                    "33333333-3333-7333-8333-333333333333/evt");
 
@@ -118,7 +118,7 @@ static void the_shadow_carries_presence_and_firmware(void) {
     haven_dp p = {.dp = "1", .kind = HAVEN_DP_BOOL, .value.b = false};
 
     CHECK(haven_shadow(&p, 1, 1700000000, true, "1.0.0", out, sizeof out) == HAVEN_OK);
-    CHECK(strstr(out, "\"on\":true") != NULL);
+    CHECK(strstr(out, "\"online\":true") != NULL);
     CHECK(strstr(out, "\"fw\":\"1.0.0\"") != NULL);
 }
 
@@ -130,6 +130,9 @@ static void an_ack_names_the_command_and_the_value(void) {
                     sizeof out) == HAVEN_OK);
     CHECK(strstr(out, "\"id\":\"01a1d8e2-6218-75d6-869c-272cb8b37c95\"") != NULL);
     CHECK(strstr(out, "\"dp\":\"1\"") != NULL);
+    /* AckMsg.ok is not optional on the server: an ack without it is rejected as malformed, which
+     * is how a device that applied a command still looks like one that ignored it. */
+    CHECK(strstr(out, "\"ok\":true") != NULL);
     /* The value must appear once, from the typed writer — not as a quoted string. */
     CHECK(strstr(out, "\"value\":true") != NULL);
     CHECK(strstr(out, "\"value\":\"") == NULL);
