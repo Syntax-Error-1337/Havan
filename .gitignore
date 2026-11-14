@@ -7,3 +7,5 @@ dist/
 sdk/esp8266/secrets.ini
 sdk/esp8266/.pio
 sdk/esp8266/compile_commands.json
+sdk/c/tests/test_haven
+sdk/esp8266/.cache/
