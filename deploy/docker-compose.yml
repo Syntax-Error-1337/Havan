@@ -61,7 +61,11 @@ services:
       DOCKER_VERNEMQ_LISTENER__SSL__REQUIRE_CERTIFICATE: "on"
     ports:
       - "127.0.0.1:1883:1883"     # MQTT, dev
-      - "127.0.0.1:8883:8883"     # MQTT over TLS, devices
+      # The one port that is not loopback-only. It requires a client certificate signed by the
+      # device CA, so it is the only listener that is safe to expose on a development network —
+      # and without it a real device on the same Wi-Fi cannot reach the platform at all. 1883
+      # stays on loopback: it accepts anyone.
+      - "0.0.0.0:8883:8883"       # MQTT over mutual TLS, devices
       - "127.0.0.1:8888:8080"     # broker HTTP status (8080 is the API's)
     volumes:
       - haven-mqtt:/vernemq/data

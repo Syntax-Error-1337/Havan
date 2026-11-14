@@ -51,10 +51,24 @@ static const char *WIFI_PASS = HAVEN_WIFI_PASS;
 static const char *WIFI_SSID = "YOUR_SSID";
 static const char *WIFI_PASS = "YOUR_PASSWORD";
 #endif
+#ifdef HAVEN_PRODUCT_KEY
+static const char *PRODUCT_KEY = HAVEN_PRODUCT_KEY;
+#else
 static const char *PRODUCT_KEY = "hv_acme_bulb1";
+#endif
+
 // Not `SERIAL`: the ESP8266 core defines that as a macro.
+#ifdef HAVEN_DEVICE_SERIAL
+static const char *DEVICE_SERIAL = HAVEN_DEVICE_SERIAL;
+#else
 static const char *DEVICE_SERIAL = "SIM-0001";
+#endif
+
+#ifdef HAVEN_DEVICE_SECRET
+static const char *SECRET = HAVEN_DEVICE_SECRET;
+#else
 static const char *SECRET = "replace-me-32-bytes";
+#endif
 static const char *FIRMWARE = "1.0.0";
 #ifdef HAVEN_TICKET_VALUE
 static const char *TICKET = HAVEN_TICKET_VALUE;
@@ -215,6 +229,9 @@ static bool load_tls() {
     certList = new BearSSL::X509List(cert.c_str());
     privateKey = new BearSSL::PrivateKey(key.c_str());
 
+    // Smaller session buffers: the default receive buffer is 16 KB, and the handshake plus a
+    // client certificate is what actually runs out of heap on an ESP8266.
+    tls.setBufferSizes(1024, 512);
     tls.setTrustAnchors(caList);
     // The device key is ECDSA P-256 (that is what the platform issues); BearSSL needs to be told
     // both that it is EC and what the chain is allowed to do with it.
@@ -309,16 +326,41 @@ static void on_message(char *topic, byte *payload, unsigned int length) {
 }
 
 static bool mqtt_connect() {
-    Serial.printf("mqtt: connecting to %s:%d\n", HAVEN_HOST, HAVEN_MQTT_PORT);
+    // A plain TCP probe first: it separates "the network cannot reach the broker" from "the TLS
+    // handshake was rejected", which look identical from PubSubClient's -2.
+    WiFiClient probe;
+    bool tcp = probe.connect(HAVEN_HOST, HAVEN_MQTT_PORT);
+    probe.stop();
+    Serial.printf("mqtt: connecting to %s:%d (tcp %s, heap %u)\n", HAVEN_HOST, HAVEN_MQTT_PORT,
+                  tcp ? "ok" : "failed", ESP.getFreeHeap());
+    if (!tcp) return false;
     // A clean session with an explicit resubscribe on CONNACK is the contract's rule: a
     // persistent session that the broker drops leaves the device deaf and nothing says so.
     if (!mqtt.connect(link.device_id, nullptr, nullptr, event_topic, 1, false, "offline")) {
-        Serial.printf("mqtt: failed, state %d\n", mqtt.state());
+        // The MQTT state alone cannot tell a TLS failure from a broker refusal, and the TLS
+        // failure is the one a mutual-auth device actually hits. BearSSL's error code and the
+        // free heap distinguish "the handshake was rejected" from "the handshake ran out of
+        // memory", which are different afternoons.
+        char ssl_error[64] = {0};
+        tls.getLastSSLError(ssl_error, sizeof ssl_error);
+        Serial.printf("mqtt: failed state=%d ssl=%s heap=%u\n", mqtt.state(), ssl_error,
+                      ESP.getFreeHeap());
         return false;
     }
     mqtt.subscribe(event_topic, 1);
     publish_shadow();
     return true;
+}
+
+static bool tls_ready = false;
+static bool clock_set = false;
+
+/// Bring up the station, once. Returns immediately; `loop()` waits for the result.
+static void start_wifi() {
+    WiFi.persistent(false);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    Serial.printf("wifi: joining %u-char ssid\n", (unsigned)strlen(WIFI_SSID));
 }
 
 void setup() {
@@ -335,27 +377,7 @@ void setup() {
 
     LittleFS.begin();
 
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    for (int i = 0; i < 60 && WiFi.status() != WL_CONNECTED; i++) delay(500);
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("wifi: failed");
-        return;
-    }
-    Serial.printf("wifi: %s\n", WiFi.localIP().toString().c_str());
-
-    // Trust nothing until the clock is set: certificate validity is checked against it, and an
-    // ESP8266 boots at 1970 — which fails every chain check with a confusing "not yet valid".
-    configTime(0, 0, "pool.ntp.org");
-    for (int i = 0; i < 40 && time(nullptr) < 1600000000; i++) delay(250);
-
-    if (!load_tls()) {
-        Serial.println("no certificate on the device; claiming");
-        if (!provision() || !load_tls()) {
-            Serial.println("provisioning failed");
-            return;
-        }
-    }
+    start_wifi();
 
     mqtt.setServer(HAVEN_HOST, HAVEN_MQTT_PORT);
     mqtt.setCallback(on_message);
@@ -366,8 +388,60 @@ void setup() {
              link.device_id);
     snprintf(ack_topic, sizeof ack_topic, "haven/%s/%s/%s/ack", link.vendor_id, link.home_id,
              link.device_id);
-    snprintf(shadow_topic, sizeof shadow_topic, "haven/%s/%s/%s/shadow", link.vendor_id,
-             link.home_id, link.device_id);
+}
+
+/// Wi-Fi, clock, certificate, broker — in that order, retried rather than fatal.
+///
+/// The first version returned from `setup()` when Wi-Fi failed and then kept dialling the
+/// broker from `loop()` with no network, which looked like an MQTT problem for an hour.
+static void advance() {
+    if (WiFi.status() != WL_CONNECTED) {
+        static unsigned long last = 0;
+        static int last_status = -1;
+        int status = (int)WiFi.status();
+        if (status != last_status) {
+            last_status = status;
+            // The code distinguishes "no such network" (1) from "wrong password" (6) from
+            // "connecting" (7) — the difference between a typo and a 5 GHz-only router.
+            Serial.printf("wifi: status %d, rssi %d\n", status, WiFi.RSSI());
+        }
+        // Twenty seconds, not five: `WiFi.begin()` aborts an association already in flight, so
+        // retrying faster than the join takes is a way of never joining at all. This is the bug
+        // that made the board associate, drop, and repeat.
+        if (millis() - last > 20000) {
+            last = millis();
+            start_wifi();
+        }
+        return;
+    }
+
+    if (!clock_set) {
+        // Trust nothing until the clock is set: certificate validity is checked against it, and
+        // an ESP8266 boots at 1970 — every chain check then fails with a confusing "not yet
+        // valid" rather than an obvious "your clock is wrong".
+        configTime(0, 0, "pool.ntp.org");
+        if (time(nullptr) < 1600000000) return;
+        clock_set = true;
+        Serial.printf("wifi: %s, clock %lu\n", WiFi.localIP().toString().c_str(),
+                      (unsigned long)time(nullptr));
+    }
+
+    if (!tls_ready) {
+        if (!load_tls()) {
+            Serial.println("no certificate on the device; claiming");
+            if (!provision() || !load_tls()) {
+                Serial.println("provisioning failed");
+                return;
+            }
+        }
+        snprintf(event_topic, sizeof event_topic, "haven/%s/%s/%s/evt", link.vendor_id,
+                 link.home_id, link.device_id);
+        snprintf(ack_topic, sizeof ack_topic, "haven/%s/%s/%s/ack", link.vendor_id,
+                 link.home_id, link.device_id);
+        snprintf(shadow_topic, sizeof shadow_topic, "haven/%s/%s/%s/shadow", link.vendor_id,
+                 link.home_id, link.device_id);
+        tls_ready = true;
+    }
 
     mqtt_connect();
 }
@@ -375,6 +449,16 @@ void setup() {
 void loop() {
     static unsigned long last_heartbeat = 0;
     static unsigned long last_attempt = 0;
+
+    if (!tls_ready || !mqtt.connected()) {
+        if (millis() - last_attempt > 5000) {
+            last_attempt = millis();
+            advance();
+        }
+        // Still pump MQTT when it is connected-but-flagged; harmless when it is not.
+        mqtt.loop();
+        return;
+    }
 
     if (!mqtt.connected()) {
         if (millis() - last_attempt > 5000) {

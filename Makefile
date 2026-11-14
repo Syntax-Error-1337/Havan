@@ -9,6 +9,11 @@ export
 endif
 
 BACKEND := backend
+
+# The address a device on the same Wi-Fi dials. It is a DHCP lease, not a fact about the machine,
+# which is why the broker certificate is reissued when it moves and the firmware takes it as a
+# build flag rather than a constant.
+LAN_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
 # Cargo 1.99 takes `--manifest-path` after the subcommand, so every recipe
 # changes directory instead of threading a flag through a variable.
 CARGO := cd $(BACKEND) && cargo
@@ -90,12 +95,15 @@ worker: ## run the worker (foreground)
 	$(CARGO) run -p worker
 
 .PHONY: broker-tls
-broker-tls: ## the broker's TLS certificate, signed by the device CA (idempotent)
-	@test -f deploy/certs/server.crt || { \
-	  echo "issuing the broker certificate from the device CA"; \
+broker-tls: ## the broker's TLS certificate, signed by the device CA (covers the LAN address)
+	@if [ -f deploy/certs/server.crt ] && [ -n "$(LAN_IP)" ] && \
+	    openssl x509 -in deploy/certs/server.crt -noout -text | grep -q "DNS:$(LAN_IP)"; then \
+	  echo "broker certificate already covers $(LAN_IP)"; \
+	else \
+	  echo "issuing the broker certificate from the device CA for $(LAN_IP)"; \
 	  cd $(BACKEND) && cargo run -q -p haven-cert --bin haven-cert-broker -- \
-	    ../.haven/ca ../deploy/certs; \
-	}
+	    ../.haven/ca ../deploy/certs "$(LAN_IP)" "$(LAN_IP)"; \
+	fi
 
 .PHONY: sdk
 sdk: ## build and test the C component (host compiler, no board needed)

@@ -25,6 +25,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ca_dir = PathBuf::from(args.next().unwrap_or_else(|| ".haven/ca".into()));
     let out_dir = PathBuf::from(args.next().unwrap_or_else(|| "deploy/certs".into()));
     let hostname = args.next().unwrap_or_else(|| "localhost".into());
+    // A device on the same Wi-Fi dials the machine's LAN address, not `localhost` — and
+    // `WiFiClientSecure` checks the SAN, so a certificate without it fails the handshake with
+    // nothing but "connection refused" to go on. The address is passed in because it is a DHCP
+    // lease, not a fact about the machine.
+    let lan_ip: Option<std::net::IpAddr> = args.next().and_then(|ip| ip.parse().ok());
 
     let ca = haven_cert::Ca::load_or_create(&ca_dir).await?;
     std::fs::create_dir_all(&out_dir)?;
@@ -42,11 +47,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         KeyUsagePurpose::KeyEncipherment,
     ];
     params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
-    params.subject_alt_names = vec![
+    let mut sans = vec![
         SanType::DnsName(hostname.clone().try_into()?),
         SanType::DnsName("localhost".to_string().try_into()?),
         SanType::IpAddress("127.0.0.1".parse()?),
     ];
+    if let Some(ip) = lan_ip {
+        sans.push(SanType::IpAddress(ip));
+    }
+    params.subject_alt_names = sans;
 
     let now = OffsetDateTime::now_utc();
     params.not_before = now - time::Duration::minutes(5);
@@ -71,8 +80,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!(
-        "wrote {}/server.crt, server.key and ca.pem for {hostname}",
-        out_dir.display()
+        "wrote {}/server.crt, server.key and ca.pem for {hostname}{}",
+        out_dir.display(),
+        lan_ip.map(|ip| format!(" and {ip}")).unwrap_or_default()
     );
     Ok(())
 }
