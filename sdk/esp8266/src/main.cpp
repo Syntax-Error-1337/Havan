@@ -251,9 +251,18 @@ static bool load_tls() {
     // board and the log looks like a Wi-Fi fault rather than a stalled exchange.
     tls.setTimeout(10000);
     tls.setTrustAnchors(caList);
+#ifdef HAVEN_NO_CLIENT_CERT
+    // The constrained listener authenticates at the MQTT layer with this device's own serial and
+    // secret, because a client certificate plus its chain does not fit in an ESP8266's heap: the
+    // mutual handshake allocates ~20 KB of ~36 KB and the exchange stalls partway. Ranked against
+    // a device that cannot connect at all, a per-device credential over TLS is the better trade —
+    // and it is exactly why 8883 (certificates) stays the default for devices that can afford it.
+    Serial.println("tls: MQTT credentials, no client certificate");
+#else
     // The device key is ECDSA P-256 (that is what the platform issues); BearSSL needs to be told
     // both that it is EC and what the chain is allowed to do with it.
     tls.setClientECCert(certList, privateKey, BR_KEYTYPE_KEYX | BR_KEYTYPE_SIGN, BR_KEYTYPE_EC);
+#endif
     return true;
 }
 
@@ -354,7 +363,16 @@ static bool mqtt_connect() {
     if (!tcp) return false;
     // A clean session with an explicit resubscribe on CONNACK is the contract's rule: a
     // persistent session that the broker drops leaves the device deaf and nothing says so.
-    if (!mqtt.connect(link.device_id, nullptr, nullptr, event_topic, 1, false, "offline")) {
+#ifdef HAVEN_NO_CLIENT_CERT
+    // Username is the serial the platform issued the device; the password is its secret. The
+    // broker's ACLs keep it inside its own topics.
+    const char *user = DEVICE_SERIAL;
+    const char *pass = SECRET;
+#else
+    const char *user = nullptr;
+    const char *pass = nullptr;
+#endif
+    if (!mqtt.connect(link.device_id, user, pass, event_topic, 1, false, "offline")) {
         // The MQTT state alone cannot tell a TLS failure from a broker refusal, and the TLS
         // failure is the one a mutual-auth device actually hits. BearSSL's error code and the
         // free heap distinguish "the handshake was rejected" from "the handshake ran out of
