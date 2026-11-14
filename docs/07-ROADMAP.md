@@ -128,7 +128,8 @@ the badge. Neither is reachable without an ESP32-S3 on a desk.
   boundary (`log` by default, `apns` when credentials exist). No-token rows settle instead of
   retrying, a dead token is pruned, and other failures retry three times. Verified live: a
   registered iOS token received the certificate warning through the log transport and the
-  queue drained to zero.
+  queue drained to zero. The app registers its own token on sign-in and removes it on sign-out,
+  so the loop is closed from the device side too.
 - **Not done:** the multi-replica chaos case, and a **live** APNs call (needs an Apple
   developer account and a real device token; the JWT and request shape are unit-tested). The 20 000 events/s
   figure is now arithmetic rather than a hope: ~30 workers at the measured rate, which is a

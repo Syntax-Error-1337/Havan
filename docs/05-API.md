@@ -313,6 +313,11 @@ a device token (idempotent — an app registers on every launch), and
 phone does not receive the previous owner's alerts. A platform outside those two and a token
 shorter than 16 characters are refused here rather than stored and retried forever.
 
+The app registers on sign-in and on relaunch (`getDevicePushTokenAsync`, after asking for
+permission once), and removes the token on sign-out — a phone that keeps its registration after
+someone signs out receives the previous owner's alerts. A refused permission is an answer, not
+an error: registration is skipped and the app stays usable.
+
 A worker sweep delivers undelivered notifications every thirty seconds:
 
 - a notification with **no tokens** is marked delivered, not left pending — there is nobody to
