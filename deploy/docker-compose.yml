@@ -54,12 +54,11 @@ services:
       # and without it a real device on the same Wi-Fi cannot reach the platform at all. 1883
       # stays on loopback: it accepts anyone.
       - "0.0.0.0:8883:8883"       # MQTT over mutual TLS, devices
-      # 8884: TLS without a client certificate. **Loopback until it authenticates**: the broker
-      # allows anonymous connections, so publishing this port to the network would let anyone on
-      # the Wi-Fi read and write every tenant's topics. It becomes usable by devices when the
-      # per-device credential check (username = serial, password = device secret, ACL per device)
-      # is in front of it — see docs/05-API.md.
-      - "127.0.0.1:8884:8884"
+      # 8884: TLS without a client certificate, for devices that cannot afford a mutual handshake.
+      # Network-facing because it now authenticates twice over: the credential (device id + secret,
+      # checked by the API through the broker's webhook) and the topic ACL (a device may only touch
+      # `haven/<vendor>/<home>/<device>/…`). Anonymous connections are refused outright.
+      - "0.0.0.0:8884:8884"
       - "127.0.0.1:8888:8080"     # broker HTTP status (8080 is the API's)
     volumes:
       - haven-mqtt:/vernemq/data

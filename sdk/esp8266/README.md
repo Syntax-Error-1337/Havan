@@ -42,6 +42,17 @@ is misbehaving. **The first thing to try is therefore not firmware:** power-cycl
 it ten minutes, check the 2.4 GHz AP is WPA2-PSK rather than WPA3-only or PMF-required, and give
 the MAC a DHCP reservation so the address stops moving.
 
+### The constrained path exists now
+
+8884 is network-facing and authenticates twice: the credential (device id + secret, checked by the
+API through the broker's webhook) and the topic ACL (a device may only touch
+`haven/<vendor>/<home>/<device>/…`). `secrets.ini.example` documents the two build flags that put
+this firmware on it: `-D HAVEN_MQTT_PORT=8884 -D HAVEN_NO_CLIENT_CERT=1`. The username must be the
+**device id** from the claim, not the serial — the broker looks the device up by id.
+
+The board still does not associate with Wi-Fi, so this path is proven from the host
+(`scripts/mqtt-probe.py`, a few hundred bytes of MQTT over TLS) and not yet from the board.
+
 ### The one test that separates board from broker
 
 Point this firmware at a minimal `openssl s_server` on the development machine:

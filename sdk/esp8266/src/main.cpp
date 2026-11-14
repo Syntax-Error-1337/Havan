@@ -364,9 +364,10 @@ static bool mqtt_connect() {
     // A clean session with an explicit resubscribe on CONNACK is the contract's rule: a
     // persistent session that the broker drops leaves the device deaf and nothing says so.
 #ifdef HAVEN_NO_CLIENT_CERT
-    // Username is the serial the platform issued the device; the password is its secret. The
-    // broker's ACLs keep it inside its own topics.
-    const char *user = DEVICE_SERIAL;
+    // The username is the **device id** the platform minted at claim time, not the serial: the
+    // broker's hook looks the device up by id, and a serial is only unique within a product. The
+    // password is the secret the device claimed with, and the ACL keeps it inside its own topics.
+    const char *user = link.device_id;
     const char *pass = SECRET;
 #else
     const char *user = nullptr;

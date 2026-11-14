@@ -377,12 +377,24 @@ cannot send a custom header, and the endpoints are an oracle otherwise.
   `5` (not authorized). Verified: a wrong device secret is refused, anonymous is refused, and the
   platform's own traffic (34 e2e assertions) is unaffected.
 
-**Known gap:** VerneMQ 2.0.1 does not consult `auth_on_publish` or `auth_on_subscribe` here. A
-publish and a wildcard subscribe are answered immediately whether those endpoints are reachable or
-pointed at a dead port, while `auth_on_register` is consulted. So the *credential* is enforced and
-the per-device topic ACL (`domain::mqtt_acl`, unit-tested) is not: 8884 stays bound to loopback
-until that is resolved. `scripts/mqtt-probe.py` is the reproduction — it speaks MQTT over TLS with
-no third-party packages.
+The topic ACL is **enforced**: a device may publish and subscribe only inside
+`haven/<vendor>/<home>/<device>/…`, wildcards and `$SYS` are refused, and the decision is made from
+the device row rather than from anything the device asks for. Verified against 8884 over the LAN:
+
+| Attempt | Result |
+|---|---|
+| correct secret | CONNACK accepted |
+| wrong secret / no credentials | CONNACK 5, not authorized |
+| publish to its own `evt` | PUBACK |
+| subscribe to `haven/#` | SUBACK 128, refused |
+| publish to a sibling device's topic | no PUBACK, refused |
+
+That took one setting: **`plugins.vmq_acl = off`**. `vmq_acl` ships enabled, claims
+`auth_on_publish` and `auth_on_subscribe` itself, and its default ACL allows everything — so it
+answered first and the webhook was never consulted. Register worked throughout because it is a
+hook `vmq_acl` does not implement, which is exactly the asymmetry that made the gap look like a
+webhook problem. `scripts/mqtt-probe.py` is the reproduction, and it needs QoS 1: a QoS-0 publish
+has no acknowledgement, so "refused" and "accepted" look identical.
 
 A device connects to the broker on **8883** with that certificate; the listener requires one
 signed by this CA, so a device without it cannot publish at all. `make broker-tls` writes the
