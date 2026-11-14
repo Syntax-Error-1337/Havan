@@ -184,7 +184,48 @@ static void the_claim_body_is_what_the_server_parses(void) {
     CHECK(out[strlen(out) - 1] == '}');
 }
 
-int main(void) {
+/* Print the three envelopes the device publishes, so a test in another language can parse them.
+ *
+ * This exists because the C SDK and the Rust server disagreed about the wire format for as long as
+ * nothing compared them: its shadow said `on` where the server requires `online`, and its ack
+ * omitted `ok`. Both passed 45 checks that only compared the SDK against itself.
+ */
+static int emit(void) {
+    char out[256];
+    haven_link link = {"11111111-1111-7111-8111-111111111111",
+                       "22222222-2222-7222-8222-222222222222",
+                       "33333333-3333-7333-8333-333333333333"};
+    haven_dp pts[2] = {{"1", HAVEN_DP_BOOL, {.b = true}}, {"2", HAVEN_DP_INT, {.i = 80}}};
+
+    if (haven_topic_event(&link, out, sizeof out) != HAVEN_OK) return 1;
+    printf("topic %s\n", out);
+    if (haven_topic_shadow(&link, out, sizeof out) != HAVEN_OK) return 1;
+    printf("topic %s\n", out);
+    if (haven_topic_ack(&link, out, sizeof out) != HAVEN_OK) return 1;
+    printf("topic %s\n", out);
+    if (haven_topic_cmd(&link, out, sizeof out) != HAVEN_OK) return 1;
+    printf("topic %s\n", out);
+
+    if (haven_shadow(pts, 2, 1700000000, true, "1.0.0", out, sizeof out) != HAVEN_OK) return 1;
+    printf("shadow %s\n", out);
+    if (haven_state_event(pts, 2, 1700000000, out, sizeof out) != HAVEN_OK) return 1;
+    printf("event %s\n", out);
+    if (haven_ack("01a1d8e2-6218-75d6-869c-272cb8b37c95", "1", &pts[0], 1700000000, out,
+                  sizeof out) != HAVEN_OK) {
+        return 1;
+    }
+    printf("ack %s\n", out);
+    if (haven_refusal("01a1d8e2-6218-75d6-869c-272cb8b37c95", 1700000000, "bad_type",
+                      "expected a bool", out, sizeof out) != HAVEN_OK) {
+        return 1;
+    }
+    printf("refusal %s\n", out);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "--emit") == 0) return emit();
+
     topics_are_built_not_formatted();
     a_bad_id_is_refused_not_published();
     a_small_buffer_reports_truncation();
