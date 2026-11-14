@@ -242,12 +242,14 @@ static bool load_tls() {
     ca = String();
     Serial.printf("tls: loaded, heap %u\n", ESP.getFreeHeap());
 
-    // 2 KB in / 1 KB out rather than the 16 KB default. This is the setting that actually decides
-    // whether mutual TLS fits: it bounds the largest TLS record the client will accept, and a
-    // certificate message bigger than the buffer fails the handshake with no useful error. The
-    // default is comfortable; 1 KB was not; 2 KB is the middle that leaves room for the rest of
-    // the handshake in ~36 KB of heap.
-    tls.setBufferSizes(2048, 1024);
+    // 4 KB in / 1 KB out rather than the 16 KB default. This decides whether mutual TLS fits at
+    // all: the buffer bounds the largest TLS record the client accepts, and a handshake record
+    // bigger than it does not fail — it *hangs*, which is what a device looks like when the Wi-Fi
+    // drops mid-connect. 2 KB stalled; 4 KB still leaves ~30 KB for the certificates.
+    tls.setBufferSizes(4096, 1024);
+    // A handshake that never completes must not hold the link forever: the watchdog resets the
+    // board and the log looks like a Wi-Fi fault rather than a stalled exchange.
+    tls.setTimeout(10000);
     tls.setTrustAnchors(caList);
     // The device key is ECDSA P-256 (that is what the platform issues); BearSSL needs to be told
     // both that it is EC and what the chain is allowed to do with it.
