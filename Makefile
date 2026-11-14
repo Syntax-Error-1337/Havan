@@ -164,6 +164,11 @@ api-replicas: ## two API instances: do they agree about a dependency that died?
 broker-auth: ## assert the broker authenticates a device and confines it to its own topics
 	@bash scripts/broker-auth.sh
 
+.PHONY: wifi-diag
+wifi-diag: ## flash the wifi probe and read what the board's radio sees (then read the comments)
+	@pio run -d sdk/esp8266 -e scan -t upload
+	@PORT=$${PORT:-/dev/cu.usbserial-A5069RR4} bash scripts/wifi-diag.sh
+
 multi-replica: ## two workers, one fleet: exclusive ingest and a single redelivery
 	@bash scripts/multi-replica.sh
 
