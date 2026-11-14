@@ -1,0 +1,13 @@
+{
+  "name": "haven",
+  "version": "1.0.0",
+  "description": "Haven device protocol: topics, envelopes, ack/refusal, claim — transport-free C11.",
+  "keywords": "haven, mqtt, iot",
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "srcDir": ".",
+    "srcFilter": ["+<haven.c>"]
+  }
+}

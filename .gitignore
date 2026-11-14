@@ -4,3 +4,5 @@ target/
 .env
 *.log
 dist/
+sdk/esp8266/secrets.ini
+sdk/esp8266/.pio
