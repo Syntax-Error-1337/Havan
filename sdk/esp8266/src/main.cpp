@@ -327,7 +327,9 @@ static void publish_shadow() {
         Serial.println("shadow build failed");
         return;
     }
-    mqtt.publish(shadow_topic, payload, true);
+    bool sent = mqtt.publish(shadow_topic, payload, true);
+    Serial.printf("shadow: publish %s (power=%d brightness=%d, %u bytes)\n",
+                  sent ? "ok" : "FAILED", (int)power_on, brightness, (unsigned)strlen(payload));
 }
 
 /// Report the points on the event lane, which is what tells the platform the device exists.
@@ -355,7 +357,14 @@ static void on_command(char *payload, unsigned int length) {
 
     const char *id = cmd["id"] | "";
     const char *dp = cmd["dp"] | "";
-    if (!strlen(id) || !strlen(dp)) return;
+    // Logged because a command that arrives, applies and acks is otherwise invisible from the
+    // device side: the platform records `applied`, the shadow keeps its old value, and there is
+    // nothing in between to look at.
+    Serial.printf("cmd: id=%s dp=%s value=%s\n", id, dp, cmd["value"].as<String>().c_str());
+    if (!strlen(id) || !strlen(dp)) {
+        Serial.println("cmd: ignored (no id or dp)");
+        return;
+    }
 
     int64_t now = (int64_t)time(nullptr);
     char out[HAVEN_ENVELOPE_MAX];
@@ -399,7 +408,11 @@ static void on_command(char *payload, unsigned int length) {
     }
 
     if (haven_ack(id, dp, &value, now, out, sizeof out) == HAVEN_OK) {
-        mqtt.publish(ack_topic, out);
+        bool sent = mqtt.publish(ack_topic, out);
+        Serial.printf("cmd: ack %s (publish %s), power=%d brightness=%d\n", id,
+                      sent ? "ok" : "FAILED", (int)power_on, brightness);
+    } else {
+        Serial.println("cmd: ack build failed");
     }
     // The shadow follows the ack: an app that reloads the screen sees what the device reports,
     // not what it was asked for.
