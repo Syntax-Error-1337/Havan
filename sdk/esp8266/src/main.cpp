@@ -223,15 +223,21 @@ static bool load_tls() {
     String key = load_pem("/device.key");
     String ca = load_pem("/ca.crt");
     if (!cert.length() || !key.length() || !ca.length()) return false;
+    // A PEM truncated on the way to LittleFS and a certificate the broker rejects look identical
+    // from `mqtt: failed state=-2`, so the sizes are logged: a leaf certificate is ~800 bytes and
+    // an EC private key ~240, and a short one is a storage bug rather than a TLS one.
+    Serial.printf("tls: crt=%u key=%u ca=%u heap=%u\n", cert.length(), key.length(), ca.length(),
+                  ESP.getFreeHeap());
 
     free_tls();
     caList = new BearSSL::X509List(ca.c_str());
     certList = new BearSSL::X509List(cert.c_str());
     privateKey = new BearSSL::PrivateKey(key.c_str());
 
-    // Smaller session buffers: the default receive buffer is 16 KB, and the handshake plus a
-    // client certificate is what actually runs out of heap on an ESP8266.
-    tls.setBufferSizes(1024, 512);
+    // Default session buffers on purpose. `setBufferSizes(1024, 512)` looks like the right way to
+    // save heap, but it also bounds the maximum TLS record, and a certificate message larger than
+    // the buffer fails the handshake with no useful error. Free heap here is ~36 KB and the
+    // default receive buffer is 16 KB, so there is no need.
     tls.setTrustAnchors(caList);
     // The device key is ECDSA P-256 (that is what the platform issues); BearSSL needs to be told
     // both that it is EC and what the chain is allowed to do with it.
