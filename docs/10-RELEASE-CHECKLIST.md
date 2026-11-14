@@ -75,9 +75,10 @@ simulator *report* OTA progress; nothing actually flashes.
 2. **Redelivery is single-send** — one claim, one publish, `attempts = 2`. Verified, and it
    found a race: redelivery used to publish *then* mark, so both workers could publish one
    press. It now claims the row first and releases it if the publish fails.
-3. **Health per replica** — kill Postgres and every worker must notice; kill the broker and a
-   process that never connected must not claim `mqtt: true`. Not yet asserted for two *API*
-   instances, which is the only part of this section still open.
+3. **Health per replica** — `make api-replicas` starts two API instances: both report
+   `db: false` and `503` when Postgres stops, agree with each other, recover without a restart,
+   and a replica launched while the broker is down does not claim `mqtt: true`. Verified, and it
+   caught a shared MQTT client id that made two replicas evict each other.
 4. **Metrics do not double-count** — `/metrics` is per-process, so a fleet's numbers are the
    sum; a scrape config that assumes one instance will under-report by half.
 

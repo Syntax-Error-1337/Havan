@@ -82,8 +82,13 @@ broker started → within one sweep the row is `dispatched attempts=2` and the w
 - **Partial failure.** This kills whole containers. A broker that accepts connections and
   drops messages, or a database that answers slowly rather than not at all, is a different
   drill.
-- **Multiple API replicas.** `/healthz` per process is exercised; two API instances behind a
-  load balancer disagreeing about health is not.
+- ~~Multiple API replicas~~ — **now covered** by `make api-replicas`: two instances report
+  `db: false` and `503` together, recover without a restart, and a replica started while the
+  broker is down does not claim `mqtt: true`. That drill found the reason a second replica was
+  impossible before: both used the client id `haven-api`, so the broker evicted whichever
+  connected first, on every reconnect — `/healthz` flapped between ok and degraded, and the
+  losing replica dropped mid-publish. The id is now unique per process (or `HAVEN_INSTANCE`),
+  and the API's client uses a clean session because it publishes and subscribes to nothing.
 - ~~Multiple workers~~ — **now covered** by `make multi-replica`: two workers share the
   subscription, 480 messages land as exactly 960 rows (no duplicates, no loss), and a refused
   command is claimed by one worker and published once (`attempts = 2`, one `redelivered` log

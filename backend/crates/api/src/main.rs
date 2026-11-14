@@ -27,7 +27,14 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("redis")?;
 
-    let mqtt = infra::Mqtt::connect(&cfg.mqtt_url, "haven-api").context("mqtt")?;
+    // A client id must be unique per process. Two API replicas sharing "haven-api" evict each
+    // other from the broker on every reconnect, which flips `/healthz` between ok and degraded
+    // and drops the loser's connection mid-publish. Found by starting a second replica.
+    let client_id = match std::env::var("HAVEN_INSTANCE") {
+        Ok(name) if !name.trim().is_empty() => format!("haven-api-{}", name.trim()),
+        _ => format!("haven-api-{}", std::process::id()),
+    };
+    let mqtt = infra::Mqtt::connect(&cfg.mqtt_url, &client_id).context("mqtt")?;
     let state = api::AppState::new(cfg.clone(), pg, cache, mqtt);
     let app = api::router(state);
 

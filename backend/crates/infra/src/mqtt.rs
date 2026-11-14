@@ -33,9 +33,10 @@ impl Mqtt {
         let mut opts = MqttOptions::new(client_id, host, port);
         opts.set_keep_alive(KEEP_ALIVE);
         opts.set_inflight(INFLIGHT);
-        // A cloud process wants the broker's queued commands, so it resumes a
-        // session rather than starting clean.
-        opts.set_clean_session(false);
+        // Clean session on purpose: this client publishes commands and subscribes to nothing
+        // (app fan-out is Redis pub/sub). A persistent session would buy nothing and leak one
+        // per replica restart, since the client id is unique per process.
+        opts.set_clean_session(true);
 
         let (client, eventloop) = AsyncClient::new(opts, usize::from(INFLIGHT) * 4);
         let connected = Arc::new(AtomicBool::new(false));

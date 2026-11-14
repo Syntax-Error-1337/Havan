@@ -143,6 +143,9 @@ licences: ## every dependency is permissively licensed (AGENTS.md 1 / ADR-002)
 load: ## how much ingest this stack takes, and whether it loses any (RATE= SECONDS=)
 	@bash scripts/load.sh $(RATE) $(SECONDS)
 
+api-replicas: ## two API instances: do they agree about a dependency that died?
+	@bash scripts/api-replicas.sh
+
 multi-replica: ## two workers, one fleet: exclusive ingest and a single redelivery
 	@bash scripts/multi-replica.sh
 
