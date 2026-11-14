@@ -32,10 +32,30 @@ keeps the heap healthy, but the association also drops during the attempt, and t
 unproven rather than fixed. The server-side half of this is proven independently: a certificate
 issued for this device completes mutual TLS from the Mac against the same broker.
 
-Wi-Fi associates and then drops (`status 7` / `status 6`, RSSI −43…−51, so not a signal
+Wi-Fi associates and then drops (`status 7` / `status 6`, RSSI −34…−51, so not a signal
 problem). `WiFi.begin()` aborts an association already in flight — retrying faster than the join
-takes is a way of never joining — so the retry backoff is 20 s, and the flapping is now a router
-question rather than a firmware one.
+takes is a way of never joining — so the retry backoff is 20 s.
+
+By the end of the session the board stopped associating at all, after roughly forty
+flash-and-reboot cycles in a day, which is how an access point treats a MAC address it has decided
+is misbehaving. **The first thing to try is therefore not firmware:** power-cycle the board, leave
+it ten minutes, check the 2.4 GHz AP is WPA2-PSK rather than WPA3-only or PMF-required, and give
+the MAC a DHCP reservation so the address stops moving.
+
+### The one test that separates board from broker
+
+Point this firmware at a minimal `openssl s_server` on the development machine:
+
+```bash
+openssl s_server -accept 4433 -cert deploy/certs/server.crt -key deploy/certs/server.key -www -state
+# then, in secrets.ini: -D HAVEN_MQTT_PORT=4433 -D HAVEN_NO_CLIENT_CERT=1
+```
+
+If the handshake completes there, the fleet's broker is at fault and the answer is listener
+configuration. If it stalls the same way, the board is at fault and the answer is an ESP32-S3.
+That test was set up but never produced a result, because the board could not keep a Wi-Fi
+association long enough to run it — which is why it is written down here as the next step rather
+than reported as a finding.
 
 ## Build and flash
 
