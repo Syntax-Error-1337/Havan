@@ -48,6 +48,12 @@ async fn main() -> anyhow::Result<()> {
 
     let (host, port) = split_url(&mqtt_url);
     let mut opts = MqttOptions::new(format!("haven-load-{}", std::process::id()), host, port);
+    if let (Ok(user), Ok(pass)) = (
+        std::env::var("HAVEN_MQTT_USER"),
+        std::env::var("HAVEN_MQTT_PASS"),
+    ) {
+        opts.set_credentials(user, pass);
+    }
     opts.set_keep_alive(Duration::from_secs(30));
     // A window, not a queue: once this fills the generator blocks, which is the back
     // pressure a real client would also see. An unbounded queue would measure the

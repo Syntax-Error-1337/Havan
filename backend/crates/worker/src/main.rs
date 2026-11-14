@@ -36,6 +36,14 @@ async fn main() -> anyhow::Result<()> {
     // this one client, and one event loop drains it.
     let (host, port) = split_url(&cfg.mqtt_url)?;
     let mut opts = MqttOptions::new(format!("haven-worker-{}", std::process::id()), host, port);
+    // Same service identity as the API: with `allow_anonymous` off, a worker that connects
+    // anonymously cannot ingest anything at all.
+    if let (Ok(user), Ok(pass)) = (
+        std::env::var("HAVEN_MQTT_USER"),
+        std::env::var("HAVEN_MQTT_PASS"),
+    ) {
+        opts.set_credentials(user, pass);
+    }
     opts.set_keep_alive(Duration::from_secs(30));
     opts.set_inflight(16);
     opts.set_clean_session(false);

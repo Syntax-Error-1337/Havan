@@ -28,6 +28,11 @@ pub struct Config {
     /// Where the device certificate authority is kept. On disk, not in a table: a CA
     /// private key in the database is one backup away from being everywhere.
     pub ca_dir: std::path::PathBuf,
+    /// Shared secret the broker presents on its webhook calls, so the auth endpoints are not a
+    /// public oracle for device secrets.
+    pub mqtt_hook_token: String,
+    /// Password for the platform's own MQTT identity; the username is fixed (`SERVICE_USER`).
+    pub mqtt_service_token: String,
     pub public_url: String,
     /// HMAC key for access tokens. ≥ 32 bytes.
     pub jwt_secret: Secret,
@@ -155,6 +160,13 @@ impl Config {
         // with `backend/.haven/ca` while the broker trusted `.haven/ca`, so every device got a
         // certificate the broker refused and the failure looked like a TLS bug on the device for
         // an hour. Two CAs that both look plausible is the expensive kind of mistake.
+        // The shared secret the broker presents on its webhook calls. Without it the auth
+        // endpoints would be a public oracle for "is this device secret correct?".
+        let mqtt_hook_token = var_or(get, "HAVEN_MQTT_HOOK_TOKEN", "dev-broker-hook-token");
+        // The identity the platform's own clients (API, worker, simulator) use when the broker
+        // authenticates every connection. It is not a device credential and it is not a user one.
+        let mqtt_service_token = var_or(get, "HAVEN_MQTT_SERVICE_TOKEN", "dev-mqtt-service-token");
+
         let ca_dir = match std::path::PathBuf::from(var_or(get, "HAVEN_CA_DIR", ".haven/ca")) {
             p if p.is_absolute() => p,
             p => std::env::current_dir().map(|cwd| cwd.join(&p)).unwrap_or(p),
@@ -191,6 +203,8 @@ impl Config {
             env,
             bind,
             ca_dir,
+            mqtt_hook_token,
+            mqtt_service_token,
             database_url: var_or(
                 get,
                 "DATABASE_URL",
@@ -221,6 +235,8 @@ mod tests {
             env: Env::Dev,
             bind: "127.0.0.1:8080".parse().unwrap(),
             ca_dir: std::path::PathBuf::from(".haven/ca"),
+            mqtt_hook_token: "hook-token".into(),
+            mqtt_service_token: "service-token".into(),
             database_url: "postgres://u:p@h/db".into(),
             redis_url: "redis://h".into(),
             mqtt_url: "mqtt://h".into(),

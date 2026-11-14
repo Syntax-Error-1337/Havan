@@ -105,6 +105,16 @@ impl DeviceClient {
         let mut opts = MqttOptions::new(client_id, host, port);
         opts.set_keep_alive(Duration::from_secs(30));
         opts.set_clean_session(true);
+        // A device presents its own id and secret on the listener that checks credentials; the
+        // simulator is a service here, so it uses the service identity from the environment.
+        // Nothing else can read the environment this client is built in, and the credential is
+        // per-deployment rather than per-device until the claim flow plumbs the device's own.
+        if let (Ok(user), Ok(pass)) = (
+            std::env::var("HAVEN_MQTT_USER"),
+            std::env::var("HAVEN_MQTT_PASS"),
+        ) {
+            opts.set_credentials(user, pass);
+        }
 
         if let Some(will) = &will {
             opts.set_last_will(rumqttc::LastWill::new(

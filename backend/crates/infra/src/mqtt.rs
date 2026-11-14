@@ -37,6 +37,17 @@ impl Mqtt {
         // (app fan-out is Redis pub/sub). A persistent session would buy nothing and leak one
         // per replica restart, since the client id is unique per process.
         opts.set_clean_session(true);
+        // The broker authenticates every connection through the platform's webhook when
+        // `allow_anonymous` is off, so the platform's own client needs an identity too. The
+        // service identity is allowed every topic; a device identity is allowed its own prefix
+        // and nothing else (domain::mqtt_acl). Read from the environment because the same binary
+        // runs as the API and as a replica, and neither should carry a credential in its source.
+        if let (Ok(user), Ok(pass)) = (
+            std::env::var("HAVEN_MQTT_USER"),
+            std::env::var("HAVEN_MQTT_PASS"),
+        ) {
+            opts.set_credentials(user, pass);
+        }
 
         let (client, eventloop) = AsyncClient::new(opts, usize::from(INFLIGHT) * 4);
         let connected = Arc::new(AtomicBool::new(false));

@@ -120,6 +120,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::devices::router())
         .merge(routes::vendor::router())
         .merge(routes::pairing::router())
+        .merge(routes::internal_mqtt::router())
         .merge(routes::automations::router())
         .merge(routes::catalog::router())
         .merge(routes::ota::router())

@@ -51,6 +51,7 @@ pub struct ExpiringCertificate {
 #[derive(Debug, Clone)]
 pub struct DeviceRecord {
     pub id: Uuid,
+    pub vendor_id: Uuid,
     pub secret_hash: String,
     pub state: String,
     pub home_id: Option<Uuid>,
@@ -114,6 +115,12 @@ pub trait PairingRepo {
         &self,
         product_id: Uuid,
         serial: &str,
+    ) -> impl Future<Output = Result<Option<DeviceRecord>, AppError>> + Send;
+
+    /// A device by its own id — the credential a device uses to reach the broker.
+    fn device_by_id(
+        &self,
+        id: Uuid,
     ) -> impl Future<Output = Result<Option<DeviceRecord>, AppError>> + Send;
 
     /// Record the certificate issued to a device: serial and expiry.
@@ -311,6 +318,65 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
         Ok(Authenticated {
             device_id: device.id,
             vendor_id: product.vendor_id,
+            home_id,
+        })
+    }
+
+    /// Authenticate a device that is already part of a home, by its id and its secret.
+    ///
+    /// This is the MQTT path: a device on the TLS listener that does not present a client
+    /// certificate logs in with `username = device id` and `password = its secret`. The id is the
+    /// identity the platform minted at claim time, so there is no name the device can choose and
+    /// no ambiguity between two vendors' serials.
+    pub async fn authenticate_device(
+        &self,
+        device_id: Uuid,
+        secret: &str,
+    ) -> Result<Authenticated, AppError> {
+        let device = self
+            .repo
+            .device_by_id(device_id)
+            .await?
+            .ok_or_else(|| AppError::forbidden("unknown device"))?;
+
+        // The same check the claim and certificate paths use, and the same message: a wrong
+        // secret must not say whether the device exists.
+        if !crate::identity::verify_password(secret, &device.secret_hash) {
+            return Err(AppError::forbidden("device secret is incorrect"));
+        }
+        if device.state != "claimed" {
+            return Err(AppError::forbidden("this device has not been claimed"));
+        }
+        let Some(home_id) = device.home_id else {
+            return Err(AppError::forbidden("this device is not in a home"));
+        };
+
+        Ok(Authenticated {
+            device_id: device.id,
+            vendor_id: device.vendor_id,
+            home_id,
+        })
+    }
+
+    /// The device's identity, re-read from the database.
+    ///
+    /// Used by the broker's authorize hook: a device that was removed from its home must lose its
+    /// topics at the next publish, not whenever its connection happens to close.
+    pub async fn session_for(&self, device_id: Uuid) -> Result<Authenticated, AppError> {
+        let device = self
+            .repo
+            .device_by_id(device_id)
+            .await?
+            .ok_or_else(|| AppError::forbidden("unknown device"))?;
+        if device.state != "claimed" {
+            return Err(AppError::forbidden("this device has not been claimed"));
+        }
+        let Some(home_id) = device.home_id else {
+            return Err(AppError::forbidden("this device is not in a home"));
+        };
+        Ok(Authenticated {
+            device_id: device.id,
+            vendor_id: device.vendor_id,
             home_id,
         })
     }
@@ -541,6 +607,9 @@ mod tests {
         ) -> Result<Option<DeviceRecord>, AppError> {
             Ok(self.device.lock().unwrap().clone())
         }
+        async fn device_by_id(&self, _id: Uuid) -> Result<Option<DeviceRecord>, AppError> {
+            Ok(self.device.lock().unwrap().clone())
+        }
         async fn take_serial(
             &self,
             _product_id: Uuid,
@@ -554,6 +623,7 @@ mod tests {
             let n = plan.points.len();
             *self.device.lock().unwrap() = Some(DeviceRecord {
                 id,
+                vendor_id: plan.vendor_id,
                 secret_hash: plan.secret_hash.clone(),
                 state: "claimed".into(),
                 home_id: Some(plan.home_id),

@@ -15,6 +15,7 @@ pub mod fleet;
 pub mod history;
 pub mod homes;
 pub mod identity;
+pub mod mqtt_acl;
 pub mod notification;
 pub mod ota;
 pub mod pairing;

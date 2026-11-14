@@ -359,6 +359,31 @@ everywhere. Each certificate carries the device id as its common name, the vendo
 organisational unit, and `clientAuth` as its only extended key usage; it has no hostname SANs,
 because a device certificate opens a connection and should never be trusted to serve one.
 
+### Broker authentication
+
+The broker asks the platform who a client is, instead of keeping a second copy of the device table.
+`vmq_webhooks` POSTs every `auth_on_register` to `POST /v1/internal/mqtt/register` and every
+`auth_on_publish` / `auth_on_subscribe` to `POST /v1/internal/mqtt/authorize`, and does what the
+answer says. Both require the broker's token as `?token=` — a query parameter because the plugin
+cannot send a custom header, and the endpoints are an oracle otherwise.
+
+- A device on the 8884 listener logs in with `username = its device id` and `password = its secret`,
+  the same secret it claimed with. The id is minted by the platform, so there is no name a device
+  can choose and no ambiguity between two vendors' serials.
+- The platform's own clients — the API that publishes commands, the worker that ingests, the
+  simulator — use one service identity, `haven-service`, with `HAVEN_MQTT_SERVICE_TOKEN`. It is the
+  only identity allowed outside a device's own topic prefix.
+- `allow_anonymous` is therefore **off**, and a connection without credentials is refused with
+  `5` (not authorized). Verified: a wrong device secret is refused, anonymous is refused, and the
+  platform's own traffic (34 e2e assertions) is unaffected.
+
+**Known gap:** VerneMQ 2.0.1 does not consult `auth_on_publish` or `auth_on_subscribe` here. A
+publish and a wildcard subscribe are answered immediately whether those endpoints are reachable or
+pointed at a dead port, while `auth_on_register` is consulted. So the *credential* is enforced and
+the per-device topic ACL (`domain::mqtt_acl`, unit-tested) is not: 8884 stays bound to loopback
+until that is resolved. `scripts/mqtt-probe.py` is the reproduction — it speaks MQTT over TLS with
+no third-party packages.
+
 A device connects to the broker on **8883** with that certificate; the listener requires one
 signed by this CA, so a device without it cannot publish at all. `make broker-tls` writes the
 broker's own certificate, and `make up` runs it, so a fresh checkout needs no extra step.

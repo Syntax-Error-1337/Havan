@@ -157,8 +157,8 @@ impl PairingRepo for PgPairing {
         serial: &str,
     ) -> Result<Option<DeviceRecord>, AppError> {
         let mut tx = self.tx().await?;
-        let row = sqlx::query_as::<_, (Uuid, String, String, Option<Uuid>, Option<String>)>(
-            r#"SELECT id, secret_hash, state, home_id, name FROM devices
+        let row = sqlx::query_as::<_, (Uuid, Uuid, String, String, Option<Uuid>, Option<String>)>(
+            r#"SELECT id, vendor_id, secret_hash, state, home_id, name FROM devices
                WHERE product_id = $1 AND serial = $2"#,
         )
         .bind(product_id)
@@ -168,15 +168,39 @@ impl PairingRepo for PgPairing {
         .map_err(db)?;
         tx.commit().await.map_err(db)?;
 
-        Ok(
-            row.map(|(id, secret_hash, state, home_id, name)| DeviceRecord {
+        Ok(row.map(
+            |(id, vendor_id, secret_hash, state, home_id, name)| DeviceRecord {
                 id,
+                vendor_id,
                 secret_hash,
                 state,
                 home_id,
                 name,
-            }),
+            },
+        ))
+    }
+
+    async fn device_by_id(&self, id: Uuid) -> Result<Option<DeviceRecord>, AppError> {
+        let mut tx = self.tx().await?;
+        let row = sqlx::query_as::<_, (Uuid, Uuid, String, String, Option<Uuid>, Option<String>)>(
+            r#"SELECT id, vendor_id, secret_hash, state, home_id, name FROM devices WHERE id = $1"#,
         )
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(row.map(
+            |(id, vendor_id, secret_hash, state, home_id, name)| DeviceRecord {
+                id,
+                vendor_id,
+                secret_hash,
+                state,
+                home_id,
+                name,
+            },
+        ))
     }
 
     async fn store_certificate(
