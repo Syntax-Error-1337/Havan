@@ -84,9 +84,11 @@ has coordinates; a webhook fires `202`, executes as `trigger_kind = webhook` wit
   kept on disk, `POST /provision/certificate` hands one to a device that proves its secret,
   and the serial and expiry are recorded. Verified with `openssl verify`: the issued
   certificate chains to the CA, subject `CN=<device-id>/OU=vendor:<id>`, one year.
-- **Not done:** the C component (needs a board and a toolchain), the broker's mTLS listener
-  configuration, and the certification checklist — the checklists in
-  `docs/03-SDK-CONTRACT.md` stay prose until there is hardware.
+- **C component — done, host-verified:** `sdk/c` builds the same topics and envelopes, 45
+  checks under `make sdk`, and an ESP-IDF `CMakeLists.txt` for the board. A shadow it produced
+  was published and ingested correctly (`dp 1 = true`, `dp 2 = 80`, `fw 1.0.0`, online).
+- **Not done:** the broker's mTLS listener configuration, and the certification checklist —
+  those checklists stay prose until an ESP32 is on a desk.
 
 **Done means:** the reference firmware passes checklist items 1–8 and the portal shows
 the badge. Neither is reachable without an ESP32-S3 on a desk.

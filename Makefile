@@ -89,6 +89,10 @@ api-lan: ## run the API on all interfaces, so a phone on the LAN can reach it
 worker: ## run the worker (foreground)
 	$(CARGO) run -p worker
 
+.PHONY: sdk
+sdk: ## build and test the C component (host compiler, no board needed)
+	@$(MAKE) -s -C sdk/c test
+
 .PHONY: check
 check: testdb ## fmt + clippy + tests
 	$(CARGO) fmt --all --check

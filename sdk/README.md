@@ -67,3 +67,24 @@ application logic should be, because everything else is the SDK's job.
   not a component.
 - **The reference hardware.** The checklists in `docs/03-SDK-CONTRACT.md` are prose until
   there is an ESP32-S3 on a desk.
+
+## The C component
+
+`sdk/c` is the same surface in C, for firmware: topics built not formatted, envelopes for
+state, shadow, ack, refusal and OTA progress, and the claim body. No transport — an ESP32 uses
+`esp_mqtt_client` and `esp_http_client`, a gateway uses libmosquitto and curl, and baking one
+in would make this a framework rather than a reference.
+
+```bash
+make sdk           # builds and runs 45 host checks with clang
+```
+
+It is transport-free C11 with no platform headers, and `sdk/c/CMakeLists.txt` registers it as
+an ESP-IDF component, so dropping the directory into `components/` is the whole integration.
+
+**Verified against the real server, not just against itself:** the shadow `emit.c` prints was
+published to the broker and the API recorded `dp 1 = true`, `dp 2 = 80`, `fw_version = 1.0.0`,
+`online = true` — so the C bytes and the Rust ingest agree.
+
+**Not verified:** a flash on hardware. The certification checklist in
+`docs/03-SDK-CONTRACT.md` stays prose until an ESP32 is on a desk.
