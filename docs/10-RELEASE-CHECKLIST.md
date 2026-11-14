@@ -68,29 +68,19 @@ Order matters — each step assumes the previous one is green:
 Reality check: no firmware agent exists in this repo. `/tmp/ota_success.py` and the
 simulator *report* OTA progress; nothing actually flashes.
 
-## 3. Multi-replica — the case `make chaos` cannot see
+## 3. Multi-replica — done for workers, open for API instances
 
-Blocked on: two workers and two API instances on one machine (possible here, not yet done).
+`make multi-replica` starts two workers and asserts what one worker cannot show:
 
-```bash
-# two workers, one shared subscription (each names its MQTT client by pid, so they do not
-# collide — there is no instance flag to set)
-./target/debug/haven-worker &
-./target/debug/haven-worker &
-# two APIs behind any proxy, then:
-make chaos
-```
-
-What to verify, in this order:
-
-1. **Exclusive delivery** — each message ingested once, not once per worker. The shared
-   subscription should guarantee it; the load test's row count is the proof.
-2. **Redelivery is single-send** — `mark_redelivered` is conditional, so two workers racing
-   over one refused command must produce one publish and `attempts = 2`, not four.
-3. **Health disagrees correctly** — kill Postgres and both replicas must report `db: false`;
-   kill the broker and a replica that never connected must not claim `mqtt: true`.
-4. **Metrics do not double-count** — `/metrics` is per-process, so the fleet's numbers are
-   the sum; a scrape config that assumes one instance will under-report by half.
+1. **Exclusive delivery** — 480 messages land as exactly 960 rows. Verified.
+2. **Redelivery is single-send** — one claim, one publish, `attempts = 2`. Verified, and it
+   found a race: redelivery used to publish *then* mark, so both workers could publish one
+   press. It now claims the row first and releases it if the publish fails.
+3. **Health per replica** — kill Postgres and every worker must notice; kill the broker and a
+   process that never connected must not claim `mqtt: true`. Not yet asserted for two *API*
+   instances, which is the only part of this section still open.
+4. **Metrics do not double-count** — `/metrics` is per-process, so a fleet's numbers are the
+   sum; a scrape config that assumes one instance will under-report by half.
 
 ## What is deliberately not on this list
 

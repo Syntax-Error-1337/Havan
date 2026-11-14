@@ -547,6 +547,41 @@ impl CommandRepo for PgDevices {
             .collect())
     }
 
+    async fn claim_for_redelivery(&self, command_id: Uuid) -> Result<bool, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("redelivery")).await?;
+        // One statement, conditional on the state: Postgres decides the winner, so two
+        // workers cannot both get `true` no matter how they interleave.
+        let claimed = sqlx::query(
+            r#"UPDATE commands
+                  SET status = 'dispatched', attempts = attempts + 1, dispatched_at = now()
+                WHERE id = $1 AND status = 'unreachable'"#,
+        )
+        .bind(command_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+        tx.commit().await.map_err(db)?;
+        Ok(claimed == 1)
+    }
+
+    async fn release_redelivery(&self, command_id: Uuid, reason: &str) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("redelivery")).await?;
+        // Back to `unreachable` so the next sweep picks it up — but the attempt is kept, so
+        // a command that repeatedly fails to publish is visible rather than invisible.
+        sqlx::query(
+            r#"UPDATE commands SET status = 'unreachable', error_code = $2
+                WHERE id = $1 AND status = 'dispatched'"#,
+        )
+        .bind(command_id)
+        .bind(reason.chars().take(120).collect::<String>())
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
     async fn mark_redelivered(&self, command_id: Uuid) -> Result<bool, AppError> {
         let mut tx = self.pg.scoped(&TenantCtx::system("redelivery")).await?;
         let updated = sqlx::query(

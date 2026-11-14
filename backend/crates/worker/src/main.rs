@@ -103,13 +103,28 @@ async fn main() -> anyhow::Result<()> {
                     Ok(due) if due.is_empty() => {}
                     Ok(due) => {
                         for r in due {
+                            // Claim before publishing. With replicas, two workers sweeping at
+                            // once is the normal case — and publishing first means the device
+                            // acts twice on one press.
+                            match commands.claim_for_redelivery(r.command_id).await {
+                                Ok(true) => {}
+                                Ok(false) => continue,
+                                Err(e) => {
+                                    warn!(error = ?e, "could not claim a refused command");
+                                    continue;
+                                }
+                            }
+
                             let Some(value) = r
                                 .value
                                 .as_ref()
                                 .and_then(protocol::envelope::DpValue::from_json)
                             else {
                                 // A command whose payload no longer parses cannot be
-                                // replayed; leave it for the timeout sweep to settle.
+                                // replayed; put it back for the timeout sweep to settle.
+                                let _ = commands
+                                    .release_redelivery(r.command_id, "payload_unreadable")
+                                    .await;
                                 continue;
                             };
                             let msg = protocol::envelope::CommandMsg {
@@ -133,14 +148,16 @@ async fn main() -> anyhow::Result<()> {
                                 .publish(&topic, QoS::AtLeastOnce, false, payload)
                                 .await
                             {
-                                Ok(()) => match commands.mark_redelivered(r.command_id).await {
-                                    Ok(true) => info!(command = %r.command_id, "redelivered"),
-                                    Ok(false) => {
-                                        info!(command = %r.command_id, "already redelivered")
+                                Ok(()) => info!(command = %r.command_id, "redelivered"),
+                                Err(e) => {
+                                    warn!(error = ?e, command = %r.command_id, "redelivery publish failed; will retry");
+                                    if let Err(e) = commands
+                                        .release_redelivery(r.command_id, "publish_failed")
+                                        .await
+                                    {
+                                        warn!(error = ?e, "could not release a claimed command");
                                     }
-                                    Err(e) => warn!(error = ?e, "could not mark redelivered"),
-                                },
-                                Err(e) => warn!(error = ?e, "redelivery publish failed"),
+                                }
                             }
                         }
                     }

@@ -191,8 +191,25 @@ pub trait CommandRepo {
         limit: i64,
     ) -> impl Future<Output = Result<Vec<Redelivery>, AppError>> + Send;
 
-    /// Mark a redelivered command dispatched. Conditional on the row still being
-    /// `unreachable`, so two workers racing over the same row send it once.
+    /// Claim a refused command for redelivery, atomically.
+    ///
+    /// This is the *first* step, not the last: marking after publishing leaves a window in
+    /// which two workers both publish and one of them discovers it lost the race — the device
+    /// acts twice. Claiming first means the loser never publishes at all, and a claim that
+    /// fails to publish is put back for the next sweep.
+    fn claim_for_redelivery(
+        &self,
+        command_id: Uuid,
+    ) -> impl Future<Output = Result<bool, AppError>> + Send;
+
+    /// Put a claimed command back after a failed publish, so the next sweep tries again.
+    fn release_redelivery(
+        &self,
+        command_id: Uuid,
+        reason: &str,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Mark a redelivered command settled once it is on the wire.
     fn mark_redelivered(
         &self,
         command_id: Uuid,

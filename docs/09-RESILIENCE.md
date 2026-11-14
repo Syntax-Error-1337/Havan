@@ -82,7 +82,13 @@ broker started → within one sweep the row is `dispatched attempts=2` and the w
 - **Partial failure.** This kills whole containers. A broker that accepts connections and
   drops messages, or a database that answers slowly rather than not at all, is a different
   drill.
-- **Multiple replicas.** The drill runs one API process. Whether two replicas behind a load
-  balancer disagree about health is untested here.
+- **Multiple API replicas.** `/healthz` per process is exercised; two API instances behind a
+  load balancer disagreeing about health is not.
+- ~~Multiple workers~~ — **now covered** by `make multi-replica`: two workers share the
+  subscription, 480 messages land as exactly 960 rows (no duplicates, no loss), and a refused
+  command is claimed by one worker and published once (`attempts = 2`, one `redelivered` log
+  line). That drill found a real race — redelivery used to publish *then* mark, so two workers
+  could both publish one press; it now claims the row first and releases it if the publish
+  fails.
 - **Real hardware.** No device is involved, so "the command reached the device" is out of
   scope by construction.
