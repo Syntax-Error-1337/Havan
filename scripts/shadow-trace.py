@@ -91,7 +91,10 @@ def main():
     read_packet(s)
 
     topic = f"haven/v1/{V}/{H}/{device}/shadow"
-    sub = struct.pack("!H", 1) + utf8(topic) + bytes([1])
+    # QoS 0, deliberately: at QoS 1 this client would have to send PUBACK, and without it the
+    # broker redelivers the same retained message forever — which reads exactly like a device
+    # flapping between online and offline. It is not; it is an unacknowledged delivery.
+    sub = struct.pack("!H", 1) + utf8(topic) + bytes([0])
     s.sendall(bytes([0x82]) + rl(len(sub)) + sub)
     read_packet(s)
     print(f"[{time.strftime('%H:%M:%S')}] subscribed to {topic}", flush=True)
@@ -114,9 +117,13 @@ def main():
             break
         if head[0] & 0xF0 != 0x30:
             continue
-        # topic length, then topic, then the message
+        # topic length, then topic, then (packet id, only at QoS > 0), then the message
         tlen = struct.unpack("!H", payload[:2])[0]
-        msg = payload[2 + tlen:].decode("utf-8", "replace")
+        rest = payload[2 + tlen:]
+        qos = (head[0] >> 1) & 0x03
+        if qos > 0:
+            rest = rest[2:]
+        msg = rest.decode("utf-8", "replace")
         print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
     s.close()
 

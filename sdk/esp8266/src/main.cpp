@@ -420,6 +420,11 @@ static void on_message(char *topic, byte *payload, unsigned int length) {
 }
 
 static bool mqtt_connect() {
+    // A BearSSL client that was left mid-handshake keeps its state, and the next connect on the
+    // same object returns without doing anything — a device that reconnects once and then hangs
+    // forever. Stopping it first is what makes a retry a retry.
+    tls.stop();
+
     // A plain TCP probe first: it separates "the network cannot reach the broker" from "the TLS
     // handshake was rejected", which look identical from PubSubClient's -2.
     WiFiClient probe;
@@ -630,21 +635,18 @@ void loop() {
     static unsigned long last_heartbeat = 0;
     static unsigned long last_attempt = 0;
 
-    if (!tls_ready || !mqtt.connected()) {
+    // `mqtt.state()`, not `mqtt.connected()`. PubSubClient's `connected()` asks the transport
+    // whether it is connected, and a BearSSL client can answer "no" while an MQTT session is very
+    // much alive — so the firmware reconnected into its own live session, the broker retired the
+    // old one and published the will, and it did that every twelve seconds. The state machine only
+    // moves when the protocol says so: a failed `loop()`, a CONNACK, or a CONNECT we sent.
+    if (!tls_ready || mqtt.state() != MQTT_CONNECTED) {
         if (millis() - last_attempt > 5000) {
             last_attempt = millis();
             advance();
         }
         // Still pump MQTT when it is connected-but-flagged; harmless when it is not.
         mqtt.loop();
-        return;
-    }
-
-    if (!mqtt.connected()) {
-        if (millis() - last_attempt > 5000) {
-            last_attempt = millis();
-            mqtt_connect();
-        }
         return;
     }
 
