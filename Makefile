@@ -39,7 +39,7 @@ help: ## show this help
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: up
-up: ## start postgres, valkey, vernemq, seaweedfs
+up: broker-tls ## start postgres, valkey, vernemq, seaweedfs
 	docker compose -f deploy/docker-compose.yml up -d
 	@echo "waiting for postgres..." && \
 	  until docker exec haven-db pg_isready -U haven -d haven >/dev/null 2>&1; do sleep 1; done
@@ -88,6 +88,14 @@ api-lan: ## run the API on all interfaces, so a phone on the LAN can reach it
 .PHONY: api-lan
 worker: ## run the worker (foreground)
 	$(CARGO) run -p worker
+
+.PHONY: broker-tls
+broker-tls: ## the broker's TLS certificate, signed by the device CA (idempotent)
+	@test -f deploy/certs/server.crt || { \
+	  echo "issuing the broker certificate from the device CA"; \
+	  cd $(BACKEND) && cargo run -q -p haven-cert --bin haven-cert-broker -- \
+	    ../.haven/ca ../deploy/certs; \
+	}
 
 .PHONY: sdk
 sdk: ## build and test the C component (host compiler, no board needed)

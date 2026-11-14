@@ -87,8 +87,11 @@ has coordinates; a webhook fires `202`, executes as `trigger_kind = webhook` wit
 - **C component — done, host-verified:** `sdk/c` builds the same topics and envelopes, 45
   checks under `make sdk`, and an ESP-IDF `CMakeLists.txt` for the board. A shadow it produced
   was published and ingested correctly (`dp 1 = true`, `dp 2 = 80`, `fw 1.0.0`, online).
-- **Not done:** the broker's mTLS listener configuration, and the certification checklist —
-  those checklists stay prose until an ESP32 is on a desk.
+- **Broker mTLS — done:** `make broker-tls` issues the broker's certificate from the device CA
+  (idempotent, and `make up` runs it), the TLS listener on 8883 requires a client certificate,
+  and `openssl s_client` proves both halves: a device certificate signed by our CA completes
+  the handshake, one without a certificate gets `alert 40`.
+- **Not done:** the certification checklist — it stays prose until an ESP32 is on a desk.
 
 **Done means:** the reference firmware passes checklist items 1–8 and the portal shows
 the badge. Neither is reachable without an ESP32-S3 on a desk.

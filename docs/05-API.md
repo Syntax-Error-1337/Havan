@@ -340,6 +340,10 @@ everywhere. Each certificate carries the device id as its common name, the vendo
 organisational unit, and `clientAuth` as its only extended key usage; it has no hostname SANs,
 because a device certificate opens a connection and should never be trusted to serve one.
 
+A device connects to the broker on **8883** with that certificate; the listener requires one
+signed by this CA, so a device without it cannot publish at all. `make broker-tls` writes the
+broker's own certificate, and `make up` runs it, so a fresh checkout needs no extra step.
+
 The private key is generated server-side and returned once. A device that can produce a CSR
 should keep its own key; the API stores neither, only the serial and `cert_not_after`.
 

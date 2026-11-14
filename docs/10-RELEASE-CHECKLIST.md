@@ -57,11 +57,10 @@ Order matters — each step assumes the previous one is green:
 2. **Pass checklist items 1–8** in `docs/03-SDK-CONTRACT.md` — claim with a ticket,
    publish a shadow, receive a command, ack it, refuse a bad value with a typed reason,
    report OTA progress, survive a broker restart, keep the shadow current across a reboot.
-3. **`haven-cert` (not built yet)**: enrolment that issues a client certificate per device,
-   the broker requiring mTLS (port 8883 is already published and unused), and the API
-   refusing a claim from a device without one. This is also what unblocks
-   **certificate-expiry alerts**: a daily sweep over `not_after` with a notification at 30,
-   14 and 7 days, and a hard alert at 0.
+3. ~~`haven-cert` enrolment, broker mTLS, expiry alerts~~ — **done in software**: the CA and
+   `POST /provision/certificate` issue a device certificate, the broker's 8883 listener requires
+   one (`openssl s_client` verifies both the accept and the reject), and a six-hourly sweep
+   warns at 30/14/7/0 days. What remains is a device actually holding the certificate.
 4. **The portal badge**: a product is certified when its firmware passes the checklist;
    until then the store shows it as uncertified.
 
