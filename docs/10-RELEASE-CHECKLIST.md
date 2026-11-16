@@ -17,7 +17,7 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | Degradation | `make chaos` | 18/18: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered |
 | App | `cd app && npx tsc --noEmit && npm test` | 70 tests, 15 suites |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 59 tests |
-| Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 31 tests per project against a real API: sign-in, products, fleet, money, team, integrations, security, 420 px layout |
+| Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 38 tests per project against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
 | Conformance | `make conformance VENDOR=<uuid> PRODUCT=<uuid>` | 7/7: a real device claims, connects, reports, is commanded, acks, reconnects, and an unknown serial is handled the way the product declares |
 
 Two of these are worth running twice: `make chaos` because it stops containers, and

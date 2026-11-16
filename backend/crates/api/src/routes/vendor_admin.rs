@@ -17,6 +17,33 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/ops/vendors", get(list).post(create))
         .route("/ops/vendors/{id}", get(one).patch(patch))
+        .route("/ops/certification/queue", get(queue))
+        .route("/ops/overview", get(overview))
+}
+
+/// `GET /v1/ops/certification/queue` — products waiting for our sign-off, oldest first.
+///
+/// Cross-vendor, which is exactly why it lives behind the ops door: no vendor may learn that another
+/// vendor's product exists.
+async fn queue(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    peer: Peer,
+) -> ApiResult<Json<Vec<infra::repos::cert_queue::QueueItem>>> {
+    super::ops::require_ops(&state, &headers, &peer)?;
+
+    Ok(Json(state.cert_queue.pending(100).await.map_err(ApiError)?))
+}
+
+/// `GET /v1/ops/overview` — the four numbers the console opens with.
+async fn overview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    peer: Peer,
+) -> ApiResult<Json<infra::repos::cert_queue::Overview>> {
+    super::ops::require_ops(&state, &headers, &peer)?;
+
+    Ok(Json(state.cert_queue.overview().await.map_err(ApiError)?))
 }
 
 #[derive(Deserialize)]

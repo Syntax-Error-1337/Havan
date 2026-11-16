@@ -1,4 +1,5 @@
-import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AdminShell } from './AdminShell';
 import { useSession } from './session';
 import { LoginPage } from '../pages/login/LoginPage';
 import { ProductsPage } from '../pages/products/ProductsPage';
@@ -20,6 +21,13 @@ import { SecurityPage } from '../pages/security/SecurityPage';
  */
 export function AppShell() {
   const { token } = useSession();
+  const location = useLocation();
+
+  // The console has its own token and its own shell, and is routed before the vendor gate: an
+  // operator must not be asked for a vendor password to reach a screen that manages vendors.
+  if (location.pathname.startsWith('/admin')) {
+    return <AdminShell />;
+  }
 
   if (!token) {
     return (
