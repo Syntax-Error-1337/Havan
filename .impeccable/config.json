@@ -1,0 +1,19 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "backend/crates/worker/src/push.rs"
+    ],
+    "ignoreValues": [
+      {
+        "rule": "secrets-out-of-repo",
+        "value": "*",
+        "files": [
+          "backend/crates/worker/src/push.rs"
+        ],
+        "createdAt": "2026-11-16T05:34:29.117Z",
+        "reason": "APNs test fixture: a throwaway P-256 key that signs nothing real; the test asserts the request Apple would receive."
+      }
+    ]
+  }
+}

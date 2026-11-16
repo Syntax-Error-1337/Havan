@@ -1,0 +1,60 @@
+# Automated dependency scanning.
+#
+# `make audit` answers "are we vulnerable right now", but only when someone runs it. This asks the
+# ecosystems weekly instead, which is the difference between a policy and a habit.
+#
+# Grouped on purpose: a Cargo PR per crate turns into a stack of pull requests nobody reads, and
+# unread update PRs are worse than none because they look like coverage.
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      rust-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: npm
+    directory: /portal
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      portal-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      app-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    # Expo pins its whole toolchain to the SDK version; an update PR per package there is noise
+    # that cannot be merged independently of the SDK.
+    ignore:
+      - dependency-name: "expo*"
+      - dependency-name: "react-native*"
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore(ci)"
