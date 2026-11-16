@@ -78,8 +78,9 @@ impl PgConformance {
         tx: &mut sqlx::PgConnection,
         vendor_id: Uuid,
     ) -> Result<(Uuid, Uuid), AppError> {
-        let short = &vendor_id.to_string()[..8];
-        let email = format!("conformance+{short}@haven.invalid");
+        // The whole uuid, not a slice of it: a v7 uuid's leading hex is the timestamp, so two
+        // vendors created in the same millisecond would share a lab — and their devices.
+        let email = format!("conformance+{vendor_id}@haven.invalid");
 
         let user_id: Uuid = sqlx::query_scalar(
             "INSERT INTO users (id, email, display_name, locale)
@@ -96,7 +97,7 @@ impl PgConformance {
         let home_id: Uuid = sqlx::query_scalar(
             "INSERT INTO homes (id, owner_id, name)
              SELECT $1, $2, 'Conformance lab'
-             WHERE NOT EXISTS (SELECT 1 FROM homes WHERE owner_id = $2 AND name = 'Conformance lab')
+             WHERE NOT EXISTS (SELECT 1 FROM homes WHERE owner_id = $2)
              RETURNING id",
         )
         .bind(kernel::new_id())
@@ -104,16 +105,14 @@ impl PgConformance {
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| AppError::Database(Box::new(e)))?
-        .unwrap_or(Uuid::nil());
+        .unwrap_or_else(Uuid::nil);
 
         let home_id = if home_id.is_nil() {
-            sqlx::query_scalar::<_, Uuid>(
-                "SELECT id FROM homes WHERE owner_id = $1 AND name = 'Conformance lab' LIMIT 1",
-            )
-            .bind(user_id)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(|e| AppError::Database(Box::new(e)))?
+            sqlx::query_scalar::<_, Uuid>("SELECT id FROM homes WHERE owner_id = $1 LIMIT 1")
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| AppError::Database(Box::new(e)))?
         } else {
             sqlx::query(
                 "INSERT INTO home_members (home_id, user_id, role) VALUES ($1, $2, 'owner')
@@ -235,9 +234,11 @@ impl PgConformance {
 
     /// The account that owns a conformance device, or a refusal.
     ///
-    /// The check is on the *home's name*: this door exists to drive the lab, and an operator token
+    /// The check is on the *home's owner*: this door exists to drive the lab, and an operator token
     /// that could command a customer's bulb would be a way to make somebody's light blink from a
-    /// test script. If the home is not the lab, the answer is no.
+    /// test script. A conformance home is one owned by a `conformance+…@haven.invalid` account —
+    /// deliberately not a home *named* "Conformance lab", because a name is a string the account
+    /// can change and a customer's device must not become commandable by renaming a room.
     pub async fn lab_owner(&self, vendor_id: Uuid, device_id: Uuid) -> Result<Uuid, AppError> {
         let mut tx = self
             .pg
@@ -251,8 +252,9 @@ impl PgConformance {
             .await?;
 
         let row: Option<(String, Uuid)> = sqlx::query_as(
-            "SELECT h.name, h.owner_id FROM devices d
+            "SELECT u.email, h.owner_id FROM devices d
              JOIN homes h ON h.id = d.home_id
+             JOIN users u ON u.id = h.owner_id
              WHERE d.id = $1 AND d.vendor_id = $2",
         )
         .bind(device_id)
@@ -266,7 +268,11 @@ impl PgConformance {
             .map_err(|e| AppError::Database(Box::new(e)))?;
 
         match row {
-            Some((name, owner)) if name == "Conformance lab" => Ok(owner),
+            Some((email, owner))
+                if email.starts_with("conformance+") && email.ends_with("@haven.invalid") =>
+            {
+                Ok(owner)
+            }
             Some(_) => Err(AppError::code(
                 ErrorCode::Forbidden,
                 "this device is not in the conformance lab",
