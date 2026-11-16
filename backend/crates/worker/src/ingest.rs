@@ -240,16 +240,10 @@ impl Ingest {
             }
         }
 
-        let presence = json!({
-            "t": if outcome.online { "device.online" } else { "device.offline" },
-            "home_id": home_id,
-            "device_id": outcome.device_id,
-            "ts": kernel::now_s(),
-        });
-        let _ = self
-            .cache
-            .publish_event(&channel, &presence.to_string())
-            .await;
+        // One shape for presence, shared with the sweep: a report arriving and a report stopping are
+        // the same fact to the app, and they must not be able to describe it differently.
+        let presence = crate::presence::event(outcome.online, home_id, outcome.device_id);
+        let _ = self.cache.publish_event(&channel, &presence).await;
     }
 }
 

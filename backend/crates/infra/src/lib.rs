@@ -14,6 +14,7 @@ pub use pg::Pg;
 pub use redis::Cache;
 pub use repos::api_key::PgApiKeys;
 pub use repos::cert_queue::PgCertificationQueue;
+pub use repos::devices::SilentDevice;
 pub use repos::fleet::PgFleet;
 pub use repos::history::PgHistory;
 pub use repos::licence::PgLicence;

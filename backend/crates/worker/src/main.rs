@@ -227,13 +227,20 @@ async fn main() -> anyhow::Result<()> {
     // not flap a device offline, short enough that the number means something.
     {
         let devices = infra::PgDevices::new(pg.clone());
+        let cache = cache.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(Duration::from_secs(60));
             loop {
                 tick.tick().await;
                 match devices.age_out_stale(90).await {
-                    Ok(0) => {}
-                    Ok(n) => info!(devices = n, "marked silent devices offline"),
+                    Ok(silent) if silent.is_empty() => {}
+                    Ok(silent) => {
+                        info!(devices = silent.len(), "marked silent devices offline");
+                        // The row moved; now the sockets hear it. Without this an app holding an open
+                        // stream keeps a dead bulb painted green until somebody pulls to refresh —
+                        // the same lie the sweep was written to stop, told to a different reader.
+                        worker::presence::announce_silent(&cache, &silent).await;
+                    }
                     Err(e) => warn!(error = ?e, "presence sweep failed"),
                 }
             }

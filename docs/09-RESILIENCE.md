@@ -142,6 +142,26 @@ Not covered: a device on a metered link that reports hourly would be marked offl
 Ninety seconds matches this fleet's keepalive; a different fleet needs a different window, which is
 why the sweep takes it as an argument.
 
+### The sweep has to tell somebody
+
+Fixing the row was half the job. `online` is what the database believes, but the app believes
+whatever last arrived on its socket — so a device aged out by the sweep stayed painted green in every
+open app until somebody pulled to refresh. The sweep now returns **who** it aged out, not a count, and
+publishes one `device.offline` per device on `home:{home_id}`; ingest builds the same frame through
+the same function, so the two paths cannot describe presence differently.
+
+A count could not be published, which is why the return type changed rather than gaining a second
+"which ones" query — the sweep already knows, and asking again is a second chance to disagree.
+
+Verified live, not asserted: a subscriber on the real channel received
+
+```json
+{"device_id":"6d44da90-…","home_id":"01a1e58e-…","t":"device.offline","ts":1794853360}
+```
+
+from the running worker's own sweep, and `worker/tests/presence.rs` proves the row, the return value
+and the announcement — subscribing *before* the sweep, because Redis has no replay.
+
 ## Backup and restore
 
 A backup nobody has restored is a hypothesis. `scripts/backup.sh` dumps, verifies the dump with

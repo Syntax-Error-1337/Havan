@@ -23,6 +23,13 @@ pub struct PgDevices {
     pg: Pg,
 }
 
+/// A device the sweep just aged out, with the home that should hear about it.
+#[derive(Debug, Clone, Copy)]
+pub struct SilentDevice {
+    pub device_id: Uuid,
+    pub home_id: Uuid,
+}
+
 impl PgDevices {
     pub fn new(pg: Pg) -> Self {
         Self { pg }
@@ -36,24 +43,33 @@ impl PgDevices {
     /// old, which is precisely the lie this method exists to stop telling.
     ///
     /// Cross-tenant by nature (a sweep is not scoped to a home), so it runs as the system.
-    pub async fn age_out_stale(&self, silence_seconds: i64) -> Result<i64, AppError> {
+    ///
+    /// Returns **who** was aged out, not just how many: an app holding an open socket learns that a
+    /// device went quiet because somebody publishes an event, and a count cannot be published. A
+    /// device with no home is marked offline and not returned — there is nobody to tell.
+    pub async fn age_out_stale(&self, silence_seconds: i64) -> Result<Vec<SilentDevice>, AppError> {
         let mut tx = self
             .pg
             .scoped(&kernel::TenantCtx::system("presence-sweep"))
             .await?;
-        let n = sqlx::query(
+        let rows: Vec<(Uuid, Option<Uuid>)> = sqlx::query_as(
             "UPDATE devices SET online = false
               WHERE online
-                AND (last_seen_at IS NULL OR last_seen_at < now() - make_interval(secs => $1::int))",
+                AND (last_seen_at IS NULL OR last_seen_at < now() - make_interval(secs => $1::int))
+          RETURNING id, home_id",
         )
         .bind(silence_seconds as i32)
-        .execute(&mut *tx)
+        .fetch_all(&mut *tx)
         .await
-        .map_err(db)?
-        .rows_affected();
+        .map_err(db)?;
         tx.commit().await.map_err(db)?;
 
-        Ok(n as i64)
+        Ok(rows
+            .into_iter()
+            .filter_map(|(device_id, home_id)| {
+                home_id.map(|home_id| SilentDevice { device_id, home_id })
+            })
+            .collect())
     }
 }
 

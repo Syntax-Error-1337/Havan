@@ -5,6 +5,7 @@
 //! 99 devices "online" whose newest report was four days old — and this is the sweep that fixes it.
 
 use domain::devices::DeviceRepo;
+use futures_util::StreamExt;
 use kernel::TenantCtx;
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::{Mutex, MutexGuard, OnceCell};
@@ -30,6 +31,8 @@ struct Seeded {
     /// The database under test, used for assertions.
     test: sqlx::PgPool,
     devices: infra::PgDevices,
+    /// Where announcements are published; `None` when no broker is configured.
+    cache: Option<infra::Cache>,
     vendor_id: Uuid,
     product_id: Uuid,
     home_id: Uuid,
@@ -81,9 +84,15 @@ async fn boot() -> Option<Seeded> {
     .await
     .ok()?;
 
+    let cache = match std::env::var("TEST_REDIS_URL") {
+        Ok(url) => infra::Cache::connect(&url).await.ok(),
+        Err(_) => None,
+    };
+
     Some(Seeded {
         test,
         devices: infra::PgDevices::new(infra_pg),
+        cache,
         vendor_id,
         product_id,
         home_id,
@@ -135,7 +144,7 @@ async fn a_silent_device_is_marked_offline_and_a_talking_one_is_left_alone() {
     let silent = f.device("PRES-2", 10).await;
 
     let swept = f.devices.age_out_stale(90).await.expect("sweep");
-    assert!(swept >= 1, "the sweep changed nothing");
+    assert!(!swept.is_empty(), "the sweep changed nothing");
 
     assert!(
         f.online(talking).await,
@@ -174,6 +183,66 @@ async fn the_sweep_respects_the_window_it_is_given() {
         !f.online(quiet).await,
         "two minutes of silence is outside a thirty-second window"
     );
+}
+
+/// The sweep's job does not end at the row: an app with an open stream only learns about silence
+/// because something is published. Before this test existed, the sweep moved `online` and told
+/// nobody, so a dead device stayed green in every open app until a refresh.
+#[tokio::test]
+async fn a_swept_device_is_announced_on_its_home_channel() {
+    let _only = one_sweep_at_a_time().await;
+    let Some(f) = boot().await else {
+        eprintln!("skipping: no TEST_DATABASE_URL");
+        return;
+    };
+    let Some(cache) = f.cache.clone() else {
+        eprintln!("skipping: no TEST_REDIS_URL");
+        return;
+    };
+
+    let silent = f.device("PRES-5", 10).await;
+
+    // Subscribe before the sweep: Redis has no replay, and a test that subscribes afterwards
+    // proves only that the publish returned Ok.
+    let url = std::env::var("TEST_REDIS_URL").expect("checked above");
+    let client = redis::Client::open(url).expect("redis url");
+    let mut pubsub = client.get_async_pubsub().await.expect("pubsub");
+    let channel = format!("home:{}", f.home_id);
+    pubsub.subscribe(&channel).await.expect("subscribe");
+    let mut stream = pubsub.on_message();
+
+    let swept = f.devices.age_out_stale(90).await.expect("sweep");
+    let mine: Vec<_> = swept.iter().filter(|d| d.device_id == silent).collect();
+    assert_eq!(
+        mine.len(),
+        1,
+        "the sweep should report the device it aged out"
+    );
+    assert_eq!(mine[0].home_id, f.home_id, "and the home that owns it");
+
+    let sent = worker::presence::announce_silent(&cache, &swept).await;
+    assert_eq!(sent, swept.len(), "every swept device should be announced");
+
+    let dead = mine[0].device_id;
+    let mut announced = None;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        let Ok(Some(message)) =
+            tokio::time::timeout(std::time::Duration::from_secs(2), stream.next()).await
+        else {
+            break;
+        };
+        let payload: serde_json::Value =
+            serde_json::from_str(&message.get_payload::<String>().expect("utf8")).expect("json");
+        if payload["device_id"] == dead.to_string() {
+            announced = Some(payload);
+            break;
+        }
+    }
+
+    let payload = announced.expect("an announcement for the silent device within 5s");
+    assert_eq!(payload["t"], "device.offline");
+    assert_eq!(payload["home_id"], f.home_id.to_string());
 }
 
 /// The system context is what makes a cross-tenant sweep possible at all.
