@@ -157,3 +157,10 @@ streaming (WebRTC), offline local hub, on-prem single-tenant deploy.
 | Vendor thing-model mistakes | broken UI for real customers | six validation rules + reference SKUs + cert gate |
 | Scope creep into a general app builder | never ships | capability catalog is closed; new capability = platform release |
 | Two clients diverge | double maintenance | shared OpenAPI client, shared design tokens, same FSD lint |
+
+## After v1: what the business needs
+
+The phases above describe the product. What a *paying vendor* needs next — metering and billing,
+per-vendor white-label delivery, backups that are known to restore, data export/delete, team
+management, outbound events — is planned separately in `docs/11-COMMERCIAL-READINESS.md`, with the
+evidence for each gap and the order to build them in.
