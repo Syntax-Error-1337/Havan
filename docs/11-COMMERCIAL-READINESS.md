@@ -7,6 +7,11 @@
 >
 > Every "missing" claim below was checked by search at `caa4fd8`; each P0/P1 item is meant to be
 > expanded into a task-level plan before it is built.
+>
+> **Status:** items 1, 2 and 5 have landed (`0020`/`0021`, `domain::licence`, `PgLicence`, the
+> vendor and ops routes, `scripts/backup.sh`, `scripts/restore-drill.sh`). The vendor screen in
+> the portal, the certification gate (3), the vendor-response guard test (4), export/delete (6)
+> and everything from P1 remain open.
 
 ## The two relationships, and who is not the customer
 
