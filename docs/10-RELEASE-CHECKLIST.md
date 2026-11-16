@@ -13,7 +13,7 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | Customer journey | `make e2e` | register → home → ticket → forged ticket refused → claim → replay refused → command, over HTTP |
 | Licences | `make licences` | 342 crates, 1 068 node packages, none outside the allowlist (ADR-002) |
 | Read performance | `make bench` | timings against `docs/08-PERFORMANCE.md` |
-| Ingest | `make load RATE=600 SECONDS=20` | ~600 msg/s with **no** loss; above that loss is expected and documented |
+| Ingest | `make load RATE=600 SECONDS=20` | zero loss at whatever the host's generator reaches (~330/s single, 522/s with two); the loss column is the assertion, not the rate |
 | Degradation | `make chaos` | 18/18: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered |
 | App | `cd app && npx tsc --noEmit && npm test` | 70 tests, 15 suites |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 59 tests |

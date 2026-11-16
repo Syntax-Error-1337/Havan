@@ -125,3 +125,32 @@ batching removed most of what it would have saved.
 Honest limits of the number itself: one connection publishes for every device (kinder to the
 broker than a real field), everything is local, and the worker shares the machine with
 Postgres, VerneMQ and the generator.
+
+### Re-measured, and a harness bug worth more than the number
+
+Re-running `make load` two weeks later reported **8 % loss at 52/s** — a rate far below any
+capacity limit, which is impossible as shedding and therefore a bug in the measurement. It was:
+the fixture picked the first fifty devices with a home, including some with **no capability rows**,
+whose two points are dropped as unknown. Each of those messages then looked like two lost rows.
+Four such devices out of fifty is exactly the 8 % that appeared at 60/s, 300/s and 600/s alike.
+
+`scripts/load.sh` now selects only devices that have both datapoints the generator sends, and says
+so if there are none. With that fixed:
+
+| scenario | published | achieved | rows | expected | result |
+|---|---|---|---|---|---|
+| one generator, 60/s asked | 900 | 50/s | 1 800 | 1 800 | no loss |
+| one generator, 600/s asked | 7 553 | 328/s | 15 106 | 15 106 | no loss |
+| **two generators, 300/s each** | 12 000 | **522/s** | **24 000** | 24 000 | **no loss** |
+
+The single-process ceiling is the **generator**, not the platform: at 328/s the worker kept up with
+every message. With two publishers the aggregate reached 522/s with zero loss on a host under swap
+pressure (3.4 of 4 GB) sharing CPU with Postgres, VerneMQ and TimescaleDB from another project.
+
+Two conclusions, stated plainly:
+
+- the shortfall between 522/s and the 600–700/s recorded above is this machine's state today, not a
+  regression — the loss column is what says so, and it is zero;
+- past the generator's ceiling, though, `make load` cannot answer "how much can the platform take"
+  without more publishers. Until then the number to quote is **"zero loss at 522/s with two
+  generators"**, and the 600–700/s figure stays as the record of a quieter host.

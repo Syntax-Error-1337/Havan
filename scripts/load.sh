@@ -25,11 +25,22 @@ note() { printf '  %s\n' "$*"; }
 
 # Existing devices from the dev fleet: a load test does not need a fresh home, only real
 # rows whose tenant ids a topic can be built from.
+# Devices that can actually store what this generator sends: a device with no capability rows
+# drops every point as unknown, and the message it published then looks like a lost row. That
+# reads as shedding at 52/s — far below any capacity limit — which is how this was found.
 LIST=$(docker exec haven-db psql -U haven -d "$DB" -tAc \
-  "select vendor_id||':'||home_id||':'||id from devices where home_id is not null limit $DEVICES" \
+  "select d.vendor_id||':'||d.home_id||':'||d.id
+     from devices d
+    where d.home_id is not null
+      and exists (select 1 from device_points p where p.device_id = d.id and p.dp = '1')
+      and exists (select 1 from device_points p where p.device_id = d.id and p.dp = '2')
+    limit $DEVICES" \
   | paste -sd, -)
 
-[ -n "$LIST" ] || { echo "no devices to load; run make seed / scripts/bench.sh first"; exit 1; }
+[ -n "$LIST" ] || {
+  echo "no devices with both load-test capabilities (dp 1 and 2); run scripts/bench.sh first"
+  exit 1
+}
 COUNT=$(( $(printf '%s' "$LIST" | tr ',' '\n' | wc -l | tr -d ' ') ))
 
 # The measurement needs every message to produce a row, and the default history policy is
