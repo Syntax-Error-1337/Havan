@@ -59,7 +59,7 @@ jsonwebtoken = "9"
 # Certificate issuance. MIT/Apache-2.0, which is why it is allowed and openssl is not
 # (openssl is Apache-2.0 for the crate but pulls a system library with its own history).
 rcgen = { version = "0.13", features = ["x509-parser"] }
-object_store = "0.11"
+object_store = "0.14"
 bytes = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "http2"] }
 
