@@ -43,6 +43,10 @@ struct LoginBody {
     vendor_id: Uuid,
     email: String,
     password: String,
+    /// Present when the account has confirmed a second factor. Absent is not an error in itself —
+    /// accounts without one must keep working — the login path decides.
+    #[serde(default)]
+    totp: Option<String>,
 }
 
 /// The portal's door. Separate from `/auth/login`: different table, different
@@ -61,7 +65,12 @@ async fn login(
 
     match state
         .identity
-        .login_vendor(body.vendor_id, &body.email, &body.password)
+        .login_vendor(
+            body.vendor_id,
+            &body.email,
+            &body.password,
+            body.totp.as_deref(),
+        )
         .await
     {
         Ok(tokens) => Ok(Json(tokens)),

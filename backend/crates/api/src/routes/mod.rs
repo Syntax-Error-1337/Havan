@@ -20,4 +20,5 @@ pub mod scenes;
 pub mod sso;
 pub mod stream;
 pub mod vendor;
+pub mod vendor_security;
 pub mod vendor_team;

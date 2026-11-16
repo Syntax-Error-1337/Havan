@@ -198,6 +198,31 @@ impl IdentityRepo for PgIdentity {
             .map_err(db)
     }
 
+    async fn vendor_totp(&self, user_id: Uuid) -> Result<Option<(String, bool)>, AppError> {
+        let mut tx = self
+            .pg
+            .scoped(&TenantCtx::system("vendor-login-totp"))
+            .await?;
+        let row: Option<(Option<String>, bool)> = sqlx::query_as(
+            "SELECT totp_secret, totp_confirmed_at IS NOT NULL
+               FROM vendor_users WHERE id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(Box::new(e)))?;
+        tx.commit()
+            .await
+            .map_err(|e| AppError::Database(Box::new(e)))?;
+
+        // A secret that was never confirmed is not a factor: it is an enrolment somebody abandoned
+        // halfway, and treating it as one would lock them out of an account they can still use.
+        Ok(match row {
+            Some((Some(secret), confirmed)) => Some((secret, confirmed)),
+            _ => None,
+        })
+    }
+
     async fn touch_vendor_login(&self, user_id: Uuid) -> Result<(), AppError> {
         // System scope: authentication runs before a tenant exists, and this is the row that was
         // just authenticated, so there is nothing to enumerate.

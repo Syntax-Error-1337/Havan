@@ -252,14 +252,21 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | POST | `/vendor/ota-campaigns/{id}/pause\|resume\|halt` | |
 | GET | `/vendor/devices?product_id=&status=` | fleet list, cursor-paged |
 | GET | `/vendor/devices/{id}` | telemetry, logs, cert status |
-| GET | `/vendor/analytics/overview` | devices, activity, errors, pair success |
-| GET/POST | `/vendor/api-keys` | |
-| GET | `/vendor/webhooks` · POST/DELETE | event subscriptions |
-| GET | `/vendor/sdk` | SDK versions + download links |
-| GET/PUT | `/vendor/branding` | white-label app config |
+| GET/POST | `/vendor/api-keys` | `POST` mints a key, shown once |
+| DELETE | `/vendor/api-keys/{id}` | |
 | GET | `/vendor/audit` | |
 | GET/POST | `/vendor/webhooks` | `{url, events[]}` → `{id, secret}` once; events: `licence.activated`, `device.claimed`, `firmware.failed` |
 | DELETE | `/vendor/webhooks/{id}` | |
+| GET/POST | `/vendor/team` | members and invitations |
+| DELETE | `/vendor/team/members/{id}` | owner cannot be removed, and the last owner cannot be demoted |
+| POST | `/vendor/team/{id}/sso` | binds an identity-provider subject to a member |
+| POST | `/vendor/invites/accept` | public: accepts an invitation token |
+| GET/PATCH | `/vendor/sso` | `{required, domain, bound_members, total_members, enforced}` |
+| GET/PATCH | `/vendor/security` | `{totp_required, members, enrolled}` — owner only; **409** while any member has not enrolled |
+| POST | `/vendor/totp/enrol` | `{secret, otpauth_uri}` — shown once, replaces any previous secret |
+| POST | `/vendor/totp/confirm` | `{code}` → proves the member can read a code; until then the secret is not a factor |
+| DELETE | `/vendor/totp` | turns the member's factor off; **409** while the vendor requires it |
+| GET/POST | `/vendor/campaigns` | OTA rollouts; `{id}/start`, `{id}/halt`, `{id}/rollback` |
 | GET | `/vendor/licences?limit=` | `{summary:{granted,used,remaining,activated_this_period,granted_value_cents,used_value_cents,unit_price_cents,currency}, activations:[…]}` |
 | GET | `/vendor/invoices?period=YYYY-MM` | that month as a `draft`, or the frozen document once issued |
 | GET | `/vendor/invoices/{period}` | the same, addressed by month |
@@ -267,8 +274,10 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | POST | `/ops/invoices` | `{vendor_id, period}` → freezes the month; repeating returns the first document |
 | GET | `/ops/invoices.csv?vendor_id=&period=` | line-per-device CSV with a TOTAL row, for a finance import |
 
-Key issuance for mTLS lives here too: `POST /vendor/ca/intermediate` returns a
-CSR-signing endpoint and the vendor's CA cert; the vendor keeps the private key.
+`POST /vendor/auth/login` takes `{vendor_id, email, password, totp?}`. When the account has confirmed
+a second factor, a missing code is `401` with `details.totp = "required"` and a wrong one is `401`
+with `details.totp = "invalid"` — different answers, because "ask me for a code" and "try again" send
+the portal somewhere different.
 
 ## Operator (internal)
 

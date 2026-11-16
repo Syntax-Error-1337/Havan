@@ -242,24 +242,56 @@ fn declared_vendor_routes() -> Vec<String> {
 /// Routes that cannot be exercised as a plain GET, with the reason. A new POST or DELETE under
 /// `/vendor` has to be added here deliberately — that decision is the point of the guard.
 const NOT_FETCHABLE: &[(&str, &str)] = &[
-    ("/vendor/auth/login", "POST: needs a body and returns credentials"),
+    (
+        "/vendor/auth/login",
+        "POST: needs a body and returns credentials",
+    ),
     ("/vendor/api-keys/{id}", "DELETE revokes a key"),
-    ("/vendor/campaigns/{id}", "GET needs a campaign id, which does not exist yet"),
+    (
+        "/vendor/campaigns/{id}",
+        "GET needs a campaign id, which does not exist yet",
+    ),
     ("/vendor/campaigns/{id}/halt", "POST halts a rollout"),
     ("/vendor/campaigns/{id}/rollback", "POST starts a rollback"),
     ("/vendor/campaigns/{id}/start", "POST starts a rollout"),
-    ("/vendor/invites/accept", "POST: the public accept door, no vendor session"),
+    (
+        "/vendor/invites/accept",
+        "POST: the public accept door, no vendor session",
+    ),
     ("/vendor/products", "POST creates; GET is fetched"),
-    ("/vendor/products/{id}", "PATCH and DELETE on the same path as a GET"),
+    (
+        "/vendor/products/{id}",
+        "PATCH and DELETE on the same path as a GET",
+    ),
     ("/vendor/products/{id}/publish", "POST: a state change"),
-    ("/vendor/products/{id}/validate", "POST: validates a thing model"),
-    ("/vendor/products/{id}/certification/submit", "POST: asks the operator to test it"),
+    (
+        "/vendor/products/{id}/validate",
+        "POST: validates a thing model",
+    ),
+    (
+        "/vendor/products/{id}/certification/submit",
+        "POST: asks the operator to test it",
+    ),
     ("/vendor/team", "POST invites; GET is fetched"),
     ("/vendor/team/members/{id}", "DELETE removes a member"),
-    ("/vendor/team/{id}/sso", "POST binds an identity to a member"),
+    (
+        "/vendor/team/{id}/sso",
+        "POST binds an identity to a member",
+    ),
     ("/vendor/webhooks", "POST subscribes; GET is fetched"),
     ("/vendor/webhooks/{id}", "DELETE unsubscribes"),
-    ("/vendor/sso", "PATCH changes the policy; GET is fetched"),
+    ("/vendor/security", "PATCH changes the policy; GET is fetched"),
+    (
+        "/vendor/invoices/{period}",
+        "GET with a period path parameter, which this guard does not know",
+    ),
+    ("/vendor/totp/enrol", "POST: issues a new secret"),
+    ("/vendor/totp/confirm", "POST: proves the secret works"),
+    ("/vendor/totp", "DELETE disables the member's factor"),
+    (
+        "/vendor/security",
+        "PATCH changes the policy; GET is fetched",
+    ),
 ];
 
 /// The GETs the guard actually calls.
@@ -274,6 +306,8 @@ const FETCHED: &[&str] = &[
     "/vendor/webhooks",
     "/vendor/api-keys",
     "/vendor/campaigns",
+    "/vendor/security",
+    "/vendor/invoices",
     // The bundle is the artefact that leaves the building — pasted into a ticket — so it is
     // exactly the response that must never carry a customer.
     "/vendor/support-bundle",

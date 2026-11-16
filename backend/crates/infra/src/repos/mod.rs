@@ -23,6 +23,7 @@ pub mod scenes;
 pub mod serials;
 pub mod sso;
 pub mod support;
+pub mod vendor_security;
 pub mod vendor_team;
 pub mod webhook;
 

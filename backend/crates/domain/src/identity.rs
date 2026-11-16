@@ -13,6 +13,8 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 use base64::Engine;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use kernel::{AppError, ErrorCode};
+
+use crate::totp as domain_totp;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -118,6 +120,13 @@ pub trait IdentityRepo {
         &self,
         user_id: Uuid,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// The member's second factor, if any: the secret and whether they have proved they can read a
+    /// code from it.
+    fn vendor_totp(
+        &self,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<Option<(String, bool)>, AppError>> + Send;
 
     fn find_vendor_user(
         &self,
@@ -234,6 +243,7 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
         vendor_id: Uuid,
         email: &str,
         password: &str,
+        code: Option<&str>,
     ) -> Result<Tokens, AppError> {
         let email = normalize_email(email);
         let Some(user) = self.repo.find_vendor_user(vendor_id, &email).await? else {
@@ -242,6 +252,15 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
         };
         if !verify_password(password, &user.password_hash) {
             return Err(invalid_credentials());
+        }
+
+        // The second factor, checked after the password and before any token exists. Order matters:
+        // answering "wrong code" to a caller who does not have the password would confirm the
+        // account exists.
+        // A secret that was never confirmed is not a factor: it is an enrolment somebody abandoned,
+        // and treating it as one would lock them out of an account they can still use.
+        if let Some((secret, true)) = self.repo.vendor_totp(user.id).await? {
+            require_second_factor(&secret, code)?;
         }
 
         // The portal shows "last login", and a column nothing ever writes shows "never" forever.
@@ -343,6 +362,30 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
     }
 }
 
+/// The second factor, or a refusal that says which one.
+///
+/// A missing code and a wrong code are different answers: the first means "ask me for one", the
+/// second means "try again". Collapsing them makes the portal show a password error to a person who
+/// typed the password correctly.
+fn require_second_factor(secret: &str, code: Option<&str>) -> Result<(), AppError> {
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
+
+    let (message, state) = match code {
+        Some(code) if domain_totp::verify(secret, code, now) => return Ok(()),
+        Some(_) => (
+            "that code is not valid; check the clock on your phone",
+            "invalid",
+        ),
+        None => ("this account needs a two-factor code", "required"),
+    };
+
+    let mut err = AppError::code(kernel::ErrorCode::Unauthorized, message);
+    if let AppError::Coded { details, .. } = &mut err {
+        details.insert("totp".into(), state.to_string());
+    }
+    Err(err)
+}
+
 fn invalid_credentials() -> AppError {
     AppError::code(
         ErrorCode::InvalidCredentials,
@@ -438,6 +481,11 @@ mod tests {
         users: Mutex<Vec<User>>,
         refresh: Mutex<Vec<RefreshRow>>,
         revocations: Mutex<Vec<Uuid>>,
+        /// The member's second factor: `(secret, confirmed)`. Defaults to none, which is what most
+        /// of these tests exercise.
+        totp: Mutex<Option<(String, bool)>>,
+        /// The portal account, if a test needs one to exist.
+        vendor_user: Mutex<Option<VendorUser>>,
     }
 
     impl IdentityRepo for FakeRepo {
@@ -480,6 +528,10 @@ mod tests {
             Ok(())
         }
 
+        async fn vendor_totp(&self, _user_id: Uuid) -> Result<Option<(String, bool)>, AppError> {
+            Ok(self.totp.lock().unwrap().clone())
+        }
+
         async fn mark_used(&self, id: Uuid) -> Result<(), AppError> {
             if let Some(r) = self.refresh.lock().unwrap().iter_mut().find(|r| r.id == id) {
                 r.used_at = Some(kernel::now());
@@ -491,7 +543,7 @@ mod tests {
             _vendor_id: Uuid,
             _email: &str,
         ) -> Result<Option<VendorUser>, AppError> {
-            Ok(None)
+            Ok(self.vendor_user.lock().unwrap().clone())
         }
         async fn revoke_family(&self, family_id: Uuid) -> Result<(), AppError> {
             // The real repository marks every row in the family; the fake must
@@ -568,6 +620,86 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.code_kind(), ErrorCode::Conflict);
+    }
+
+    /// A portal account whose password is known, so the second factor is the only variable.
+    fn portal_account(svc: &IdentityService<FakeRepo>, totp: Option<(String, bool)>) -> VendorUser {
+        let user = VendorUser {
+            id: Uuid::now_v7(),
+            vendor_id: Uuid::now_v7(),
+            email: "dev@acme.test".into(),
+            password_hash: hash_password("long enough pass").expect("hash"),
+            role: "owner".into(),
+        };
+        *svc.repo.vendor_user.lock().unwrap() = Some(user.clone());
+        *svc.repo.totp.lock().unwrap() = totp;
+        user
+    }
+
+    #[tokio::test]
+    async fn a_confirmed_second_factor_is_required_and_must_be_right() {
+        let svc = service();
+        let secret = crate::totp::new_secret();
+        let user = portal_account(&svc, Some((secret.clone(), true)));
+
+        // No code at all: refused, and told why, so the portal can ask for one.
+        let err = svc
+            .login_vendor(user.vendor_id, "dev@acme.test", "long enough pass", None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code_kind(), ErrorCode::Unauthorized);
+        match &err {
+            AppError::Coded { details, .. } => {
+                assert_eq!(details.get("totp").map(String::as_str), Some("required"))
+            }
+            _ => panic!("expected a coded error"),
+        }
+
+        // A wrong code is refused too — and it is refused *after* the password, so it cannot be
+        // used to discover which accounts exist.
+        let err = svc
+            .login_vendor(
+                user.vendor_id,
+                "dev@acme.test",
+                "long enough pass",
+                Some("000000"),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.code_kind(), ErrorCode::Unauthorized);
+
+        // The right one works.
+        let code = crate::totp::current(&secret, time::OffsetDateTime::now_utc().unix_timestamp())
+            .expect("code");
+        svc.login_vendor(
+            user.vendor_id,
+            "dev@acme.test",
+            "long enough pass",
+            Some(&code),
+        )
+        .await
+        .expect("a valid code signs in");
+    }
+
+    #[tokio::test]
+    async fn an_unconfirmed_secret_is_not_a_factor() {
+        let svc = service();
+        // Abandoned halfway through enrolment: the secret exists, nobody proved they can read it.
+        portal_account(&svc, Some((crate::totp::new_secret(), false)));
+
+        svc.login_vendor(Uuid::nil(), "dev@acme.test", "long enough pass", None)
+            .await
+            .expect("an unfinished enrolment must not lock somebody out");
+    }
+
+    #[tokio::test]
+    async fn an_account_without_a_second_factor_signs_in_as_before() {
+        let svc = service();
+        portal_account(&svc, None);
+
+        svc.login_vendor(Uuid::nil(), "dev@acme.test", "long enough pass", None)
+            .await
+            .expect("no factor, no code required");
     }
 
     #[tokio::test]

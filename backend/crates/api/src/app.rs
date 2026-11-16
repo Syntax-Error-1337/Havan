@@ -48,6 +48,7 @@ pub struct AppState {
     pub support: Arc<infra::PgSupport>,
     pub webhooks: Arc<infra::PgWebhooks>,
     pub sso: Arc<infra::PgSso>,
+    pub security: Arc<infra::PgVendorSecurity>,
     pub fleet: Arc<domain::fleet::FleetService<infra::PgFleet>>,
     pub audit: Arc<domain::audit::AuditService<infra::PgAudit>>,
     /// The device CA. Created on first use rather than at boot, so a machine that only
@@ -92,6 +93,7 @@ impl AppState {
         let support = Arc::new(infra::PgSupport::new(pg.clone()));
         let webhooks = Arc::new(infra::PgWebhooks::new(pg.clone()));
         let sso = Arc::new(infra::PgSso::new(pg.clone()));
+        let security = Arc::new(infra::PgVendorSecurity::new(pg.clone()));
         let fleet = Arc::new(domain::fleet::FleetService::new(Arc::new(
             infra::PgFleet::new(pg.clone()),
         )));
@@ -124,6 +126,7 @@ impl AppState {
             support,
             webhooks,
             sso,
+            security,
             fleet,
             audit,
             ca: Arc::new(tokio::sync::OnceCell::new()),
@@ -151,6 +154,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::privacy::router())
         .merge(routes::vendor_team::router())
         .merge(routes::sso::router())
+        .merge(routes::vendor_security::router())
         .route(
             "/devices/{id}/history",
             axum::routing::get(routes::history::history),
