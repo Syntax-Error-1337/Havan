@@ -98,6 +98,54 @@ broker started → within one sweep the row is `dispatched attempts=2` and the w
 - **Real hardware.** No device is involved, so "the command reached the device" is out of
   scope by construction.
 
+## Backup and restore
+
+A backup nobody has restored is a hypothesis. `scripts/backup.sh` dumps, verifies the dump with
+`pg_restore --list` before renaming it into the set (a `.partial` file is never mistaken for a
+backup), and keeps a sliding window; `scripts/restore-drill.sh` restores the newest dump into a
+throwaway database, compares row counts per table, checks the newest telemetry point is
+byte-identical, and drops the database even when it fails.
+
+Transcript, from a real run on 2026-11-16 against the development database — the numbers are the
+point, not the prose:
+
+```
+$ make backup
+backup: dumping via docker exec haven-db -> .haven/backups/haven-20261116T154743Z.dump
+backup: ok — .haven/backups/haven-20261116T154743Z.dump (1.0M, 60 tables of data)
+
+$ make restore-drill
+drill: restoring haven-20261116T154743Z.dump into haven_restore_drill
+CREATE DATABASE
+table                      source   restored
+vendors                        17         17  ok
+vendor_users                    1          1  ok
+products                        9          9  ok
+product_serials                22         22  ok
+devices                       174        174  ok
+device_points                 504        504  ok
+commands                      101        101  ok
+homes                          73         73  ok
+home_members                   58         58  ok
+scenes                          0          0  ok
+automations                    36         36  ok
+audit_log                      12         12  ok
+pairing_tickets                80         80  ok
+licence_grants                  1          1  ok
+licence_activations           169        169  ok
+drill: newest device point — source 2026-11-16 14:53:52.958217+00, restored 2026-11-16 14:53:52.958217+00
+drill: ok — haven_restore_drill matched the source on 15 tables and 31 migrations
+```
+
+What this proves and what it does not:
+
+- **proves** the dump is restorable, the schema it carries is complete (31 migrations), every
+  counted table survived with the same number of rows, and no timestamp came back shifted by a
+  timezone;
+- **does not prove** a point-in-time recovery, an off-site copy, or a restore into a different
+  Postgres major version. Those are deployment concerns; this drill answers "can we get the data
+  back at all", which is the question a security questionnaire actually asks.
+
 ## Broker authentication drill
 
 `make broker-auth` claims two devices and asserts what the 8884 listener answers: a device's own
