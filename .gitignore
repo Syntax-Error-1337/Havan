@@ -19,6 +19,5 @@ sdk/esp8266/.cache/
 # Graphify writes its extract here; it is a build artifact, not source.
 graphify-out/
 
-# C component test binaries (make sdk builds them in place)
-sdk/c/tests/test_haven
+# The runtime test binary (the protocol one is already listed above).
 sdk/c/tests/test_runtime
