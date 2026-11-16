@@ -106,6 +106,9 @@ pub enum SerialTake {
     /// The operator suspended this vendor. The serial may be perfect and the licence paid; what is
     /// missing is permission to sell, and it is the operator who can restore it.
     VendorSuspended,
+    /// The vendor hit the device ceiling agreed with the operator. Distinct from a licence running
+    /// out: a licence is what they bought, a quota is what they were allowed to run.
+    QuotaReached,
 }
 
 pub trait PairingRepo {
@@ -475,6 +478,12 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
                         return Err(AppError::code(
                             ErrorCode::LicenceExhausted,
                             "licence_exhausted: the vendor has no activation left for another device",
+                        ));
+                    }
+                    SerialTake::QuotaReached => {
+                        return Err(AppError::code(
+                            ErrorCode::Forbidden,
+                            "quota_reached: this vendor has reached its agreed device ceiling",
                         ));
                     }
                     SerialTake::VendorSuspended => {

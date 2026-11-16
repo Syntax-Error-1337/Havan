@@ -50,7 +50,7 @@ async fn a_vendor_can_be_onboarded_and_appears_in_the_list() {
         return;
     };
     let repo = infra::PgVendorAdmin::new(f.pg.clone());
-    let slug = format!("new-{}", &Uuid::now_v7().to_string()[20..32].to_lowercase());
+    let slug = format!("new-{}", Uuid::now_v7().to_string()[20..32].to_lowercase());
 
     let created = repo.create(&vendor(&slug)).await.expect("create");
     assert_eq!(created.slug, slug);
@@ -73,7 +73,7 @@ async fn two_vendors_cannot_share_a_slug() {
         return;
     };
     let repo = infra::PgVendorAdmin::new(f.pg.clone());
-    let slug = format!("dup-{}", &Uuid::now_v7().to_string()[20..32].to_lowercase());
+    let slug = format!("dup-{}", Uuid::now_v7().to_string()[20..32].to_lowercase());
 
     repo.create(&vendor(&slug)).await.expect("first");
     let err = repo.create(&vendor(&slug)).await.unwrap_err();
@@ -91,7 +91,7 @@ async fn suspension_stops_new_activations_and_leaves_existing_devices_alone() {
     };
     let pool = admin(&f).await;
     let repo = infra::PgVendorAdmin::new(f.pg.clone());
-    let slug = format!("sus-{}", &Uuid::now_v7().to_string()[20..32].to_lowercase());
+    let slug = format!("sus-{}", Uuid::now_v7().to_string()[20..32].to_lowercase());
     let created = repo.create(&vendor(&slug)).await.expect("create");
 
     // A product, a licence and one already-activated device: the state a vendor is in when an
@@ -223,6 +223,123 @@ async fn suspension_stops_new_activations_and_leaves_existing_devices_alone() {
     assert_eq!(take, domain::pairing::SerialTake::Taken);
 }
 
+/// The ceiling the console shows has to mean something: a quota of one must stop the second device,
+/// and raising it must let the same serial through.
+#[tokio::test]
+async fn the_quota_stops_an_activation_at_the_ceiling() {
+    let Some(f) = fixture().await else {
+        eprintln!("skipping: no TEST_DATABASE_URL");
+        return;
+    };
+    let pool = admin(&f).await;
+    let repo = infra::PgVendorAdmin::new(f.pg.clone());
+    let slug = format!("cap-{}", Uuid::now_v7().to_string()[20..32].to_lowercase());
+    let created = repo.create(&vendor(&slug)).await.expect("create");
+
+    let product_id = Uuid::now_v7();
+    let home_id = Uuid::now_v7();
+    let user_id = Uuid::now_v7();
+    let key = format!("prd_{}", &product_id.to_string()[24..36]);
+
+    sqlx::query("INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Owner')")
+        .bind(user_id)
+        .bind(format!("cap-{user_id}@example.test"))
+        .execute(&pool)
+        .await
+        .expect("user");
+    sqlx::query("INSERT INTO homes (id, owner_id, name) VALUES ($1, $2, 'Home')")
+        .bind(home_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .expect("home");
+    sqlx::query(
+        "INSERT INTO products (id, vendor_id, product_key, name, category, thing_model, status, certification)
+         VALUES ($1, $2, $3, 'Cap Bulb', 'light', '{\"constraints\":{\"allow_unknown_serial\":false}}', 'published', 'certified')",
+    )
+    .bind(product_id)
+    .bind(created.id)
+    .bind(&key)
+    .execute(&pool)
+    .await
+    .expect("product");
+    sqlx::query(
+        "INSERT INTO product_serials (vendor_id, product_id, serial) VALUES ($1, $2, 'CAP-1'), ($1, $2, 'CAP-2')",
+    )
+    .bind(created.id)
+    .bind(product_id)
+    .execute(&pool)
+    .await
+    .expect("manifest");
+
+    // Licences are not what this test is about: without one, the second claim would be refused for
+    // the wrong reason and the test would pass while proving nothing.
+    sqlx::query(
+        "INSERT INTO licence_grants (id, vendor_id, quantity, unit_price_cents, currency)
+         VALUES ($1, $2, 10, 249, 'USD')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(created.id)
+    .execute(&pool)
+    .await
+    .expect("grant");
+
+    // One device live, ceiling of one.
+    sqlx::query(
+        "INSERT INTO devices (id, vendor_id, product_id, home_id, name, serial, secret_hash, product_key, category)
+         VALUES ($1, $2, $3, $4, 'Live', 'CAP-0', 'x', $5, 'light')",
+    )
+    .bind(Uuid::now_v7())
+    .bind(created.id)
+    .bind(product_id)
+    .bind(home_id)
+    .bind(&key)
+    .execute(&pool)
+    .await
+    .expect("device");
+
+    repo.patch(
+        created.id,
+        &VendorPatch {
+            status: None,
+            quota_devices: Some(Some(1)),
+            name: None,
+        },
+    )
+    .await
+    .expect("quota");
+
+    let pairing = infra::PgPairing::new(f.pg.clone());
+    let take = pairing
+        .take_serial(product_id, "CAP-1", false)
+        .await
+        .expect("take");
+    assert_eq!(
+        take,
+        SerialTake::QuotaReached,
+        "a vendor at its ceiling must not activate another device"
+    );
+
+    // Raising the ceiling lets the same serial through: the refusal was about the ceiling, not the
+    // serial.
+    repo.patch(
+        created.id,
+        &VendorPatch {
+            status: None,
+            quota_devices: Some(Some(2)),
+            name: None,
+        },
+    )
+    .await
+    .expect("raise");
+
+    let take = pairing
+        .take_serial(product_id, "CAP-1", false)
+        .await
+        .expect("take after raise");
+    assert_eq!(take, SerialTake::Taken);
+}
+
 #[tokio::test]
 async fn a_quota_can_be_set_and_cleared() {
     let Some(f) = fixture().await else {
@@ -230,7 +347,7 @@ async fn a_quota_can_be_set_and_cleared() {
         return;
     };
     let repo = infra::PgVendorAdmin::new(f.pg.clone());
-    let slug = format!("quo-{}", &Uuid::now_v7().to_string()[20..32].to_lowercase());
+    let slug = format!("quo-{}", Uuid::now_v7().to_string()[20..32].to_lowercase());
     let created = repo.create(&vendor(&slug)).await.expect("create");
 
     let raised = repo
@@ -269,7 +386,7 @@ async fn a_deleted_vendor_is_not_managed_from_the_console() {
         return;
     };
     let repo = infra::PgVendorAdmin::new(f.pg.clone());
-    let slug = format!("del-{}", &Uuid::now_v7().to_string()[20..32].to_lowercase());
+    let slug = format!("del-{}", Uuid::now_v7().to_string()[20..32].to_lowercase());
     let created = repo.create(&vendor(&slug)).await.expect("create");
 
     let err = repo

@@ -1,5 +1,4 @@
-use domain::vendor_admin::VendorAdminRepo;
-use kernel::{AppError, ErrorCode, TenantCtx};
+use kernel::{AppError, TenantCtx};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -36,7 +35,7 @@ impl PgCertificationQueue {
     /// another vendor's product, let alone the fact that it exists.
     pub async fn pending(&self, limit: i64) -> Result<Vec<QueueItem>, AppError> {
         let mut tx = self.pg.scoped(&TenantCtx::system("cert-queue")).await?;
-        let rows: Vec<(
+        type Row = (
             Uuid,
             Uuid,
             String,
@@ -45,7 +44,9 @@ impl PgCertificationQueue {
             String,
             Option<time::OffsetDateTime>,
             Option<String>,
-        )> = sqlx::query_as(
+        );
+
+        let rows: Vec<Row> = sqlx::query_as(
             r#"SELECT p.id, p.vendor_id, v.name, p.product_key, p.name, p.category,
                       p.certified_at, p.certification_note
                  FROM products p
@@ -65,7 +66,16 @@ impl PgCertificationQueue {
         Ok(rows
             .into_iter()
             .map(
-                |(product_id, vendor_id, vendor_name, product_key, name, category, submitted_at, note)| {
+                |(
+                    product_id,
+                    vendor_id,
+                    vendor_name,
+                    product_key,
+                    name,
+                    category,
+                    submitted_at,
+                    note,
+                )| {
                     QueueItem {
                         product_id,
                         vendor_id,

@@ -119,17 +119,34 @@ impl PairingRepo for PgPairing {
             .await
             .map_err(db)?;
 
-        // Suspension before anything else, and before the manifest: a suspended vendor's device must
+        // Permission before anything else, and before the manifest: a suspended vendor's device must
         // hear why, and "already claimed" or "out of licences" would both be the wrong reason.
-        let status: Option<(String,)> =
-            sqlx::query_as("SELECT status FROM vendors WHERE id = $1")
+        let state: Option<(String, Option<i32>)> =
+            sqlx::query_as("SELECT status, quota_devices FROM vendors WHERE id = $1")
                 .bind(vendor_id)
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(db)?;
-        if status.is_some_and(|(s,)| s != "active") {
+
+        let (status, quota) = state.unwrap_or_else(|| ("active".to_string(), None));
+        if status != "active" {
             tx.commit().await.map_err(db)?;
             return Ok(SerialTake::VendorSuspended);
+        }
+
+        // The agreed ceiling, when there is one. Counted inside the same advisory lock as the
+        // activation, so two claims arriving together cannot both pass a ceiling of one.
+        if let Some(quota) = quota {
+            let devices: (i64,) =
+                sqlx::query_as("SELECT count(*) FROM devices WHERE vendor_id = $1")
+                    .bind(vendor_id)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(db)?;
+            if devices.0 >= i64::from(quota) {
+                tx.commit().await.map_err(db)?;
+                return Ok(SerialTake::QuotaReached);
+            }
         }
 
         // Ask the manifest first whether this serial is already spoken for. It costs

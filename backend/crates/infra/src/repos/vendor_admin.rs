@@ -174,13 +174,12 @@ impl PgVendorAdmin {
     /// making the portal read-only.
     pub async fn status_of(&self, vendor_id: Uuid) -> Result<String, AppError> {
         let mut tx = self.tx().await?;
-        let row: Option<(String,)> = sqlx::query_as(
-            "SELECT status FROM vendors WHERE id = $1 AND deleted_at IS NULL",
-        )
-        .bind(vendor_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(db)?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT status FROM vendors WHERE id = $1 AND deleted_at IS NULL")
+                .bind(vendor_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
         tx.commit().await.map_err(db)?;
 
         row.map(|(s,)| s)

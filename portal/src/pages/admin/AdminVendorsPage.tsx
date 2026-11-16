@@ -131,7 +131,9 @@ export function AdminVendorsPage() {
 
       <p className="muted" style={{ marginTop: 16 }}>
         Suspending stops <strong>new activations</strong> and makes that vendor's portal read-only.
-        Devices already in people's homes keep working — they are still our customers.
+        Devices already in people's homes keep working — they are still our customers. A{' '}
+        <strong>quota</strong> is a second ceiling: when the live device count reaches it, the next
+        activation is refused even if licences remain.
       </p>
 
       {patch.error ? <p className="error">{patch.error.message}</p> : null}

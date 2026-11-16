@@ -18,13 +18,6 @@ pub struct SecurityPolicy {
     pub enrolled: i64,
 }
 
-impl SecurityPolicy {
-    /// Whether the policy can be enforced as it stands.
-    pub fn enforceable(&self) -> bool {
-        !self.totp_required || self.enrolled == self.members
-    }
-}
-
 /// A secret shown once, and the URI that turns it into a QR code.
 #[derive(Debug, Clone, Serialize)]
 pub struct Enrolment {
@@ -101,7 +94,6 @@ mod tests {
             members: 2,
             enrolled: 1,
         };
-        assert!(!partial.enforceable());
         assert_eq!(
             ensure_everybody_enrolled(&partial).unwrap_err().code_kind(),
             ErrorCode::Conflict
@@ -112,7 +104,6 @@ mod tests {
             members: 2,
             enrolled: 2,
         };
-        assert!(ready.enforceable());
         assert!(ensure_everybody_enrolled(&ready).is_ok());
 
         // Off is always allowed, however many people have enrolled.

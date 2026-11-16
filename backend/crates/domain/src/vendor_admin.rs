@@ -94,12 +94,12 @@ impl NewVendor {
             ));
         }
 
-        if let Some(quota) = self.quota_devices {
-            if !(1..=1_000_000).contains(&quota) {
-                return Err(AppError::validation(
-                    "quota_devices must be between 1 and 1000000",
-                ));
-            }
+        if let Some(quota) = self.quota_devices
+            && !(1..=1_000_000).contains(&quota)
+        {
+            return Err(AppError::validation(
+                "quota_devices must be between 1 and 1000000",
+            ));
         }
 
         Ok(())
@@ -131,26 +131,23 @@ where
 
 impl VendorPatch {
     pub fn status(&self) -> Result<Option<VendorStatus>, AppError> {
-        self.status
-            .as_deref()
-            .map(VendorStatus::parse)
-            .transpose()
+        self.status.as_deref().map(VendorStatus::parse).transpose()
     }
 
     pub fn validate(&self) -> Result<(), AppError> {
-        if let Some(Some(quota)) = self.quota_devices {
-            if !(1..=1_000_000).contains(&quota) {
-                return Err(AppError::validation(
-                    "quota_devices must be between 1 and 1000000",
-                ));
-            }
+        if let Some(Some(quota)) = self.quota_devices
+            && !(1..=1_000_000).contains(&quota)
+        {
+            return Err(AppError::validation(
+                "quota_devices must be between 1 and 1000000",
+            ));
         }
-        if let Some(name) = &self.name {
-            if name.trim().is_empty() || name.len() > 80 {
-                return Err(AppError::validation(
-                    "name must be between 1 and 80 characters",
-                ));
-            }
+        if let Some(name) = &self.name
+            && (name.trim().is_empty() || name.len() > 80)
+        {
+            return Err(AppError::validation(
+                "name must be between 1 and 80 characters",
+            ));
         }
         Ok(())
     }
@@ -185,7 +182,14 @@ mod tests {
     #[test]
     fn slugs_are_the_shape_a_url_needs() {
         assert!(vendor("acme-home", "Acme").validate().is_ok());
-        for bad in ["Acme", "ac me", "-acme", "acme-", "ab", "a".repeat(41).as_str()] {
+        for bad in [
+            "Acme",
+            "ac me",
+            "-acme",
+            "acme-",
+            "ab",
+            "a".repeat(41).as_str(),
+        ] {
             assert!(
                 vendor(bad, "Acme").validate().is_err(),
                 "{bad:?} was accepted as a slug"

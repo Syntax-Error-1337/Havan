@@ -330,6 +330,12 @@ and the wording matters because a lawyer will read it:
   not `active`; reading the fleet still works, so the vendor can answer their own support tickets
   while an invoice dispute is sorted out.
 
+A **quota** (`quota_devices`) is the second ceiling, and it is enforced at the same point: when the
+live device count reaches it the claim answers `403 quota_reached`, even with licences left. The two
+are different questions — a licence is what the vendor bought, a quota is what the operator agreed
+they may run — and a console that showed a number doing nothing would be lying. `null` means no
+ceiling.
+
 `deleted` exists in the schema and is deliberately unreachable from the console: deleting a tenant
 with devices in people's homes is a decision made with a database client and a second person.
 

@@ -106,5 +106,7 @@ async fn patch(
 ) -> ApiResult<Json<VendorRow>> {
     super::ops::require_ops(&state, &headers, &peer)?;
 
-    Ok(Json(state.vendors.patch(id, &body).await.map_err(ApiError)?))
+    Ok(Json(
+        state.vendors.patch(id, &body).await.map_err(ApiError)?,
+    ))
 }
