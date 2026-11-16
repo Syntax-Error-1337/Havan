@@ -31,6 +31,30 @@ Two things worth reading out of that table:
   thing to watch is that it does not become the screen's bottleneck on a device
   with a slower disk.
 
+### Re-measured after two weeks of change
+
+Same script, same 100-device bench home, run on the same laptop — but with a much larger
+`telemetry` table behind it (197k rows from load and chaos runs, not 17k) and the database sharing
+the machine with two publishers:
+
+| Path | then | now | Bytes |
+|---|---|---|---|
+| `GET /devices?home_id` | 14 ms | 17.4 ms | 100 KB |
+| `GET /devices/{id}` | 7 ms | 11.1 ms | 1 KB |
+| `history?range=1d` | 10 ms | 20.5 ms | 2.9 KB |
+| `history?range=30d` | 49 ms | 36.1 ms | 3.6 KB |
+| `unread-count` | 3 ms | 3.4 ms | 12 bytes |
+
+Read as a whole, not row by row: every path is in the same order of magnitude, the device list — the
+one that matters for a cold app start — moved 3 ms, and 30-day history got *faster*, which is the
+effect of the index-only scan over more chunks rather than a change anybody made on purpose.
+
+The 1-day row needed a plan before it deserved a story. `scripts/plans.sql` still shows
+**Index Only Scan** over `(device_id, point_id, ts)` with **0 heap fetches**, 0.85 ms of database time
+against 197k telemetry rows — so the query did not change; the endpoint's 20 ms is the host and the
+HTTP path around it, not a missing index. A timing that doubles without a plan to explain it is how
+people start "optimising" a thing that was never slow.
+
 ## Query plans
 
 Timings say *how long*; plans say *why*, and they are the thing to re-check after
