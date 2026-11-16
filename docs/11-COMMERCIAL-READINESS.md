@@ -1,142 +1,163 @@
-# 11 — Commercial readiness: what a paying vendor needs next
+# 11 — Commercial readiness: one app, per-device licences
 
-> Written after reading the code at `caa4fd8`, the 19 migrations, the 16 route modules and the
-> project graph. Every "missing" claim below was checked by search; the command is named where it
-> matters. This is a business plan, not an implementation plan — each P0/P1 item is meant to be
+> Revised after the business model was stated plainly: **one customer app** (the Haven app) in which
+> a customer connects devices from any vendor, and the platform operator charges each vendor **per
+> device licence**. That is the Smart Life model, not the Xiaomi model — the app is ours, the
+> hardware is theirs, and revenue is per activated device.
+>
+> Every "missing" claim below was checked by search at `caa4fd8`; each P0/P1 item is meant to be
 > expanded into a task-level plan before it is built.
 
-## Who pays, and for what
+## The two relationships, and who is not the customer
 
-Three buyers, and they want different things from the same platform:
+- **Vendor → operator.** A vendor pays per device that goes live in our app. Not a subscription, not
+  a seat, not a per-app licence. This is the revenue line.
+- **Operator → consumer.** The consumer pays us nothing directly; they buy hardware. The consumer is
+  the *user*, and their experience is the product quality bar.
+- **The consumer must never be collateral.** If a vendor stops paying, devices already shipped keep
+  working for the people who bought them, and that vendor simply cannot activate new ones. Bricking a
+  customer's bulb over an unpaid invoice is the one failure mode that ends a platform's reputation.
 
-1. **A hardware startup** with a product and no cloud. They buy the whole stack — cloud, app, portal,
-   SDK — and ship *their* brand. They care about time-to-market and that the app is not obviously
-   someone else's.
-2. **An established OEM** with an existing cloud they are replacing. They care about SSO, data
-   residency, SLAs, an audit trail, and an exit plan. They will not sign without a backup/restore
-   drill and a security questionnaire.
-3. **An enterprise with no internet** (utilities, industrial, campuses). They buy a single-tenant
-   deployment and a licence key, not a subscription.
+A useful consequence: **the app is not white-labelled per vendor.** It is Haven's app, with Haven's
+brand, presenting every vendor's devices coherently. What a vendor buys is placement in a working app
+and a certified device — not their own icon on a stranger's home screen.
 
-The current build serves (1) well and (2) partially. Nothing in it serves (3).
+## What already exists, and it is more than the first draft of this plan assumed
 
-## What exists today
+`product_serials` (`backend/migrations/*serial_manifest.sql`) is already a licence ledger in embryo:
 
-Verified, not remembered: 19 migrations (`tenants`, `identity`, `devices`, `automation`,
-`device_product`, `ticket_scope`, `point_history`, `vendor_sessions`, `session_subject`, `ota_pct`,
-`ota_job_error`, `scenes`, `serial_manifest`, `telemetry_point_idx`, `presence_and_geo`, `audit_log`,
-`command_delivery`, `device_certificates`, `push_delivery`). The `vendors` table already carries
-`quota_devices`, `branding jsonb`, `status` and a `slug`; `vendor_users` carries four roles plus
-TOTP. Cloud API with 16 route modules, vendor portal with 9 screens, customer app, OTA campaigns,
-device certificate issuance, push delivery, audit trail, API keys, OpenAPI document.
+```
+product_serials (vendor_id, product_id, serial, manufactured_at, claimed_at, device_id)
++ product_serials_open_idx  WHERE claimed_at IS NULL   -- "how many are left"
+```
 
-That is a genuinely strong v1. The gaps below are not features missing from the product — they are
-the parts of *being a business* that a product does not give you.
+A serial row is one manufactured unit; `claimed_at IS NULL` means "on the shelf, not yet billable";
+`claimed_at` is the moment it is consumed. Row-level security already scopes it per vendor. The
+migration's own comment says the manifest exists to make "this serial exists" a fact rather than a
+trust-on-first-use claim — which is exactly the property a billable unit needs.
 
-## P0 — blocks the first paying vendor
+So the work is not to invent a licence system. It is to put **money and a gate** around this one.
 
-**1. Metering and billing.** `billing`, `invoice`, `entitlement` and `metering` return **0 files**.
-`quota_devices` is an integer that nothing enforces or measures, and `vendor_users.role` has no
-permission matrix behind it. So today the platform cannot answer "what does this customer owe" or
-"has this customer outgrown their plan".
+## P0 — the revenue engine
 
-Build: a `plans` table (device ceiling, message ceiling, retention window), `usage_counters` rolled
-up per vendor per period from data already flowing (`device_points`, `commands`), a read-only
-`GET /v1/vendor/usage` for the portal, and enforcement at the *edges* — claim refuses past quota,
-ingest sheds past the message ceiling — never in the query path. Invoicing can start as a nightly
-export; the counter is the hard part and it must be idempotent.
+**1. Licence grants: a vendor must own the right to activate before they can.** Today a vendor uploads
+a manifest of any size and claims freely: nothing is paid, nothing stops them. Add:
 
-Acceptance: claim the (quota+1)th device and get a typed refusal naming the plan; a vendor's own
-portal shows current usage against the ceiling without a support ticket.
+- `licence_grants (vendor_id, quantity, unit_price_cents, currency, granted_at, expires_at, note)` —
+  a balance, incremented by an operator action and decremented on activation.
+- `licence_activations (vendor_id, product_id, serial, device_id, activated_at, period)` — written at
+  the same moment `product_serials.claimed_at` is set, in the same transaction. This is the invoice
+  source of truth: the manifest keeps the shelf, the activation keeps the ledger.
+- Balance check on the claim path: zero balance → typed refusal `402 licence_exhausted`, naming the
+  balance, the way `quota_devices` was supposed to work.
 
-**2. White-label delivery that reaches the user's phone.** `branding` exists as jsonb and the app
-reads tokens from `app/src/shared/config/tokens.ts`, but `custom_domain` returns **0 files** and the
-push path holds **one** APNs identity. A vendor shipping under their own App Store listing needs
-their own bundle id, their own APNs key, their own icon set and splash — per vendor, not per
-deployment.
+Charge at **activation**, not at manifest upload. Activation is where value is delivered, it is
+already an atomic state transition — `infra/src/repos/pairing.rs:45` takes the serial with
+`UPDATE product_serials SET claimed_at = now() WHERE … AND claimed_at IS NULL` inside a transaction,
+so the activation row can be written by that same transaction with no new failure mode — and a vendor
+who manufactures a run and sells half of it owes for half, which is the argument that closes a first
+deal.
 
-Build: per-vendor push credentials (encrypted column or vault entry, keyed by vendor, selected at
-send time), a build-time branding pipeline (EAS profiles per vendor from `branding`), and a
-`GET /v1/vendor/branding` + portal screen to edit it. Custom domain is the same shape for the portal.
+Acceptance: a vendor with zero balance claims a device and gets `402 licence_exhausted`; the operator
+grants 10; the same claim succeeds; `licence_activations` gains exactly one row for that serial.
 
-Acceptance: two vendors with different APNs keys both receive a push from the same worker, and
-neither sees the other's certificate in a support bundle.
+**2. Billing views on both sides.** Vendors need "what will I owe"; the operator needs "what is owed
+to me".
 
-**3. Backups that are known to restore.** `ls scripts/` shows `chaos.sh`, `load.sh`, `e2e.sh` — and
-no `backup.sh` or `restore-drill.sh`. A hosted platform whose restore path has never been run is
-uninsurable, and the security questionnaire asks for it by name.
+- `GET /v1/vendor/licences` — granted, consumed, remaining, activations this period, unit price.
+- Operator view: per-vendor balance, activations per period, invoice-ready export.
+- An invoice is a nightly roll-up of `licence_activations` for a period. Starting as an export is
+  fine; the ledger is the hard part, and it must be idempotent per serial, not per request.
 
-Build: `scripts/backup.sh` (dump to `.partial`, verify with `pg_restore --list`, then rename into the
-set) and `scripts/restore-drill.sh` (restore into a throwaway database, compare per-table counts,
-assert hypertables survived, drop it). Paste the drill output into `docs/09-RESILIENCE.md`.
+Acceptance: a retried claim of the same serial produces one activation row and one invoice line.
 
-Acceptance: the drill passes against the current database and the transcript is committed.
+**3. Certification before a device is claimable in Haven's app.** Today a product goes
+`draft → published`, and a published product's serials can be claimed by anyone holding a ticket. In
+a one-app world that means a vendor's unfinished device surfaces in *our* consumer app and the
+consumer blames us. This is the gate that protects the brand, and the difference between a platform
+and a marketplace of bugs.
 
-**4. Data lifecycle: export and delete.** `dsar` returns **0 files**, and retention is a per-point
-policy rather than a per-tenant one. Under GDPR a customer's request has a deadline, and "we will
-write a query" is not an answer a vendor can resell.
+Add a `certification` state on the product (`uncertified → submitted → certified → revoked`) and a
+checklist the operator signs off: protocol conformance (claim, shadow, ack, typed refusal),
+capability manifest matches what the device actually reports, OTA path exercised once, certificate
+and secret handling, and a physical test on a real unit. Claims for an uncertified product are
+refused; devices already claimed keep working.
 
-Build: `GET /v1/me/export` (a JSON bundle of the caller's homes, devices, scenes, automations and a
-bounded telemetry window) and `DELETE /v1/me` (soft-delete plus a scheduled purge), both audited,
-plus a per-vendor retention window in the plan row from item 1.
+Acceptance: a published-but-uncertified product refuses claim with a typed error; certifying it lets
+the same claim through without a redeploy.
 
-Acceptance: an export round-trips through a fresh account's import in a test; a delete removes the
-rows a subsequent export would have contained.
+**4. One-app governance: a vendor sees their devices, never our customers.** Homes, users and the
+consumer's identity belong to the operator. The vendor's legitimate view is their own devices' health
+and telemetry — not who lives in the house.
 
-## P1 — needed by the first three customers
+This is currently clean, and the point of the item is that it stays clean. `domain/src/fleet.rs:21`
+`FleetDevice` carries `id, product_key, product_name, name, serial, state, bound, online, fw_version,
+last_seen_at, created_at` — no home name, no owner identifier, no address, and `presence_and_geo` is
+per home and absent from any vendor response. Row-level security already scopes by vendor; the risk
+is a future *join* that pulls a customer column into a vendor endpoint, which no code review reliably
+catches.
 
-**5. Vendor team management.** `vendor_users` has roles and TOTP but `invite` only appears in the
-*home member* flow; there is no vendor-user invite, no SSO (`saml` → 0 files), no policy that
-enforces TOTP. An OEM will ask for all three in the first call.
+So the deliverable is a guard, not a fix: a test that serialises every `/v1/vendor/*` response shape
+and fails if a home name, owner identifier or coordinate appears. It belongs in the suite before the
+first vendor's data is in the database, because after that the test is retro-fitted around real
+responses.
 
-Build: invite + accept flow with expiring tokens, a permission matrix applied at the route layer
-(not per handler), TOTP-enforcement policy on the vendor row, and SAML as a second phase behind the
-same session model.
+## P0 — the parts that are not about money
 
-**6. Outbound events for vendor systems.** Every `webhook` hit is broker auth. A vendor integrating
-their ERP needs "device claimed", "firmware failed", "command refused" delivered *to them*, with
-retries and a signature.
+**5. Backups that are known to restore.** `scripts/` has `chaos.sh`, `load.sh`, `e2e.sh` and no
+`backup.sh` or `restore-drill.sh`. A vendor's security questionnaire asks this by name, and a restore
+path nobody has run is a hypothesis.
 
-Build: a `vendor_webhooks` table (url, secret, event types) and a delivery worker reusing the push
-delivery's retry/backoff shape, signing with HMAC. Absence of a subscriber must not block a write.
+Build `scripts/backup.sh` (dump to `.partial`, verify with `pg_restore --list`, rename into the set,
+stream retention) and `scripts/restore-drill.sh` (throwaway database, per-table counts, hypertables
+survived, dropped even on failure). Paste the transcript into `docs/09-RESILIENCE.md`.
 
-**7. Support surface.** `support_bundle` → 0 files. Support is where a licensed platform earns its
-renewal, and "send us your logs" does not scale.
+**6. Data lifecycle.** `dsar` returns **0 files**; retention is per-point, not per-tenant. A vendor
+reselling us to an EU customer inherits the obligation.
 
-Build: a bundle endpoint built by allowlist — named fields into a fresh document, never a serialised
-row with redactions — plus a fault table (subject, severity, fix action) that diagnostics can read.
+`GET /v1/me/export` (homes, devices, scenes, automations, a bounded telemetry window) and
+`DELETE /v1/me` (soft delete plus scheduled purge), both audited, with the retention window taken
+from the vendor's licence row.
 
-**8. Firmware signing and rollback.** Already an open gap in `docs/10-RELEASE-CHECKLIST.md` (Phase 7).
-A vendor shipping OTA without a signed image and a rollback path is one bad release from a recall.
+## P1 — what the first three vendors ask for after signing
 
-## P2 — scale, and the third buyer
+**7. Vendor teams.** `vendor_users` has four roles and TOTP, but `invite` exists only for *home
+members*, `saml` appears nowhere, and nothing enforces TOTP. Add invite/accept with expiring tokens,
+a permission matrix applied at the route layer, and TOTP enforcement as a vendor policy.
 
-- **Single-tenant deployment + offline licence key**, for buyer (3). Same binaries, a different
-  config profile and a signed licence file; the work is packaging, not product.
-- **Capacity translated into plan terms.** `docs/08-PERFORMANCE.md` measured ~600–700 msg/s/worker;
-  "N devices per plan on M workers" is the sentence a buyer needs, and it should live in the plan row.
-- **Integrations**: Matter bridge and voice (Alexa/Google) are already listed as after-v1 in the
-  roadmap, and they are the two that get a platform onto a retail shelf.
-- **SOC 2 readiness**: the artifacts (access review, change management, incident log) fall out of the
-  audit trail that already exists; the work is writing them down, not building them.
+**8. Outbound events.** Every `webhook` hit today is broker auth. A vendor integrating their ERP needs
+"device activated", "licence low", "firmware failed" pushed to them, signed with HMAC and retried with
+the backoff shape the push worker already uses. No subscriber must never block a write.
 
-## Order, and why
+**9. Support surface.** `support_bundle` → 0 files. Build bundles by allowlist (named fields into a
+fresh document, never a redacted row) plus a fault table the diagnostics screen reads.
 
-Wave 1 (P0 items 1–4) is one coherent story: *a vendor can sign up, be metered, be billed, ship under
-their own name, and survive an audit*. Nothing in wave 1 depends on wave 2.
+**10. Firmware signing and rollback.** Still open in `docs/10-RELEASE-CHECKLIST.md`. In a one-app
+world an unsigned OTA is our app shipping a bad update into a stranger's house.
 
-Wave 2 (items 5–8) turns a vendor into a team and a platform into something supportable.
+## P2 — after two vendors are live
 
-Wave 3 is packaging and partnerships, and it should not start before two vendors are live, because
-both of them will change what "capacity" and "integration" mean.
+- **Capacity in licence terms**: `docs/08-PERFORMANCE.md` measured ~600–700 msg/s/worker; turn that
+  into "N activated devices per worker" so a vendor's growth is plannable.
+- **Integrations that sell hardware**: Matter bridge and voice (Alexa/Google) — already after-v1 in
+  the roadmap, and the two that get devices onto retail shelves.
+- **On-prem single-tenant** with a signed licence file, for operators who cannot use a shared cloud.
+  Same binaries and a config profile; the work is packaging, not product.
+- **SOC 2 readiness**: artifacts fall out of the audit trail that exists; the work is writing them
+  down.
 
-## Deliberately not yet
+## Order
 
-Camera streaming, energy dashboard, LAN fast path, offline local hub. All are nice revenue stories
-and none of them blocks a first contract — and each one is a subsystem, not a feature.
+Wave 1 (items 1–4) is the business: a vendor buys licences, activates devices, cannot exceed what
+they bought; a device reaches the app only after we certify it; a vendor never sees our customers.
+Wave 2 (5–6) makes us insurable. Wave 3 (7–10) makes us supportable. Wave 4 is packaging and
+partnerships.
 
-## What would make me wrong
+## Two decisions that are yours, not mine
 
-If the first buyer is a startup that only needs a demo to raise a round, wave 1 collapses to items 1
-and 2 (metering can be a spreadsheet) and item 3 (they will still ask). Check the buyer before
-building the bill.
+1. **Prepaid packs or metered invoice?** Prepaid ("buy 10,000 activations") is what vendors expect and
+   collects cash first; metered is friendlier to a startup but puts you in the collections business.
+   The ledger above supports either — it is a pricing decision, not a schema one.
+2. **What a suspended vendor loses.** Recommendation: new activations stop, existing devices keep
+   working, the portal goes read-only. Confirm before it is coded, because it is the clause a vendor's
+   lawyer reads first.
