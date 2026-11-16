@@ -216,24 +216,35 @@ impl OtaRepo for PgOta {
     async fn create_campaign(&self, vendor_id: Uuid, campaign: &Campaign) -> Result<(), AppError> {
         let mut tx = self.tx(vendor_id).await?;
 
-        // A campaign for a firmware of another product would push an image the
-        // device cannot run. The database is the last place that can refuse.
-        let matches: Option<bool> =
-            sqlx::query_scalar("SELECT f.product_id = $1 FROM firmware f WHERE f.id = $2")
+        // A campaign for a firmware of another product would push an image the device cannot run.
+        // The database is the last place that can refuse — and it is also the last place that can
+        // refuse an *unsigned* image, which is the difference between a rollout and a recall: the
+        // device verifies a detached Ed25519 signature before writing a byte to flash, so an
+        // unsigned offer is a campaign that silently does nothing on every board.
+        let firmware: Option<(bool, String)> =
+            sqlx::query_as("SELECT f.product_id = $1, f.status FROM firmware f WHERE f.id = $2")
                 .bind(campaign.product_id)
                 .bind(campaign.firmware_id)
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(db)?;
 
-        match matches {
+        match firmware {
             None => return Err(AppError::not_found("firmware")),
-            Some(false) => {
+            Some((false, _)) => {
                 return Err(AppError::validation(
                     "that firmware belongs to a different product",
                 ));
             }
-            Some(true) => {}
+            Some((true, status)) if status != "signed" => {
+                return Err(AppError::code(
+                    kernel::ErrorCode::Conflict,
+                    format!(
+                        "this firmware is '{status}', not signed; devices refuse an unsigned image"
+                    ),
+                ));
+            }
+            Some((true, _)) => {}
         }
 
         sqlx::query(
