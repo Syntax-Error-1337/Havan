@@ -85,6 +85,13 @@ test('the certification queue is where a submitted product waits for us', async 
   const certify = page.getByRole('button', { name: 'Certify' });
   const empty = page.getByText(/nothing waiting/i);
   expect((await certify.count()) + (await empty.count())).toBeGreaterThan(0);
+
+  // And the row says how to verify before signing: a command an operator can paste, not a promise
+  // that somebody tested it.
+  if (await certify.count()) {
+    await expect(page.getByText(/make conformance VENDOR=/).first()).toBeVisible();
+    await expect(page.getByText(/Run the command before certifying/i)).toBeVisible();
+  }
 });
 
 test('billing grants licences and issues a month', async ({ page }) => {

@@ -180,6 +180,16 @@ async fn suspension_stops_new_activations_and_leaves_existing_devices_alone() {
         "a suspended vendor must not activate a device"
     );
 
+    // The suspension is in the audit trail: an action somebody will be asked to justify.
+    let audited: Option<(String,)> = sqlx::query_as(
+        "SELECT action FROM audit_log WHERE vendor_id = $1 AND action = 'vendor.suspended'",
+    )
+    .bind(created.id)
+    .fetch_optional(&pool)
+    .await
+    .expect("audit lookup");
+    assert!(audited.is_some(), "a suspension must leave a trace");
+
     // The device already in the home is untouched: same row, same vendor, still there.
     let still_there: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM devices WHERE id = $1")
         .bind(device_id)

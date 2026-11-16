@@ -1,4 +1,4 @@
-use domain::vendor_admin::{NewVendor, VendorAdminRepo, VendorPatch, VendorRow};
+use domain::vendor_admin::{NewVendor, VendorAdminRepo, VendorPatch, VendorRow, VendorStatus};
 use kernel::{AppError, ErrorCode, TenantCtx};
 use uuid::Uuid;
 
@@ -125,6 +125,18 @@ impl VendorAdminRepo for PgVendorAdmin {
             return Err(err);
         }
 
+        // Onboarding is an operator action with money attached; it goes in the trail like one.
+        sqlx::query(
+            r#"INSERT INTO audit_log (id, vendor_id, actor_kind, action, target_kind, target_id, detail)
+               VALUES ($1, $2, 'ops', 'vendor.created', 'vendor', $2, $3)"#,
+        )
+        .bind(kernel::new_id())
+        .bind(id)
+        .bind(serde_json::json!({ "slug": new.slug(), "quota_devices": new.quota_devices }))
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
         tx.commit().await.map_err(db)?;
         self.one(id).await
     }
@@ -144,6 +156,22 @@ impl VendorAdminRepo for PgVendorAdmin {
                 .execute(&mut *tx)
                 .await
                 .map_err(db)?;
+
+            // Suspension is the action somebody will be asked to justify later. No note field: the
+            // reason belongs in a support ticket, not in a column we would then have to police.
+            sqlx::query(
+                r#"INSERT INTO audit_log (id, vendor_id, actor_kind, action, target_kind, target_id, detail)
+                   VALUES ($1, $2, 'ops', $3, 'vendor', $2, '{}'::jsonb)"#,
+            )
+            .bind(kernel::new_id())
+            .bind(id)
+            .bind(match status {
+                VendorStatus::Active => "vendor.reactivated",
+                VendorStatus::Suspended => "vendor.suspended",
+            })
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
         }
 
         if let Some(quota) = patch.quota_devices {
@@ -153,6 +181,18 @@ impl VendorAdminRepo for PgVendorAdmin {
                 .execute(&mut *tx)
                 .await
                 .map_err(db)?;
+
+            // The ceiling is enforced at the claim path, so changing it changes who can sell.
+            sqlx::query(
+                r#"INSERT INTO audit_log (id, vendor_id, actor_kind, action, target_kind, target_id, detail)
+                   VALUES ($1, $2, 'ops', 'vendor.quota_changed', 'vendor', $2, $3)"#,
+            )
+            .bind(kernel::new_id())
+            .bind(id)
+            .bind(serde_json::json!({ "quota_devices": quota }))
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
         }
 
         if let Some(name) = &patch.name {

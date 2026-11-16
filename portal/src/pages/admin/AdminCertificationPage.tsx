@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { useCertificationQueue, useDecideCertification } from '../../entities/admin';
 import { TableFrame } from '../../shared/ui/TableFrame';
 
@@ -11,6 +13,7 @@ import { TableFrame } from '../../shared/ui/TableFrame';
 export function AdminCertificationPage() {
   const { data: queue, isPending, error } = useCertificationQueue();
   const decide = useDecideCertification();
+  const [copied, setCopied] = useState<string | null>(null);
 
   if (isPending) return <p className="muted">Loading the queue…</p>;
   if (error) return <p className="error">{error.message}</p>;
@@ -49,6 +52,32 @@ export function AdminCertificationPage() {
                 </td>
                 <td className="muted">{item.note ?? '—'}</td>
                 <td style={{ textAlign: 'right' }}>
+                  {/* The command that answers "did you actually test it": the suite drives a real
+                      device through claim, shadow, command, ack and reconnect, and prints pass/fail
+                      per check. Certifying without running it is the thing this queue exists to
+                      prevent. */}
+                  <code
+                    style={{ display: 'block', marginBottom: 8, fontSize: 11 }}
+                    data-testid={`conformance-${item.product_key}`}
+                  >
+                    make conformance VENDOR={item.vendor_id} PRODUCT={item.product_id}
+                  </code>
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      const command = `make conformance VENDOR=${item.vendor_id} PRODUCT=${item.product_id}`;
+                      try {
+                        await navigator.clipboard.writeText(command);
+                        setCopied(item.product_id);
+                      } catch {
+                        // A refused clipboard is not a failure worth a dialog: the command is on
+                        // screen and selectable.
+                        setCopied(null);
+                      }
+                    }}
+                  >
+                    {copied === item.product_id ? 'Copied' : 'Copy command'}
+                  </button>{' '}
                   <button
                     className="btn btn--primary"
                     disabled={decide.isPending}
@@ -75,6 +104,12 @@ export function AdminCertificationPage() {
       {decide.error ? <p className="error">{decide.error.message}</p> : null}
 
       <p className="muted" style={{ marginTop: 16 }}>
+        Run the command before certifying: it claims a device in the conformance lab, connects it,
+        sends a command, waits for the ack and reconnects — the same path a customer's device takes.
+        A failing run is a product we have not tested, not a product we cannot test.
+      </p>
+
+      <p className="muted">
         A device already in someone's home is never affected by a revocation — revoking stops new
         claims, and the existing fleet keeps working. The consumer is not collateral.
       </p>
