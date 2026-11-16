@@ -15,3 +15,6 @@ sdk/esp8266/.cache/
 # The deployment CA is generated per machine and must never be published: a committed CA key
 # lets anyone with a clone sign a device certificate the broker trusts.
 .haven/
+
+# Graphify writes its extract here; it is a build artifact, not source.
+graphify-out/
