@@ -91,7 +91,11 @@ async fn seed(pg: &sqlx::PgPool, count: usize) -> (Uuid, Vec<Uuid>) {
 
 async fn boot() -> Option<(sqlx::PgPool, infra::Pg, Uuid, Vec<Uuid>)> {
     let db = std::env::var("TEST_DATABASE_URL").ok()?;
-    let owner_db = std::env::var("MIGRATE_DATABASE_URL").unwrap_or_else(|_| db.clone());
+    // The owner connection is for *seeding*, and it must be the test database. Falling
+    // back to `MIGRATE_DATABASE_URL` pointed this at the development database, so the
+    // tests seeded rules into the demo DB and leased from an empty test DB — red for the
+    // wrong reason, and leaving `rule 0..19` behind in the demo for weeks.
+    let owner_db = std::env::var("TEST_MIGRATE_DATABASE_URL").unwrap_or_else(|_| db.clone());
 
     let pg = PgPoolOptions::new()
         .max_connections(12)

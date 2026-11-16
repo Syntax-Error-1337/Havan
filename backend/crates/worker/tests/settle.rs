@@ -143,7 +143,11 @@ async fn boot() -> Option<Fixture> {
     // Seeding runs as the owner: the app role is subject to RLS and has no
     // vendor context to satisfy the policy with. The lane under test still runs
     // as `db`, so the policy is exercised where it matters.
-    let owner_db = std::env::var("MIGRATE_DATABASE_URL").unwrap_or_else(|_| db.clone());
+    // Seeding must go to the database under test. Falling back to MIGRATE_DATABASE_URL
+    // pointed this at the development database, so the fixture landed in `haven` and the
+    // assertions ran against `haven_test` — the test could not pass, and it was quietly
+    // writing rows into the database a person demos from.
+    let owner_db = std::env::var("TEST_MIGRATE_DATABASE_URL").unwrap_or_else(|_| db.clone());
     let pg = PgPoolOptions::new()
         .max_connections(2)
         .connect(&owner_db)

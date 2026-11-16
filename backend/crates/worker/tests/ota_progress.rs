@@ -119,7 +119,11 @@ async fn seed(pg: &sqlx::PgPool) -> (Uuid, Uuid, Uuid) {
 
 async fn boot() -> Option<Fixture> {
     let db = std::env::var("TEST_DATABASE_URL").ok()?;
-    let owner_db = std::env::var("MIGRATE_DATABASE_URL").unwrap_or_else(|_| db.clone());
+    // Seeding must go to the database under test. Falling back to MIGRATE_DATABASE_URL
+    // pointed this at the development database, so the fixture landed in `haven` and the
+    // assertions ran against `haven_test` — the test could not pass, and it was quietly
+    // writing rows into the database a person demos from.
+    let owner_db = std::env::var("TEST_MIGRATE_DATABASE_URL").unwrap_or_else(|_| db.clone());
 
     let pg = PgPoolOptions::new()
         .max_connections(4)
