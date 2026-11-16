@@ -196,11 +196,24 @@ if [ "$WHAT" = all ] || [ "$WHAT" = db ]; then
   grep -qi "sqlx\|postgres error\|panicked" "$STATE/cmd.json" 2>/dev/null \
     && bad "the refusal body leaks driver detail" || ok "no driver detail in the body"
 
+  # The operator console reads the database too, and it is a newer surface than this drill:
+  # a health page that answers 200 with zeros while Postgres is down is worse than one that
+  # refuses, because it is the screen somebody trusts at 3am.
+  s=$(probe_status "$V1/ops/health")
+  [ "$s" = "503" ] && ok "/ops/health refuses with 503 rather than reporting an empty platform ($s)" \
+    || bad "/ops/health answered $s with the database down"
+
   start db
   wait_healthy db 90 && ok "database recovered" || bad "database did not recover"
-  s=$(probe_status "$V1/homes" -H "authorization: Bearer $(cat "$STATE/token")")
+  # The body goes to a file: an assertion that fails with only a status code costs an hour of
+  # guessing, which is how this one behaved until it was made to say what the refusal was.
+  s=$(curl -s -o "$STATE/homes.json" -w '%{http_code}' --max-time 5 "$V1/homes" \
+    -H "authorization: Bearer $(cat "$STATE/token")")
   [ "$s" = "200" ] && ok "reads work again without an API restart ($s)" \
-    || bad "reads answered $s after the database came back"
+    || bad "reads answered $s after the database came back: $(head -c 160 "$STATE/homes.json")"
+  s=$(probe_status "$V1/ops/health")
+  [ "$s" = "200" ] && ok "/ops/health answers again ($s)" \
+    || bad "/ops/health answered $s after the database came back"
 fi
 
 say "Result"

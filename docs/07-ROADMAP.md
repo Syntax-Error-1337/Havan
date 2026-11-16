@@ -145,7 +145,7 @@ the badge. Neither is reachable without an ESP32-S3 on a desk.
   the JWT and request shape are unit-tested). The 20 000 events/s figure is arithmetic rather
   than a hope: ~30 workers at the measured rate, a deployment decision rather than a code change.
 
-**Done means:** chaos run with the documented behaviour observed — **yes**, 18/18
+**Done means:** chaos run with the documented behaviour observed — **yes**, 20/20
 assertions, with the four bugs it found fixed in the same pass.
 
 ## Explicitly after v1

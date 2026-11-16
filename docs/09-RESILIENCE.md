@@ -1,7 +1,7 @@
 # What happens when a dependency dies
 
 The drill: `make chaos` (or `make chaos WHAT=mqtt`). It stops a local container, measures
-what the platform does, starts it again, and asserts the answers below. 18 assertions,
+what the platform does, starts it again, and asserts the answers below. 20 assertions,
 all passing.
 
 The point is not that things fail — with a dependency gone they must. The point is *how*:
@@ -97,6 +97,25 @@ broker started → within one sweep the row is `dispatched attempts=2` and the w
   fails.
 - **Real hardware.** No device is involved, so "the command reached the device" is out of
   scope by construction.
+
+## What the drill learned when it was re-run
+
+The chaos drill was written before the operator console, the licence gate and the presence sweep
+existed, so it asserted against a platform that has since grown. Re-running it was the point of the
+exercise, and it found two things:
+
+- **`/ops/health` was not covered.** With Postgres down the console's health page is the screen
+  somebody trusts at 3am; answering `200` with zeros would be worse than refusing. Two assertions now
+  prove it returns `503` while the database is gone and `200` once it returns.
+- **A failing assertion said only "401".** The read after recovery was now checked with the body
+  captured to a file, so a future failure prints the refusal instead of a number to guess from.
+
+The first re-run reported `reads answered 401 after the database came back` while an equivalent
+manual sequence returned `200`; after the line was rewritten it passed on every subsequent run and
+the 401 has not recurred. That is written down rather than tidied away: an intermittent assertion
+nobody can explain is a warning about the harness, and the drill now keeps the evidence.
+
+Current result: **20/20**, run against the live stack.
 
 ## Silence is not presence
 
