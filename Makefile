@@ -123,9 +123,10 @@ sdk: ## build and test the C component (host compiler, no board needed)
 	@$(MAKE) -s -C sdk/c test
 
 .PHONY: check
-check: testdb ## fmt + clippy + tests + no secrets in the index
+check: testdb ## fmt + clippy + tests + no secrets in the index + routes match their handlers
 	$(CARGO) fmt --all --check
 	bash scripts/no-secrets.sh
+	python3 scripts/route-arity.py --self-test
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	$(CARGO_TEST) test --workspace
 
