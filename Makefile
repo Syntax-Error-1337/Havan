@@ -116,8 +116,9 @@ sdk: ## build and test the C component (host compiler, no board needed)
 	@$(MAKE) -s -C sdk/c test
 
 .PHONY: check
-check: testdb ## fmt + clippy + tests
+check: testdb ## fmt + clippy + tests + no secrets in the index
 	$(CARGO) fmt --all --check
+	bash scripts/no-secrets.sh
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	$(CARGO_TEST) test --workspace
 

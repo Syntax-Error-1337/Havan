@@ -11,3 +11,7 @@ sdk/c/tests/test_haven
 sdk/esp8266/.cache/
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
+
+# The deployment CA is generated per machine and must never be published: a committed CA key
+# lets anyone with a clone sign a device certificate the broker trusts.
+.haven/
