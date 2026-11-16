@@ -79,7 +79,11 @@ typedef enum {
     HAVEN_OK = 0,
     HAVEN_ERR_INVALID_ARG,
     HAVEN_ERR_TOO_SMALL,   /* the caller's buffer cannot hold the result */
-    HAVEN_ERR_INVALID_UUID
+    HAVEN_ERR_INVALID_UUID,
+    /* Nothing to do right now: no message waiting, or no connection. Not an error to log. */
+    HAVEN_ERR_AGAIN,
+    /* The image's signature did not verify, so it was not installed. */
+    HAVEN_ERR_OTA_SIGNATURE
 } haven_status;
 
 /* ---- topics ---------------------------------------------------------------- */

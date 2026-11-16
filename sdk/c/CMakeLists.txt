@@ -9,6 +9,6 @@
 # because no board is attached. The code is C11 with no platform headers, so a toolchain
 # failure would be a build-system problem, not a source problem.
 idf_component_register(
-    SRCS "haven.c"
+    SRCS "haven.c" "haven_runtime.c"
     INCLUDE_DIRS "."
 )

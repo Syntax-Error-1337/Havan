@@ -1,6 +1,6 @@
 # ADR-004 — Using TuyaOpen as a reference for our device SDK
 
-**Status:** accepted
+**Status:** accepted; steps 1–3 implemented, step 4 open
 **Context:** Phase 7 is "reference implementation done, certification checklist pending". The gap is
 not protocol — `sdk/c` is a 250-line codec with 45 checks — it is everything a vendor needs to *ship*
 a device: a porting boundary, provisioning, OTA verification, storage, watchdog. TuyaOpen is a mature
@@ -59,6 +59,24 @@ missing:
   against a different cloud, and every future upstream change would be a merge we did not ask for.
   Structure and ideas are borrowed; code is ours.
 - **Their HMAC trust model** for OTA, per item 3.
+
+## What landed
+
+- **`sdk/c/haven_port.h`** — the boundary: `connect`/`disconnect`/`subscribe`/`publish`/
+  `next_message`, plus `now_ms`, `random_u32`, `ota_verify`, `ota_install`, `reboot`. No POSIX, no
+  sockets, no TLS: a vendor points these at their platform, a test points them at a fake.
+- **`sdk/c/haven_runtime.c`** — the loop, once: connect with the device id and secret, subscribe
+  per connection, last will on the shadow topic, exponential backoff with quarter-width jitter
+  capped at 60 s, and OTA applied only after `ota_verify` approves the image.
+- **`sdk/c/tests/test_runtime.c`** — nine checks against a fake port, no broker or board needed.
+  Two of them are regressions: a reconnect must be preceded by a disconnect (the reused-TLS-client
+  bug), and fifty ticks must produce one subscribe, not fifty.
+- `make sdk` runs the 46 protocol checks and the nine runtime checks; the ESP-IDF component
+  compiles both files.
+
+**Not yet wired into a device.** The ESP8266 sketch still runs its own loop; adopting the runtime
+there means implementing `haven_port` over `PubSubClient` + BearSSL, which is the next step and is
+worth doing with the board attached, because that is the only way to prove the port end to end.
 
 ## Consequences
 
