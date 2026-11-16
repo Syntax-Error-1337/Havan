@@ -49,8 +49,15 @@ help: ## show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(firstword $(MAKEFILE_LIST)) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
+.PHONY: env-check
+env-check: ## do the credentials agree with each other and with the broker config?
+	@scripts/env-check.sh
+
 .PHONY: up
-up: broker-tls ## start postgres, valkey, vernemq, seaweedfs
+# The check runs first because the failure it catches is silent: a mismatched MQTT token starts
+# a stack whose broker closes every connection, and the only symptom is "Connection closed by
+# peer abruptly" from a service that looks healthy.
+up: env-check broker-tls ## start postgres, valkey, vernemq, seaweedfs
 	docker compose -f deploy/docker-compose.yml up -d
 	@echo "waiting for postgres..." && \
 	  until docker exec haven-db pg_isready -U haven -d haven >/dev/null 2>&1; do sleep 1; done
