@@ -24,5 +24,6 @@ pub mod privacy;
 pub mod scenes;
 pub mod serials;
 pub mod solar;
+pub mod sso;
 pub mod vendor_team;
 pub mod webhook;

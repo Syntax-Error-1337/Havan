@@ -16,6 +16,7 @@ pub mod ota;
 pub mod pairing;
 pub mod privacy;
 pub mod scenes;
+pub mod sso;
 pub mod stream;
 pub mod vendor;
 pub mod vendor_team;

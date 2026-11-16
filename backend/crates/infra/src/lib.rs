@@ -21,6 +21,7 @@ pub use repos::ota::PgOta;
 pub use repos::privacy::PgPrivacy;
 pub use repos::scenes::PgScenes;
 pub use repos::serials::PgSerials;
+pub use repos::sso::PgSso;
 pub use repos::support::PgSupport;
 pub use repos::vendor_team::PgVendorTeam;
 pub use repos::webhook::PgWebhooks;
