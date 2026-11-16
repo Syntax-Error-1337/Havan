@@ -3,7 +3,7 @@ use axum::Router;
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use domain::notification::{Notification, NotificationRepo, PushRepo};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -20,10 +20,12 @@ pub fn router() -> Router<AppState> {
         .route("/notifications/{id}/read", post(mark_read))
         // Where a phone tells the platform how to reach it. Without this, an alert is a row
         // in a table and a badge on a screen nobody is looking at.
-        .route(
-            "/notifications/tokens",
-            post(register_token).delete(remove_token),
-        )
+        // Register on the bare path, remove by path segment: the app calls
+        // `DELETE /notifications/tokens/{token}` on sign-out, and a handler that extracts `Path`
+        // from a route with no parameter answers 500 with axum's own words in the body. The route
+        // and the handler disagreed, and only a request could tell.
+        .route("/notifications/tokens", post(register_token))
+        .route("/notifications/tokens/{token}", delete(remove_token))
 }
 
 #[derive(Deserialize)]
@@ -141,16 +143,13 @@ async fn remove_token(
     auth: Auth,
     Path(token): Path<String>,
 ) -> ApiResult<StatusCode> {
-    let removed = state
+    // A token that is not there is what a second sign-out looks like, so the answer is the same
+    // either way — an app calling this after its row is already gone has done nothing wrong.
+    let _ = state
         .notifications
         .remove_token(auth.user.id, &token)
         .await
         .map_err(ApiError)?;
 
-    Ok(if removed {
-        StatusCode::NO_CONTENT
-    } else {
-        // Removing a token that is not there is what a second sign-out looks like.
-        StatusCode::NO_CONTENT
-    })
+    Ok(StatusCode::NO_CONTENT)
 }
