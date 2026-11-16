@@ -134,7 +134,10 @@ async fn the_outbox_delivers_once_then_stops_being_due() {
     .await
     .expect("outbox");
 
-    let due = hooks.due(10).await.expect("due");
+    // `due` is the global queue and this database is shared by the suite, so a small limit means the
+    // assertion depends on how many rows other tests left behind — which is how this failed once
+    // twelve undelivered rows existed. Ask for enough that the test is about its own row.
+    let due = hooks.due(500).await.expect("due");
     let mine = due.iter().find(|d| d.id == id).expect("our row");
     assert_eq!(mine.secret, secret);
     assert_eq!(mine.event, "licence.activated");

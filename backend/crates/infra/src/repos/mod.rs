@@ -19,6 +19,7 @@ pub mod licence;
 pub mod notification;
 pub mod ota;
 pub mod pairing;
+pub mod platform_health;
 pub mod privacy;
 pub mod scenes;
 pub mod serials;

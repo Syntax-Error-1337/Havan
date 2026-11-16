@@ -19,6 +19,7 @@ pub use repos::history::PgHistory;
 pub use repos::licence::PgLicence;
 pub use repos::notification::PgNotifications;
 pub use repos::ota::PgOta;
+pub use repos::platform_health::PgPlatformHealth;
 pub use repos::privacy::PgPrivacy;
 pub use repos::scenes::PgScenes;
 pub use repos::serials::PgSerials;

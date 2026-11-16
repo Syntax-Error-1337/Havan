@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useOverview } from '../entities/admin';
 import { AdminError, getAdminToken, setAdminToken } from '../shared/api/admin';
 import { AdminBillingPage } from '../pages/admin/AdminBillingPage';
+import { AdminHealthPage } from '../pages/admin/AdminHealthPage';
 import { AdminCertificationPage } from '../pages/admin/AdminCertificationPage';
 import { AdminLoginPage } from '../pages/admin/AdminLoginPage';
 import { AdminVendorsPage } from '../pages/admin/AdminVendorsPage';
@@ -50,6 +51,9 @@ export function AdminShell() {
           <Link to="/admin" className="muted">
             Vendors
           </Link>
+          <Link to="/admin/health" className="muted">
+            Health
+          </Link>
           <Link to="/admin/certification" className="muted">
             Certification
           </Link>
@@ -85,6 +89,7 @@ export function AdminShell() {
             be matched against "/admin" itself and silently render nothing. */}
         <Routes>
           <Route path="/admin" element={<AdminVendorsPage />} />
+          <Route path="/admin/health" element={<AdminHealthPage />} />
           <Route path="/admin/certification" element={<AdminCertificationPage />} />
           <Route path="/admin/billing" element={<AdminBillingPage />} />
           <Route path="/admin/login" element={<Navigate to="/admin" replace />} />

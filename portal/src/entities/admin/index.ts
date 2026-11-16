@@ -7,6 +7,7 @@ export const adminKeys = {
   overview: ['admin', 'overview'] as const,
   vendors: ['admin', 'vendors'] as const,
   queue: ['admin', 'certification'] as const,
+  health: ['admin', 'health'] as const,
 };
 
 export type VendorRow = {
@@ -93,6 +94,27 @@ export function usePatchVendor() {
       qc.invalidateQueries({ queryKey: adminKeys.vendors });
       qc.invalidateQueries({ queryKey: adminKeys.overview });
     },
+  });
+}
+
+export type PlatformHealth = {
+  devices: number;
+  online: number;
+  seen_recently: number;
+  points_last_hour: number;
+  commands_last_hour: number;
+  undelivered: number;
+  undelivered_notifications: number;
+  webhook_backlog: number;
+};
+
+export function useHealth() {
+  return useQuery({
+    queryKey: adminKeys.health,
+    queryFn: () => adminRequest<PlatformHealth>('/ops/health'),
+    retry: false,
+    // A health page that shows numbers from a minute ago is a health page that lies at 3am.
+    refetchInterval: 15_000,
   });
 }
 

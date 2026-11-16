@@ -19,6 +19,7 @@ pub fn router() -> Router<AppState> {
         .route("/ops/vendors/{id}", get(one).patch(patch))
         .route("/ops/certification/queue", get(queue))
         .route("/ops/overview", get(overview))
+        .route("/ops/health", get(health))
 }
 
 /// `GET /v1/ops/certification/queue` — products waiting for our sign-off, oldest first.
@@ -33,6 +34,17 @@ async fn queue(
     super::ops::require_ops(&state, &headers, &peer)?;
 
     Ok(Json(state.cert_queue.pending(100).await.map_err(ApiError)?))
+}
+
+/// `GET /v1/ops/health` — the platform's own view of itself, for the console's health page.
+async fn health(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    peer: Peer,
+) -> ApiResult<Json<infra::repos::platform_health::PlatformHealth>> {
+    super::ops::require_ops(&state, &headers, &peer)?;
+
+    Ok(Json(state.health.read().await.map_err(ApiError)?))
 }
 
 /// `GET /v1/ops/overview` — the four numbers the console opens with.

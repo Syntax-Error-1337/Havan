@@ -27,6 +27,34 @@ impl PgDevices {
     pub fn new(pg: Pg) -> Self {
         Self { pg }
     }
+
+    /// Mark devices offline once they have been silent longer than `silence_seconds`.
+    ///
+    /// `online` was only ever set, never cleared: a device that died without a will message —
+    /// a power cut, a dead radio, a simulator that was killed — read as online for as long as the
+    /// row existed. The health page caught 99 devices "online" whose newest report was four days
+    /// old, which is precisely the lie this method exists to stop telling.
+    ///
+    /// Cross-tenant by nature (a sweep is not scoped to a home), so it runs as the system.
+    pub async fn age_out_stale(&self, silence_seconds: i64) -> Result<i64, AppError> {
+        let mut tx = self
+            .pg
+            .scoped(&kernel::TenantCtx::system("presence-sweep"))
+            .await?;
+        let n = sqlx::query(
+            "UPDATE devices SET online = false
+              WHERE online
+                AND (last_seen_at IS NULL OR last_seen_at < now() - make_interval(secs => $1::int))",
+        )
+        .bind(silence_seconds as i32)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+        tx.commit().await.map_err(db)?;
+
+        Ok(n as i64)
+    }
 }
 
 fn db(e: sqlx::Error) -> AppError {

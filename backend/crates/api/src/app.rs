@@ -51,6 +51,7 @@ pub struct AppState {
     pub security: Arc<infra::PgVendorSecurity>,
     pub vendors: Arc<infra::PgVendorAdmin>,
     pub cert_queue: Arc<infra::PgCertificationQueue>,
+    pub health: Arc<infra::PgPlatformHealth>,
     pub fleet: Arc<domain::fleet::FleetService<infra::PgFleet>>,
     pub audit: Arc<domain::audit::AuditService<infra::PgAudit>>,
     /// The device CA. Created on first use rather than at boot, so a machine that only
@@ -98,6 +99,7 @@ impl AppState {
         let security = Arc::new(infra::PgVendorSecurity::new(pg.clone()));
         let vendors = Arc::new(infra::PgVendorAdmin::new(pg.clone()));
         let cert_queue = Arc::new(infra::PgCertificationQueue::new(pg.clone()));
+        let health = Arc::new(infra::PgPlatformHealth::new(pg.clone()));
         let fleet = Arc::new(domain::fleet::FleetService::new(Arc::new(
             infra::PgFleet::new(pg.clone()),
         )));
@@ -133,6 +135,7 @@ impl AppState {
             security,
             vendors,
             cert_queue,
+            health,
             fleet,
             audit,
             ca: Arc::new(tokio::sync::OnceCell::new()),

@@ -219,6 +219,27 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Presence. A device that dies without a will message — power cut, dead radio, a simulator
+    // killed at the terminal — stays flagged online forever unless something ages it out, and the
+    // health page then reports a fleet that is half imaginary.
+    //
+    // Ninety seconds of silence is two missed keepalives: long enough that one dropped packet does
+    // not flap a device offline, short enough that the number means something.
+    {
+        let devices = infra::PgDevices::new(pg.clone());
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                tick.tick().await;
+                match devices.age_out_stale(90).await {
+                    Ok(0) => {}
+                    Ok(n) => info!(devices = n, "marked silent devices offline"),
+                    Err(e) => warn!(error = ?e, "presence sweep failed"),
+                }
+            }
+        });
+    }
+
     // Erased accounts, once their retention window has passed. Hourly, because the window is
     // measured in days and a lighter tick would only make the backlog look bigger than it is.
     //

@@ -113,6 +113,17 @@ test('billing grants licences and issues a month', async ({ page }) => {
   await expect(page.getByTestId('issued-invoice')).toContainText(/issued|draft/);
 });
 
+test('health answers "is anything talking to us" without interpreting a log', async ({ page }) => {
+  await page.getByRole('link', { name: 'Health' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Health' })).toBeVisible();
+  await expect(page.getByText('Devices')).toBeVisible();
+  // The two numbers that disagree when a device holds a stale connection — the fault the platform's
+  // own `online` flag used to hide by never clearing it.
+  await expect(page.getByText('Heard in 15 min')).toBeVisible();
+  await expect(page.getByText('Undelivered commands')).toBeVisible();
+});
+
 test('the console fits a phone viewport', async ({ page }) => {
   await page.setViewportSize({ width: 420, height: 900 });
   await page.goto('/admin');
