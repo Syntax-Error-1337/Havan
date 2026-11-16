@@ -11,17 +11,23 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 |---|---|---|
 | Build and tests | `make check` | fmt, clippy `-D warnings`, the whole suite as `haven_app` on `haven_test` (46 binaries) |
 | Customer journey | `make e2e` | register → home → ticket → forged ticket refused → claim → replay refused → command, over HTTP |
-| Licences | `make licences` | 342 crates, 1 068 node packages, none outside the allowlist (ADR-002) |
+| Licences | `make licences` | 365 crates, 1 035 node packages, none outside the allowlist (ADR-002) |
 | Read performance | `make bench` | timings against `docs/08-PERFORMANCE.md` |
 | Ingest | `make load RATE=600 SECONDS=20` | zero loss at whatever the host's generator reaches (~330/s single, 522/s with two); the loss column is the assertion, not the rate |
 | Degradation | `make chaos` | 20/20: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered, `/ops/health` refuses rather than showing an empty platform |
-| App | `cd app && npx tsc --noEmit && npm test` | 70 tests, 15 suites |
+| App | `cd app && npx tsc --noEmit && npm test` | 81 tests, 17 suites (the script passes `--forceExit`; see the note below) |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 59 tests |
-| Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 39 tests per project against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
+| Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 40 tests per project (80 total) against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
 | Conformance | `make conformance VENDOR=<uuid> PRODUCT=<uuid>` | 7/7: a real device claims, connects, reports, is commanded, acks, reconnects, and an unknown serial is handled the way the product declares |
 
 Two of these are worth running twice: `make chaos` because it stops containers, and
 `make load` because a first run after a long idle can time out on a cold cache.
+
+**The app suite leaks timers.** Run plain, `jest` finishes its assertions and then reports seven
+suites failed because a worker would not exit; the failures are teardown, not assertions. `npm test`
+therefore passes `--forceExit`, which makes the exit code mean what it looks like. That is a
+papering-over, not a fix: the leak is React Query's timers outliving the test, and the honest repair
+is unmounting in `afterEach` — worth doing, not worth blocking a release on.
 
 ## 1. The phone pass — Phase 4's missing acceptance
 

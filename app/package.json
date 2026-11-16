@@ -48,7 +48,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "jest",
+    "test": "jest --forceExit",
     "test:watch": "jest --watch",
     "start:mcp": "EXPO_UNSTABLE_MCP_SERVER=1 expo start"
   },
