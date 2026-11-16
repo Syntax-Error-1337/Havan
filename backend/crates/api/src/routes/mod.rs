@@ -14,6 +14,7 @@ pub mod notifications;
 pub mod ops;
 pub mod ota;
 pub mod pairing;
+pub mod privacy;
 pub mod scenes;
 pub mod stream;
 pub mod vendor;

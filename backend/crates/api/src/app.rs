@@ -43,6 +43,7 @@ pub struct AppState {
     pub scenes: Arc<PgScenes>,
     pub serials: Arc<PgSerials>,
     pub licences: Arc<infra::PgLicence>,
+    pub privacy: Arc<infra::PgPrivacy>,
     pub fleet: Arc<domain::fleet::FleetService<infra::PgFleet>>,
     pub audit: Arc<domain::audit::AuditService<infra::PgAudit>>,
     /// The device CA. Created on first use rather than at boot, so a machine that only
@@ -82,6 +83,7 @@ impl AppState {
         let scenes = Arc::new(PgScenes::new(pg.clone()));
         let serials = Arc::new(PgSerials::new(pg.clone()));
         let licences = Arc::new(infra::PgLicence::new(pg.clone()));
+        let privacy = Arc::new(infra::PgPrivacy::new(pg.clone()));
         let fleet = Arc::new(domain::fleet::FleetService::new(Arc::new(
             infra::PgFleet::new(pg.clone()),
         )));
@@ -109,6 +111,7 @@ impl AppState {
             scenes,
             serials,
             licences,
+            privacy,
             fleet,
             audit,
             ca: Arc::new(tokio::sync::OnceCell::new()),
@@ -132,6 +135,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::scenes::router())
         .merge(routes::licence::router())
         .merge(routes::certification::router())
+        .merge(routes::privacy::router())
         .route(
             "/devices/{id}/history",
             axum::routing::get(routes::history::history),

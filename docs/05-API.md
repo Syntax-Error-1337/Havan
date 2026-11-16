@@ -209,6 +209,19 @@ aborting the burst.
 | GET | `/catalog/products?product_key=` | radar metadata by product hash |
 | GET | `/stream` | WebSocket upgrade |
 
+### Your data, and leaving
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/me/export` | everything we hold about the caller, as a download: profile, homes, rooms, devices and their last state, scenes, automations, alerts, and the last 7 days of telemetry (≤5000 rows) |
+| DELETE | `/me` | erases the account: memberships, alerts, sessions, push tokens, and homes nobody else lives in; anonymises the person |
+
+An export contains the caller's data only — another member of the same home appears as a role and
+a count, never as a person. An erasure is refused with **409** while the caller still owns a home
+somebody else lives in, because deleting it would evict a stranger; transfer ownership first. Each
+request leaves a receipt in `data_requests`, which survives the account, so "when was this erased"
+stays answerable.
+
 ## Vendor (portal)
 
 Scoped under the vendor of the authenticated principal; a vendor user cannot

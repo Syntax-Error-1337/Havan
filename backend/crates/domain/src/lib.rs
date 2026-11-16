@@ -20,6 +20,7 @@ pub mod mqtt_acl;
 pub mod notification;
 pub mod ota;
 pub mod pairing;
+pub mod privacy;
 pub mod scenes;
 pub mod serials;
 pub mod solar;
