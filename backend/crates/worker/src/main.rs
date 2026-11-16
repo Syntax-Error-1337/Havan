@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tracing::{info, warn};
-use worker::{automation, ingest, ota};
+use worker::{automation, ingest, ota, webhooks};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -69,6 +69,12 @@ async fn main() -> anyhow::Result<()> {
         runner.clone(),
         ota_repo.clone(),
     ));
+
+    // Outbound events: rows written by the request that caused them, delivered here.
+    {
+        let pg = pg.clone();
+        tokio::spawn(async move { webhooks::run(pg).await });
+    }
 
     // The sweeper is the other half of a command's life: a device that never
     // answers must still reach a settled state, or the app spins forever.

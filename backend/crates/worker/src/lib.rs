@@ -8,3 +8,4 @@ pub mod automation;
 pub mod ingest;
 pub mod ota;
 pub mod push;
+pub mod webhooks;

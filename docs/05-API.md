@@ -249,6 +249,8 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | GET | `/vendor/sdk` | SDK versions + download links |
 | GET/PUT | `/vendor/branding` | white-label app config |
 | GET | `/vendor/audit` | |
+| GET/POST | `/vendor/webhooks` | `{url, events[]}` → `{id, secret}` once; events: `licence.activated`, `device.claimed`, `firmware.failed` |
+| DELETE | `/vendor/webhooks/{id}` | |
 | GET | `/vendor/licences?limit=` | `{summary:{granted,used,remaining,activated_this_period,granted_value_cents,used_value_cents,unit_price_cents,currency}, activations:[…]}` |
 
 Key issuance for mTLS lives here too: `POST /vendor/ca/intermediate` returns a
@@ -284,6 +286,21 @@ because skipping the test is the whole thing the gate exists to prevent. Same-st
 no-op, so a retried POST is not an error. Revoking stops **new** activations and leaves
 devices already in homes alone; a revoked product has to be submitted again, which is what
 makes a revoke mean something rather than a toggle.
+
+### Outbound webhooks
+
+A subscription is a URL, a set of events and a secret. Deliveries carry
+`x-haven-event`, `x-haven-timestamp`, `x-haven-signature: sha256=<hex>` and
+`x-haven-delivery` (stable per event, so a retry is not a second event).
+
+The signature is HMAC-SHA256 over `<timestamp>.<body>` — the timestamp is inside the signature, so
+a captured delivery cannot be replayed after the receiver's window closes. Verify with the secret,
+and treat anything older than a few minutes as failed.
+
+Events are written to an outbox **in the same transaction** as the fact that caused them, so a slow
+or dead endpoint never slows a pairing. Delivery retries with exponential backoff, and stops after
+twelve attempts with the last error kept. `http://` endpoints are refused unless they are localhost,
+because the secret travels with every request.
 
 ### Device licences
 

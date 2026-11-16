@@ -22,6 +22,7 @@ pub mod scenes;
 pub mod serials;
 pub mod support;
 pub mod vendor_team;
+pub mod webhook;
 
 pub use audit::PgAudit;
 pub use automation::PgAutomation;

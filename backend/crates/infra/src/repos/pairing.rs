@@ -57,6 +57,30 @@ impl PgPairing {
         .execute(&mut **tx)
         .await
         .map_err(db)?;
+
+        // The outbox row is written in this transaction, with the activation: a vendor is told
+        // about a licence exactly when the licence is consumed, and delivery happens later so a
+        // slow endpoint cannot slow down a customer's pairing.
+        sqlx::query(
+            r#"INSERT INTO webhook_outbox (id, vendor_id, event, payload)
+               SELECT gen_random_uuid(), $1, 'licence.activated', jsonb_build_object(
+                          'serial', $3::text,
+                          'product_id', $2::uuid,
+                          'unit_price_cents', $4::int,
+                          'currency', $5::text)
+                 FROM vendor_webhooks w
+                WHERE w.vendor_id = $1 AND w.active
+                  AND 'licence.activated' = ANY (w.events)"#,
+        )
+        .bind(vendor_id)
+        .bind(product_id)
+        .bind(serial)
+        .bind(unit_price_cents)
+        .bind(currency)
+        .execute(&mut **tx)
+        .await
+        .map_err(db)?;
+
         Ok(())
     }
 }

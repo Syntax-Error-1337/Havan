@@ -2,9 +2,10 @@ use axum::Json;
 use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use domain::catalog::Product;
 use domain::serials::SerialRepo;
+use domain::webhook::WebhookRepo;
 use protocol::thing_model::ThingModel;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -30,6 +31,9 @@ pub fn router() -> Router<AppState> {
         .route("/vendor/analytics", get(analytics))
         // What a vendor hands their support desk: allowlisted, never a redacted row.
         .route("/vendor/support-bundle", get(support_bundle))
+        // Outbound events: what our systems tell theirs.
+        .route("/vendor/webhooks", get(webhooks).post(subscribe_webhook))
+        .route("/vendor/webhooks/{id}", delete(unsubscribe_webhook))
         // Who did what. Read-only, newest first, keyset-paginated.
         .route("/vendor/audit", get(audit))
 }
@@ -253,6 +257,87 @@ async fn fleet(
             .await
             .map_err(ApiError)?,
     ))
+}
+
+async fn webhooks(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+) -> ApiResult<Json<Vec<domain::webhook::WebhookSubscription>>> {
+    Ok(Json(
+        state
+            .webhooks
+            .list(vendor.vendor_id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct WebhookBody {
+    url: String,
+    events: Vec<String>,
+}
+
+/// `POST /vendor/webhooks` — the secret comes back once, like an API key.
+async fn subscribe_webhook(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    Json(body): Json<WebhookBody>,
+) -> ApiResult<Json<serde_json::Value>> {
+    if body.events.is_empty() {
+        return Err(ApiError(kernel::AppError::validation(
+            "choose at least one event",
+        )));
+    }
+    if let Some(unknown) = body
+        .events
+        .iter()
+        .find(|e| !domain::webhook::is_known_event(e))
+    {
+        return Err(ApiError(kernel::AppError::validation(format!(
+            "unknown event: {unknown}"
+        ))));
+    }
+
+    let (id, secret) = state
+        .webhooks
+        .create(vendor.vendor_id, body.url.trim(), body.events)
+        .await
+        .map_err(ApiError)?;
+
+    state
+        .audit
+        .record(
+            domain::audit::AuditEntry::new(
+                vendor.vendor_id,
+                domain::audit::ActorKind::User,
+                "webhook.created",
+                "vendor_webhook",
+            )
+            .by(vendor.user_id)
+            .on(id)
+            .with_request(&vendor.request_id),
+        )
+        .await;
+
+    Ok(Json(serde_json::json!({
+        "id": id,
+        "secret": secret,
+        "note": "shown once; verify deliveries with it and keep it out of logs"
+    })))
+}
+
+async fn unsubscribe_webhook(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    state
+        .webhooks
+        .delete(vendor.vendor_id, id)
+        .await
+        .map_err(ApiError)?;
+    Ok(Json(serde_json::json!({ "removed": id })))
 }
 
 /// `GET /vendor/support-bundle?device_id=` — an allowlisted bundle for a support ticket.

@@ -23,6 +23,7 @@ pub use repos::scenes::PgScenes;
 pub use repos::serials::PgSerials;
 pub use repos::support::PgSupport;
 pub use repos::vendor_team::PgVendorTeam;
+pub use repos::webhook::PgWebhooks;
 pub use repos::{
     PgAudit, PgAutomation, PgCatalog, PgDevices, PgHomes, PgIdentity, PgIngest, PgPairing,
 };

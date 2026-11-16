@@ -25,3 +25,4 @@ pub mod scenes;
 pub mod serials;
 pub mod solar;
 pub mod vendor_team;
+pub mod webhook;
