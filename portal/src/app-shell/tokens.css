@@ -352,3 +352,18 @@ select.input {
 .input:user-invalid:focus {
   outline-color: color-mix(in srgb, var(--danger) 45%, transparent);
 }
+
+/* Motion is a preference, not a default. Nothing in the portal animates today, so this changes
+   nothing now — it is here so the first `transition` someone adds cannot ignore the setting that
+   says not to. `!important` is the accepted form here: a component's inline style must not be able
+   to override a user's accessibility choice. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

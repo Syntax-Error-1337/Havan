@@ -122,6 +122,10 @@ check: testdb ## fmt + clippy + tests + no secrets in the index
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	$(CARGO_TEST) test --workspace
 
+.PHONY: audit
+audit: ## dependency advisories: shipped code must be clean, tooling must be clean at high
+	bash scripts/audit.sh
+
 .PHONY: test
 test: testdb ## tests only
 	$(CARGO_TEST) test --workspace

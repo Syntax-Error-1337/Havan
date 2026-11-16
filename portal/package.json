@@ -27,8 +27,8 @@
     "@vitejs/plugin-react-swc": "^3.7.2",
     "jsdom": "^31.0.0",
     "typescript": "~5.7.2",
-    "vite": "^6.0.7",
-    "vitest": "^2.1.9"
+    "vite": "^6.4.6",
+    "vitest": "^5.1.0"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,

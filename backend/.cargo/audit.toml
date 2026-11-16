@@ -1,0 +1,36 @@
+# Advisory exceptions, each with the reason it is safe to carry.
+#
+# This file is a claim about the dependency graph, not a mute button. An entry here says: the
+# advisory is real, we know why it does not reach us, and here is what would change the answer.
+# Anything without a paragraph like that belongs in the build as a failure.
+
+[advisories]
+ignore = [
+  # ---- Not in the build graph -------------------------------------------------------------
+  # `cargo tree -i rsa` and `cargo tree -i libsqlite3-sys` both report nothing to print: the
+  # crates are in Cargo.lock because sqlx resolves every driver it can be built with, but this
+  # workspace only enables Postgres. Nothing links them, so nothing calls them.
+  # Revisit if a sqlx driver other than Postgres is enabled.
+  "RUSTSEC-2023-0071", # rsa 0.9.10, Marvin attack — MySQL auth path only
+  "RUSTSEC-2026-0459", # libsqlite3-sys, C SQLite CVE — sqlite driver only
+
+  # ---- Pinned upstream, no fix to take --------------------------------------------------
+  # rumqttc 0.25.1 is the newest release and declares `rustls-webpki = "0.102.8"` as a required
+  # dependency of its `use-rustls` feature, which is the only reason we can speak TLS to the
+  # broker at all. The 0.102 line is affected; the fixes exist only in 0.103, which rumqttc does
+  # not accept. So the choice is this dependency or no TLS, and TLS with a stale verifier beats
+  # no TLS.
+  #
+  # What that means concretely: our device connections verify against a private CA that we issue
+  # from (`.haven/ca`), one intermediate at most, no CRLs and no name constraints. The relevant
+  # advisory here is RUSTSEC-2026-0382 (accepting distrusted intermediates); it matters most for
+  # chains through a public CA, which we do not use. If the control plane ever trusts a public
+  # chain, this exception stops being acceptable.
+  #
+  # Revisit when rumqttc adopts rustls-webpki 0.103: `cargo tree -i rustls-webpki`.
+  "RUSTSEC-2026-0104", # webpki 0.102: panic parsing a CRL (we pass no CRLs)
+  "RUSTSEC-2026-0098", # webpki 0.102: URI name constraints accepted (private CA issues none)
+  "RUSTSEC-2026-0099", # webpki 0.102: wildcard name constraints accepted (same)
+  "RUSTSEC-2026-0049", # webpki 0.102: CRL distribution-point matching (we pass no CRLs)
+  "RUSTSEC-2026-0382", # webpki 0.102: distrusted intermediates accepted (private chain)
+]
