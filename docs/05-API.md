@@ -261,6 +261,11 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | GET/POST | `/vendor/webhooks` | `{url, events[]}` → `{id, secret}` once; events: `licence.activated`, `device.claimed`, `firmware.failed` |
 | DELETE | `/vendor/webhooks/{id}` | |
 | GET | `/vendor/licences?limit=` | `{summary:{granted,used,remaining,activated_this_period,granted_value_cents,used_value_cents,unit_price_cents,currency}, activations:[…]}` |
+| GET | `/vendor/invoices?period=YYYY-MM` | that month as a `draft`, or the frozen document once issued |
+| GET | `/vendor/invoices/{period}` | the same, addressed by month |
+| GET | `/ops/invoices?vendor_id=&period=` | one vendor's month, live or frozen |
+| POST | `/ops/invoices` | `{vendor_id, period}` → freezes the month; repeating returns the first document |
+| GET | `/ops/invoices.csv?vendor_id=&period=` | line-per-device CSV with a TOTAL row, for a finance import |
 
 Key issuance for mTLS lives here too: `POST /vendor/ca/intermediate` returns a
 CSR-signing endpoint and the vendor's CA cert; the vendor keeps the private key.
@@ -281,6 +286,23 @@ ingest lag, per-vendor token buckets.
 | POST | `/ops/conformance/sessions` | `{vendor_id, product_id}` → `{product_key, serial, secret, ticket, home_id, allow_unknown_serial}` |
 | GET | `/ops/devices/{id}/state?vendor_id=` | the platform's own view: online, last seen, per-point values, recent commands |
 | POST | `/ops/conformance/devices/{id}/commands?vendor_id=` | `{code, value}` → issue a command to a device **in the conformance lab only** |
+
+### Invoices
+
+A month's activations are a **draft** until somebody issues them, and then they are a document. The
+draft is computed from `licence_activations` on every read, so it is always current; issuing copies
+it into `licence_invoices` and `licence_invoice_lines`, and from then on the preview returns the
+frozen copy.
+
+That distinction is the whole design. A preview that moves is honest — a device activated late
+belongs to that month. An invoice that moves is a bill changing under the person who approved it, so
+it cannot: a device activated after the issue belongs to the next period, and the ledger still counts
+it (`summary.used` is unchanged by issuing).
+
+Issuing is idempotent (`ON CONFLICT (vendor_id, period) DO NOTHING`, then return the existing
+document), because a nightly retry or two operators clicking at once must not produce two bills. A
+month that has not started is refused: an invoice for devices that are not activated yet is an
+invoice for an intention.
 
 ### Conformance
 

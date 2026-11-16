@@ -82,6 +82,154 @@ async fn seed(f: &Fixture) {
     .expect("product");
 }
 
+/// Two claimed devices, a grant to pay for them, and the current month as the period to invoice.
+async fn two_activations(f: &Fixture, unit_price_cents: i32) -> String {
+    let licences = infra::PgLicence::new(f.pg.clone());
+    let pairing = infra::PgPairing::new(f.pg.clone());
+    let serials = infra::PgSerials::new(f.pg.clone());
+
+    serials
+        .add(
+            f.vendor_id,
+            f.product_id,
+            &normalise(vec!["INV-1".to_string(), "INV-2".to_string()]),
+        )
+        .await
+        .expect("manifest");
+
+    licences
+        .grant(&NewGrant {
+            vendor_id: f.vendor_id,
+            quantity: 10,
+            unit_price_cents,
+            currency: None,
+            expires_in_days: None,
+            note: None,
+        })
+        .await
+        .expect("grant");
+
+    for serial in ["INV-1", "INV-2"] {
+        let take = pairing
+            .take_serial(f.product_id, serial, false)
+            .await
+            .expect("take");
+        assert_eq!(take, SerialTake::Taken, "claiming {serial}");
+    }
+
+    domain::licence::period_of(time::OffsetDateTime::now_utc())
+}
+
+#[tokio::test]
+async fn a_draft_counts_this_months_activations_at_their_own_price() {
+    let Some(f) = fixture().await else { return };
+    seed(&f).await;
+    let period = two_activations(&f, 249).await;
+
+    let licences = infra::PgLicence::new(f.pg.clone());
+    let invoice = licences
+        .invoice_preview(f.vendor_id, &period)
+        .await
+        .expect("preview");
+
+    assert_eq!(invoice.status, "draft");
+    assert_eq!(invoice.quantity, 2);
+    // The price comes from the activation rows, not from today's grant: changing the price
+    // tomorrow cannot rewrite yesterday's bill.
+    assert_eq!(invoice.amount_cents, 498);
+    assert_eq!(invoice.currency, "USD");
+    assert_eq!(invoice.lines.len(), 2);
+    assert!(invoice.issued_at.is_none());
+    assert!(invoice.lines.iter().all(|l| l.unit_price_cents == 249));
+}
+
+#[tokio::test]
+async fn an_issued_month_stops_moving() {
+    let Some(f) = fixture().await else { return };
+    seed(&f).await;
+    let period = two_activations(&f, 249).await;
+
+    let licences = infra::PgLicence::new(f.pg.clone());
+    let pairing = infra::PgPairing::new(f.pg.clone());
+    let serials = infra::PgSerials::new(f.pg.clone());
+
+    let issued = licences
+        .invoice_issue(f.vendor_id, &period, None)
+        .await
+        .expect("issue");
+    assert_eq!(issued.status, "issued");
+    assert_eq!(issued.quantity, 2);
+
+    // Another device goes live in the same month, after the invoice was sent.
+    serials
+        .add(
+            f.vendor_id,
+            f.product_id,
+            &normalise(vec!["INV-3".to_string()]),
+        )
+        .await
+        .expect("manifest");
+    let take = pairing
+        .take_serial(f.product_id, "INV-3", false)
+        .await
+        .expect("take");
+    assert_eq!(take, SerialTake::Taken);
+
+    let after = licences
+        .invoice_preview(f.vendor_id, &period)
+        .await
+        .expect("preview");
+
+    // The document is what was sent; the third device belongs to the next one. An invoice that
+    // grew after being approved is a bill changing under the person who approved it.
+    assert_eq!(after.status, "issued");
+    assert_eq!(after.quantity, 2);
+    assert_eq!(after.amount_cents, 498);
+    assert_eq!(after.issued_at, issued.issued_at);
+
+    // And the ledger still knows about it, which is the difference between "not invoiced" and
+    // "not activated".
+    let summary = licences.summary(f.vendor_id).await.expect("summary");
+    assert_eq!(summary.used, 3);
+}
+
+#[tokio::test]
+async fn issuing_twice_returns_the_first_document() {
+    let Some(f) = fixture().await else { return };
+    seed(&f).await;
+    let period = two_activations(&f, 249).await;
+
+    let licences = infra::PgLicence::new(f.pg.clone());
+    let first = licences
+        .invoice_issue(f.vendor_id, &period, None)
+        .await
+        .expect("first");
+    let second = licences
+        .invoice_issue(f.vendor_id, &period, None)
+        .await
+        .expect("second");
+
+    // A nightly retry, or two operators clicking at once, must not produce two bills.
+    assert_eq!(first.issued_at, second.issued_at);
+    assert_eq!(second.quantity, 2);
+}
+
+#[tokio::test]
+async fn a_month_that_has_not_started_cannot_be_invoiced() {
+    let Some(f) = fixture().await else { return };
+    seed(&f).await;
+
+    let licences = infra::PgLicence::new(f.pg.clone());
+    let future =
+        domain::licence::period_of(time::OffsetDateTime::now_utc() + time::Duration::days(40));
+    let err = licences
+        .invoice_issue(f.vendor_id, &future, None)
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.code_kind(), ErrorCode::ValidationFailed);
+}
+
 #[tokio::test]
 async fn a_vendor_with_no_licence_cannot_activate_a_device() {
     let Some(f) = fixture().await else { return };

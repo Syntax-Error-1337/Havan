@@ -1,4 +1,6 @@
-use domain::licence::{ActivationRow, LicenceRepo, LicenceSummary, NewGrant};
+use domain::licence::{
+    ActivationRow, Invoice, InvoiceLine, LicenceRepo, LicenceSummary, NewGrant, period_bounds,
+};
 use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
 
@@ -155,5 +157,239 @@ impl LicenceRepo for PgLicence {
         tx.commit().await.map_err(db)?;
 
         Ok(id)
+    }
+
+    async fn invoice_preview(&self, vendor_id: Uuid, period: &str) -> Result<Invoice, AppError> {
+        let (start, end) = period_bounds(period)?;
+        let mut tx = self.vendor_tx(vendor_id).await?;
+
+        // A frozen document wins over the live query: if this month has been issued, the answer is
+        // what we sent, not what the ledger says now.
+        let issued: Option<(time::OffsetDateTime, String, i32, i64)> = sqlx::query_as(
+            "SELECT issued_at, currency, quantity, amount_cents
+               FROM licence_invoices WHERE vendor_id = $1 AND period = $2",
+        )
+        .bind(vendor_id)
+        .bind(period)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let lines: Vec<(String, String, i32, time::OffsetDateTime)> = if issued.is_some() {
+            sqlx::query_as(
+                r#"SELECT l.serial, l.product_key, l.unit_price_cents, l.activated_at
+                     FROM licence_invoice_lines l
+                     JOIN licence_invoices i ON i.id = l.invoice_id
+                    WHERE i.vendor_id = $1 AND i.period = $2
+                    ORDER BY l.activated_at"#,
+            )
+            .bind(vendor_id)
+            .bind(period)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(db)?
+        } else {
+            sqlx::query_as(
+                r#"SELECT a.serial, p.product_key, a.unit_price_cents, a.activated_at
+                     FROM licence_activations a
+                     JOIN products p ON p.id = a.product_id
+                    WHERE a.vendor_id = $1 AND a.activated_at >= $2 AND a.activated_at < $3
+                    ORDER BY a.activated_at"#,
+            )
+            .bind(vendor_id)
+            .bind(start)
+            .bind(end)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(db)?
+        };
+
+        tx.commit().await.map_err(db)?;
+
+        let lines: Vec<InvoiceLine> = lines
+            .into_iter()
+            .map(
+                |(serial, product_key, unit_price_cents, activated_at)| InvoiceLine {
+                    serial,
+                    product_key,
+                    unit_price_cents,
+                    activated_at,
+                },
+            )
+            .collect();
+
+        let (status, currency, quantity, amount_cents, issued_at) = match issued {
+            Some((issued_at, currency, quantity, amount_cents)) => (
+                "issued",
+                currency,
+                i64::from(quantity),
+                amount_cents,
+                Some(issued_at),
+            ),
+            None => (
+                "draft",
+                self.currency_for(vendor_id).await?,
+                lines.len() as i64,
+                lines.iter().map(|l| i64::from(l.unit_price_cents)).sum(),
+                None,
+            ),
+        };
+
+        Ok(Invoice {
+            period: period.to_string(),
+            currency,
+            quantity,
+            amount_cents,
+            status,
+            issued_at,
+            lines,
+        })
+    }
+
+    async fn invoice_issue(
+        &self,
+        vendor_id: Uuid,
+        period: &str,
+        issued_by: Option<Uuid>,
+    ) -> Result<Invoice, AppError> {
+        let (start, end) = period_bounds(period)?;
+
+        // A future month cannot be invoiced: the devices have not been activated yet, and a
+        // document for them would be an invoice for an intention.
+        let now = time::OffsetDateTime::now_utc();
+        if start > now {
+            return Err(AppError::validation(
+                "this period has not started yet; there is nothing to invoice",
+            ));
+        }
+
+        let currency = self.currency_for(vendor_id).await?;
+        let mut tx = self
+            .pg
+            .scoped(&TenantCtx::system("licence-invoice"))
+            .await?;
+
+        let rows: Vec<(String, String, i32, time::OffsetDateTime)> = sqlx::query_as(
+            r#"SELECT a.serial, p.product_key, a.unit_price_cents, a.activated_at
+                 FROM licence_activations a
+                 JOIN products p ON p.id = a.product_id
+                WHERE a.vendor_id = $1 AND a.activated_at >= $2 AND a.activated_at < $3
+                ORDER BY a.activated_at"#,
+        )
+        .bind(vendor_id)
+        .bind(start)
+        .bind(end)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let quantity = rows.len() as i32;
+        let amount_cents: i64 = rows.iter().map(|(_, _, price, _)| i64::from(*price)).sum();
+        let id = kernel::new_id();
+
+        // `ON CONFLICT DO NOTHING`: a second issue of the same month — a re-run, a retry, two
+        // operators clicking at once — keeps the first document instead of making a second bill.
+        let inserted: Option<(Uuid,)> = sqlx::query_as(
+            r#"INSERT INTO licence_invoices
+                   (id, vendor_id, period, currency, quantity, amount_cents, issued_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (vendor_id, period) DO NOTHING
+               RETURNING id"#,
+        )
+        .bind(id)
+        .bind(vendor_id)
+        .bind(period)
+        .bind(&currency)
+        .bind(quantity)
+        .bind(amount_cents)
+        .bind(issued_by)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        if inserted.is_none() {
+            tx.commit().await.map_err(db)?;
+            return self.invoice_preview(vendor_id, period).await;
+        }
+
+        for (serial, product_key, unit_price_cents, activated_at) in &rows {
+            sqlx::query(
+                r#"INSERT INTO licence_invoice_lines
+                       (invoice_id, vendor_id, serial, product_key, unit_price_cents, activated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6)"#,
+            )
+            .bind(id)
+            .bind(vendor_id)
+            .bind(serial)
+            .bind(product_key)
+            .bind(unit_price_cents)
+            .bind(activated_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        }
+
+        sqlx::query(
+            r#"INSERT INTO audit_log (id, vendor_id, actor_kind, actor_id, action, target_kind, target_id, detail)
+               VALUES ($1, $2, 'ops', $3, 'licence.invoiced', 'licence_invoice', $4, $5)"#,
+        )
+        .bind(kernel::new_id())
+        .bind(vendor_id)
+        .bind(issued_by)
+        .bind(id)
+        .bind(serde_json::json!({
+            "period": period,
+            "quantity": quantity,
+            "amount_cents": amount_cents,
+            "currency": currency,
+        }))
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+
+        self.invoice_preview(vendor_id, period).await
+    }
+
+    async fn invoices(&self, vendor_id: Uuid, limit: i64) -> Result<Vec<Invoice>, AppError> {
+        let mut tx = self.vendor_tx(vendor_id).await?;
+        let periods: Vec<(String,)> = sqlx::query_as(
+            "SELECT period FROM licence_invoices WHERE vendor_id = $1 ORDER BY period DESC LIMIT $2",
+        )
+        .bind(vendor_id)
+        .bind(limit.clamp(1, 60))
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        let mut out = Vec::with_capacity(periods.len());
+        for (period,) in periods {
+            out.push(self.invoice_preview(vendor_id, &period).await?);
+        }
+        Ok(out)
+    }
+}
+
+impl PgLicence {
+    /// What this vendor's activations are priced in. The newest grant wins, because a vendor that
+    /// renegotiated in a new currency bills the new one from then on.
+    async fn currency_for(&self, vendor_id: Uuid) -> Result<String, AppError> {
+        let mut tx = self
+            .pg
+            .scoped(&TenantCtx::system("licence-currency"))
+            .await?;
+        let currency: Option<(String,)> = sqlx::query_as(
+            "SELECT currency FROM licence_grants WHERE vendor_id = $1
+              ORDER BY granted_at DESC LIMIT 1",
+        )
+        .bind(vendor_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(currency.map(|(c,)| c).unwrap_or_else(|| "USD".to_string()))
     }
 }
