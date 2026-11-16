@@ -59,7 +59,11 @@ services:
       # checked by the API through the broker's webhook) and the topic ACL (a device may only touch
       # `haven/<vendor>/<home>/<device>/…`). Anonymous connections are refused outright.
       - "0.0.0.0:8884:8884"
-      - "127.0.0.1:8888:8080"     # broker HTTP status (8080 is the API's)
+      # 8888: broker metrics/status/health. It maps 8888 to 8888 because that is the port
+      # `listener.http.default` binds inside the container — the old mapping pointed at 8080,
+      # which the broker does not listen on, so the endpoint was unreachable even when the
+      # listener existed.
+      - "127.0.0.1:8888:8888"
     volumes:
       - haven-mqtt:/vernemq/data
       - ./certs:/certs:ro
