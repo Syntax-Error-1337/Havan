@@ -18,3 +18,4 @@ pub mod privacy;
 pub mod scenes;
 pub mod stream;
 pub mod vendor;
+pub mod vendor_team;

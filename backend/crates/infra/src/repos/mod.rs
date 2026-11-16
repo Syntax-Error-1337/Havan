@@ -20,6 +20,7 @@ pub mod pairing;
 pub mod privacy;
 pub mod scenes;
 pub mod serials;
+pub mod vendor_team;
 
 pub use audit::PgAudit;
 pub use automation::PgAutomation;
