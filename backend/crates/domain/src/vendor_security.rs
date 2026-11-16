@@ -36,7 +36,9 @@ pub const ISSUER: &str = "Haven";
 
 /// Refuse to require a factor from somebody who has not set one up.
 pub fn ensure_everybody_enrolled(policy: &SecurityPolicy) -> Result<(), AppError> {
-    if policy.enrolled < policy.members {
+    // Only when it is being *required*. Turning the policy off must never be blocked by somebody
+    // who has not enrolled — that is the state you are trying to escape.
+    if policy.totp_required && policy.enrolled < policy.members {
         let mut err = AppError::code(
             ErrorCode::Conflict,
             "every member must enrol before two-factor can be required",
