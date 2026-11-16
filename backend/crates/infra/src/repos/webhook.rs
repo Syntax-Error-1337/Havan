@@ -140,17 +140,34 @@ impl WebhookRepo for PgWebhooks {
         // subscriptions that produced five deliveries per row sharing one outbox id, and
         // `mark_delivered` fired on the first success — so four endpoints never heard the event and
         // which one did depended on join order. `o.subscription_id` is that fix.
+        // The claim is a **lease**, not a lock. `FOR UPDATE SKIP LOCKED` released by the commit
+        // below would hold nothing while the HTTP request is in flight, so two worker replicas
+        // could pick the same row and deliver the event twice — the same defect the command
+        // redelivery path had, found the same way. Pushing `next_attempt_at` forward claims the row
+        // for the length of one delivery; a worker that dies mid-send leaves a lease that simply
+        // expires.
         let rows: Vec<(Uuid, Uuid, String, String, String, serde_json::Value, i32)> =
             sqlx::query_as(
-                r#"SELECT o.id, o.vendor_id, w.url, w.secret, o.event, o.payload, o.attempts
-                     FROM webhook_outbox o
-                     JOIN vendor_webhooks w ON w.id = o.subscription_id AND w.active
-                    WHERE o.delivered_at IS NULL
-                      AND o.attempts < $2
-                      AND o.next_attempt_at <= now()
-                    ORDER BY o.created_at
-                    LIMIT $1
-                    FOR UPDATE OF o SKIP LOCKED"#,
+                r#"WITH claimed AS (
+                       SELECT id
+                         FROM webhook_outbox
+                        WHERE delivered_at IS NULL
+                          AND attempts < $2
+                          AND next_attempt_at <= now()
+                        ORDER BY created_at
+                        LIMIT $1
+                        FOR UPDATE SKIP LOCKED
+                   )
+                   UPDATE webhook_outbox o
+                      -- Five minutes, not sixty seconds: one pass leases BATCH rows and sends them
+                      -- one at a time, so the worst case is 20 × the 10 s request timeout. A lease
+                      -- shorter than the batch would hand its own tail to a second worker.
+                      SET next_attempt_at = now() + interval '5 minutes'
+                     FROM claimed c, vendor_webhooks w
+                    WHERE o.id = c.id
+                      AND w.id = o.subscription_id
+                      AND w.active
+                   RETURNING o.id, o.vendor_id, w.url, w.secret, o.event, o.payload, o.attempts"#,
             )
             .bind(limit)
             .bind(MAX_ATTEMPTS)

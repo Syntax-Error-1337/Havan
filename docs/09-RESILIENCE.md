@@ -110,6 +110,14 @@ The row now names its subscription (`0033`), delivery reads that, and two endpoi
 receive the same event independently: verified live with two local receivers, each given its own
 delivery id and its own signature.
 
+The claim itself was the second defect. `due()` selected with `FOR UPDATE SKIP LOCKED` and committed
+before sending, so the lock was gone by the time the HTTP request left: two worker replicas could
+claim the same row and the vendor would receive the event twice. The claim is a **lease** now — the
+row's `next_attempt_at` moves forward for five minutes, which is one pass's worst case (20 rows × a
+10 s timeout), and a worker that dies mid-send leaves a lease that simply expires. The command
+redelivery path had the same bug and was fixed the same way; this one hid behind a queue nobody had
+watched with two replicas.
+
 Two further facts came out of the same pass:
 
 - **Two of the three advertised events were never emitted.** `device.claimed` and `firmware.failed`

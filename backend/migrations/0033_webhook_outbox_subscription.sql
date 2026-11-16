@@ -9,10 +9,13 @@
 -- Nullable because rows queued before this migration have no way to say which endpoint they were
 -- for; they are historical and expire with the outbox's retention.
 
+-- Written idempotently on purpose: a column added by hand during an incident must not stop the same
+-- migration from recording itself afterwards, and sqlx applies the file to a database whose state it
+-- cannot know.
 ALTER TABLE webhook_outbox
-    ADD COLUMN subscription_id uuid REFERENCES vendor_webhooks (id) ON DELETE CASCADE;
+    ADD COLUMN IF NOT EXISTS subscription_id uuid REFERENCES vendor_webhooks (id) ON DELETE CASCADE;
 
-CREATE INDEX webhook_outbox_subscription_idx
+CREATE INDEX IF NOT EXISTS webhook_outbox_subscription_idx
     ON webhook_outbox (subscription_id)
     WHERE delivered_at IS NULL;
 

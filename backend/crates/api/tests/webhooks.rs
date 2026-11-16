@@ -2,7 +2,23 @@
 
 use domain::webhook::{WebhookRepo, sign};
 use kernel::ErrorCode;
+use tokio::sync::{Mutex, MutexGuard, OnceCell};
 use uuid::Uuid;
+
+/// One delivery test at a time.
+///
+/// `due()` is the global queue — it claims any vendor's rows, by design — so two tests running in
+/// parallel claim each other's fixtures and then assert about rows that are already leased. The
+/// first version of these tests failed intermittently for exactly that reason.
+static DELIVERY: OnceCell<Mutex<()>> = OnceCell::const_new();
+
+async fn one_delivery_at_a_time() -> MutexGuard<'static, ()> {
+    DELIVERY
+        .get_or_init(|| async { Mutex::new(()) })
+        .await
+        .lock()
+        .await
+}
 
 struct Fixture {
     db_url: String,
@@ -110,6 +126,7 @@ async fn a_plain_http_endpoint_is_refused_because_the_secret_travels_with_it() {
 
 #[tokio::test]
 async fn the_outbox_delivers_once_then_stops_being_due() {
+    let _only = one_delivery_at_a_time().await;
     let Some(f) = fixture().await else { return };
     let hooks = infra::PgWebhooks::new(f.pg.clone());
     let pool = admin(&f).await;
@@ -162,6 +179,7 @@ async fn the_outbox_delivers_once_then_stops_being_due() {
 /// asserts that a single event produces a delivery for each endpoint, each carrying its own secret.
 #[tokio::test]
 async fn an_event_reaches_every_endpoint_that_asked_for_it() {
+    let _only = one_delivery_at_a_time().await;
     let Some(f) = fixture().await else { return };
     let hooks = infra::PgWebhooks::new(f.pg.clone());
     let pool = admin(&f).await;
@@ -223,20 +241,106 @@ async fn an_event_reaches_every_endpoint_that_asked_for_it() {
         assert_eq!(&delivery.secret, expected);
     }
 
-    // Delivering to one must not silence the other.
+    // Delivering to one must not silence the other. Both rows are leased by the claim above, so the
+    // second is not offered again until its lease runs out — clear the lease as the clock would.
+    let other = mine
+        .iter()
+        .find(|d| d.id != mine[0].id)
+        .expect("a second delivery")
+        .id;
     hooks.mark_delivered(mine[0].id).await.expect("delivered");
+    sqlx::query("UPDATE webhook_outbox SET next_attempt_at = now() WHERE id = $1")
+        .bind(other)
+        .execute(&pool)
+        .await
+        .expect("clear the lease");
+
     let after = hooks.due(500).await.expect("due again");
-    let remaining: Vec<_> = after.iter().filter(|d| rows.contains(&d.id)).collect();
+    let still_owed: Vec<_> = after.iter().filter(|d| d.id == other).collect();
     assert_eq!(
-        remaining.len(),
+        still_owed.len(),
         1,
         "the other endpoint is still owed the event"
     );
-    assert_ne!(remaining[0].url, mine[0].url);
+}
+
+/// Two workers must not deliver the same event twice.
+///
+/// `due()` used to select with `FOR UPDATE SKIP LOCKED` and commit before sending, so the lock was
+/// gone by the time the HTTP request left and two replicas could both claim the same row. The claim
+/// is now a lease: this asserts that concurrent claims never overlap, and that a claimed row is not
+/// offered again while the first worker is still delivering it.
+#[tokio::test]
+async fn concurrent_workers_do_not_claim_the_same_delivery() {
+    let _only = one_delivery_at_a_time().await;
+    let Some(f) = fixture().await else { return };
+    let hooks = infra::PgWebhooks::new(f.pg.clone());
+    let pool = admin(&f).await;
+
+    let (subscription, _) = hooks
+        .create(
+            f.vendor_id,
+            "https://lease.example.test/hook",
+            vec!["licence.activated".into()],
+        )
+        .await
+        .expect("create");
+
+    let mut seeded = Vec::new();
+    for _ in 0..6 {
+        let id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO webhook_outbox (id, vendor_id, subscription_id, event, payload) \
+             VALUES ($1, $2, $3, 'licence.activated', '{}'::jsonb)",
+        )
+        .bind(id)
+        .bind(f.vendor_id)
+        .bind(subscription)
+        .execute(&pool)
+        .await
+        .expect("outbox");
+        seeded.push(id);
+    }
+
+    let (a, b) = tokio::join!(hooks.due(500), hooks.due(500));
+    let a = a.expect("first claim");
+    let b = b.expect("second claim");
+
+    let mine_a: Vec<Uuid> = a
+        .iter()
+        .map(|d| d.id)
+        .filter(|id| seeded.contains(id))
+        .collect();
+    let mine_b: Vec<Uuid> = b
+        .iter()
+        .map(|d| d.id)
+        .filter(|id| seeded.contains(id))
+        .collect();
+
+    assert!(
+        !mine_a.is_empty() || !mine_b.is_empty(),
+        "the seeded rows should be claimable"
+    );
+    for id in &mine_a {
+        assert!(!mine_b.contains(id), "one row must not be claimed twice");
+    }
+
+    // Leased: a third claim finds nothing of ours until the lease expires.
+    let c = hooks.due(500).await.expect("third claim");
+    let mine_c: Vec<Uuid> = c
+        .iter()
+        .map(|d| d.id)
+        .filter(|id| seeded.contains(id))
+        .collect();
+    assert!(
+        mine_c.is_empty(),
+        "a claimed row is not offered again while leased"
+    );
 }
 
 #[tokio::test]
 async fn a_failure_backs_off_and_is_bounded() {
+    let _only = one_delivery_at_a_time().await;
     let Some(f) = fixture().await else { return };
     let hooks = infra::PgWebhooks::new(f.pg.clone());
     let pool = admin(&f).await;
