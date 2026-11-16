@@ -54,7 +54,7 @@ BEGIN
     INSERT INTO devices (id, vendor_id, product_id, product_key, home_id, name, serial,
                          secret_hash, state, category, online, fw_version)
     VALUES (d, '$VENDOR', prod, '$PRODUCT_KEY', '$HOME_ID',
-            'Load bulb ' || i, 'BENCH-$TS-' || i, 'x', 'claimed', 'light', (i % 2 = 0), '1.0.0');
+            'Load bulb ' || i, 'BENCH-$TS-' || i, 'x', 'claimed', 'light', false, '1.0.0');
 
     INSERT INTO device_points (id, device_id, vendor_id, capability, slot, code, dp, kind,
                                writable, unit, min_val, max_val, history, value_bool)
