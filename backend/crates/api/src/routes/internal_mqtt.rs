@@ -25,7 +25,9 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::{Query, State};
+use axum::http::header::CACHE_CONTROL;
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -37,6 +39,36 @@ use crate::error::ApiResult;
 /// The platform's own identity on the broker. Fixed rather than configurable: the password is the
 /// secret, and a name that never varies is one less thing to get wrong in four services' configs.
 pub const SERVICE_USER: &str = "haven-service";
+
+/// How long `vmq_webhooks` may reuse a successful device registration.
+const REGISTER_CACHE_SECS: u64 = 30;
+
+fn hook_reply(body: Value) -> Response {
+    (StatusCode::OK, Json(body)).into_response()
+}
+
+fn hook_not_allowed() -> Response {
+    hook_reply(json!({ "result": { "error": "not_allowed" } }))
+}
+
+/// A successful device registration, marked cacheable.
+///
+/// `vmq_webhooks` caches a hook result when the reply carries `cache-control: max-age`, and only
+/// when the call succeeded. Without it, every reconnect is an HTTP round-trip to this API before
+/// the broker will talk to the device — and the firmware reconnects on a 90 s keepalive, so this
+/// is the hot path of the whole platform.
+///
+/// The cache key is every input (username, password, client id), so it cannot grant a credential
+/// that was never presented. The cost is one window: a device released from a home may reconnect
+/// for up to 30 s, which is shorter than the interval at which a dead device and a revoked one can
+/// be told apart anyway.
+fn hook_ok_cached() -> Response {
+    (
+        [(CACHE_CONTROL, format!("max-age={REGISTER_CACHE_SECS}"))],
+        Json(json!({ "result": "ok" })),
+    )
+        .into_response()
+}
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -96,22 +128,18 @@ async fn on_register(
     headers: HeaderMap,
     Query(query): Query<HashMap<String, String>>,
     Json(body): Json<RegisterBody>,
-) -> ApiResult<(StatusCode, Json<Value>)> {
+) -> ApiResult<Response> {
     if !token_matches(&headers, &query, &state.cfg.mqtt_hook_token) {
-        return Ok((
-            StatusCode::OK,
-            Json(json!({"result": {"error": "not_allowed"}})),
-        ));
+        return Ok(hook_not_allowed());
     }
 
     let (Some(username), Some(password)) = (body.username, body.password) else {
-        // `next`, not `not_allowed`: this plugin is installed on every listener, so a flat denial
-        // here would also take out the workers and the simulator, which connect anonymously on
-        // 1883. `next` falls through to the listener's own policy, which compose sets to
-        // `allow_anonymous = on` — a dev stand-in, and the reason 1884/8883 are the only
-        // device-facing ports. Removing anonymous access entirely means giving the workers and
-        // the simulator credentials too; that is the next step, not something to fake here.
-        return Ok((StatusCode::OK, Json(json!({"result": "next"}))));
+        // `next`, not `not_allowed`: this hook is installed on every listener, including 1883,
+        // where a client that presents no username has already been vouched for by the listener
+        // (loopback-only in compose). A flat denial here would also take out anything that
+        // connects without an identity, for no gain — the device-facing listeners all carry
+        // `allow_anonymous = off`, so a device without credentials never reaches this point.
+        return Ok(hook_reply(json!({ "result": "next" })));
     };
 
     // The platform's own clients — the API that publishes commands, the worker that ingests, the
@@ -119,21 +147,17 @@ async fn on_register(
     // identity, and only that identity is allowed outside a device's own topic prefix.
     if username == SERVICE_USER {
         return if password == state.cfg.mqtt_service_token {
-            Ok((StatusCode::OK, Json(json!({"result": "ok"}))))
+            // Deliberately not cached: rotating this token should take effect on the next
+            // connection, not thirty seconds later.
+            Ok(hook_reply(json!({ "result": "ok" })))
         } else {
             tracing::warn!("broker presented the service identity with the wrong password");
-            Ok((
-                StatusCode::OK,
-                Json(json!({"result": {"error": "not_allowed"}})),
-            ))
+            Ok(hook_not_allowed())
         };
     }
 
     let Ok(device_id) = uuid::Uuid::parse_str(&username) else {
-        return Ok((
-            StatusCode::OK,
-            Json(json!({"result": {"error": "not_allowed"}})),
-        ));
+        return Ok(hook_not_allowed());
     };
 
     match state
@@ -145,16 +169,13 @@ async fn on_register(
             tracing::info!(device = %device.device_id, "broker authenticated a device with its secret");
             // `max_message_size` is not a policy we set here; the envelope limits are enforced
             // by the API and the SDK. Returning `ok` alone keeps the broker's defaults.
-            Ok((StatusCode::OK, Json(json!({"result": "ok"}))))
+            Ok(hook_ok_cached())
         }
         Err(e) => {
             // The reason is logged, never returned: VerneMQ's own log is the place for detail, and
             // a device must not learn whether the id exists or the secret is wrong.
             tracing::warn!(device = %username, error = %e, "broker refused a device credential");
-            Ok((
-                StatusCode::OK,
-                Json(json!({"result": {"error": "not_allowed"}})),
-            ))
+            Ok(hook_not_allowed())
         }
     }
 }
