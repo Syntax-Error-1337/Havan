@@ -131,6 +131,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::notifications::router())
         .merge(routes::scenes::router())
         .merge(routes::licence::router())
+        .merge(routes::certification::router())
         .route(
             "/devices/{id}/history",
             axum::routing::get(routes::history::history),

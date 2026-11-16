@@ -1,5 +1,5 @@
 use crate::pg::Pg;
-use domain::catalog::{CatalogRepo, Product, PublicProduct};
+use domain::catalog::{CatalogRepo, Product, PublicProduct, certification_transition};
 use kernel::{AppError, TenantCtx};
 use protocol::thing_model::ThingModel;
 use sha2::{Digest, Sha256};
@@ -45,14 +45,25 @@ type ProductRow = (
     String,
     String,
     String,
+    String,
     i32,
     serde_json::Value,
     time::OffsetDateTime,
 );
 
 fn map(row: ProductRow) -> Result<Product, AppError> {
-    let (id, vendor_id, product_key, name, category, status, schema_version, model, created_at) =
-        row;
+    let (
+        id,
+        vendor_id,
+        product_key,
+        name,
+        category,
+        status,
+        certification,
+        schema_version,
+        model,
+        created_at,
+    ) = row;
     let thing_model: ThingModel = serde_json::from_value(model)
         .map_err(|e| AppError::Internal(format!("stored thing model is invalid: {e}")))?;
 
@@ -63,14 +74,15 @@ fn map(row: ProductRow) -> Result<Product, AppError> {
         name,
         category,
         status,
+        certification,
         schema_version,
         thing_model,
         created_at,
     })
 }
 
-const COLUMNS: &str =
-    "id, vendor_id, product_key, name, category, status, schema_version, thing_model, created_at";
+const COLUMNS: &str = "id, vendor_id, product_key, name, category, status, certification, \
+     schema_version, thing_model, created_at";
 
 impl CatalogRepo for PgCatalog {
     async fn insert(&self, vendor_id: Uuid, product: &Product) -> Result<(), AppError> {
@@ -164,6 +176,62 @@ impl CatalogRepo for PgCatalog {
             return Err(AppError::not_found("product"));
         }
         Ok(())
+    }
+
+    async fn set_certification(
+        &self,
+        vendor_id: Option<Uuid>,
+        id: Uuid,
+        to: &str,
+        note: Option<&str>,
+    ) -> Result<(), AppError> {
+        // `None` is the operator, who acts across tenants; `Some` is a vendor on its own
+        // product. The context is chosen here so the row lock and the RLS check happen in
+        // the same transaction as the write.
+        let ctx = match vendor_id {
+            Some(vendor_id) => PgCatalog::ctx(vendor_id),
+            None => TenantCtx::system("product-certification"),
+        };
+        let mut tx = self.pg.scoped(&ctx).await?;
+
+        // Locked read: two operators clicking certify at once must not both see the old
+        // state and write two different decisions.
+        let current: Option<(String, String)> =
+            sqlx::query_as("SELECT certification, status FROM products WHERE id = $1 FOR UPDATE")
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+
+        let Some((from, status)) = current else {
+            return Err(AppError::not_found("product"));
+        };
+
+        // A draft cannot be submitted: a phone can only claim what is published, so
+        // certifying a draft would sign off something nobody can reach.
+        if to == "submitted" && status != "published" {
+            return Err(AppError::validation(
+                "publish the product before submitting it for certification",
+            ));
+        }
+
+        certification_transition(&from, to)?;
+
+        sqlx::query(
+            r#"UPDATE products
+                  SET certification = $2,
+                      certified_at = CASE WHEN $2 = 'certified' THEN now() ELSE certified_at END,
+                      certification_note = COALESCE($3, certification_note)
+                WHERE id = $1"#,
+        )
+        .bind(id)
+        .bind(to)
+        .bind(note)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)
     }
 
     async fn publish(&self, vendor_id: Uuid, id: Uuid) -> Result<(), AppError> {

@@ -33,6 +33,10 @@ pub struct ProductRecord {
     pub id: Uuid,
     pub vendor_id: Uuid,
     pub thing_model: ThingModel,
+    /// `uncertified | submitted | certified | revoked`. Publishing is the vendor's promise;
+    /// this is our sign-off, and it is what decides whether a phone may put the device in a
+    /// home. See `domain::catalog::certification_transition`.
+    pub certification: String,
 }
 
 /// A device whose certificate is running out, with who to tell.
@@ -397,6 +401,20 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
             .await?
             .ok_or_else(|| AppError::code(ErrorCode::NotFound, "unknown_product"))?;
 
+        // The app is ours. A vendor's device reaches our users only after we have tested it,
+        // so an uncertified product is refused at the door rather than appearing in
+        // somebody's home and becoming our support ticket. Devices already claimed are
+        // unaffected: certification gates new activations, not existing installations.
+        if product.certification != "certified" {
+            return Err(AppError::code(
+                ErrorCode::ProductNotCertified,
+                format!(
+                    "product_not_certified: {} is not certified for the app",
+                    product.thing_model.product_key
+                ),
+            ));
+        }
+
         // A product may be published without a manufacturing manifest; then the
         // first claim with a valid ticket creates the row (trust on first use).
         let allow_unknown = product.thing_model.constraints.allow_unknown_serial;
@@ -553,13 +571,29 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    #[derive(Default)]
     struct Fake {
         tickets: Mutex<Vec<TicketRow>>,
         device: Mutex<Option<DeviceRecord>>,
         claims: Mutex<Vec<ClaimPlan>>,
         /// What the manifest says about the serial in the request.
         serial_take: Mutex<SerialTake>,
+        /// The product's certification. Certified by default so every test that is about
+        /// something else does not have to set it.
+        certification: Mutex<String>,
+    }
+
+    impl Default for Fake {
+        fn default() -> Self {
+            Self {
+                tickets: Mutex::new(Vec::new()),
+                device: Mutex::new(None),
+                claims: Mutex::new(Vec::new()),
+                serial_take: Mutex::new(SerialTake::default()),
+                // A product we already signed off: the gate must not colour tests that are
+                // about tickets, serials or secrets.
+                certification: Mutex::new("certified".to_string()),
+            }
+        }
     }
 
     impl PairingRepo for Fake {
@@ -618,6 +652,7 @@ mod tests {
                 id: Uuid::from_u128(7),
                 vendor_id: Uuid::from_u128(8),
                 thing_model: model,
+                certification: self.certification.lock().unwrap().clone(),
             }))
         }
         async fn device_by_serial(
@@ -722,6 +757,27 @@ mod tests {
         let mut req = request(&svc, Uuid::new_v4());
         req.product_key = "hv_test_strict".into();
         svc.claim(req).await
+    }
+
+    #[tokio::test]
+    async fn an_uncertified_product_cannot_be_claimed_however_valid_the_ticket() {
+        // This is the gate that keeps a vendor's unfinished device out of our app: the
+        // ticket is right, the serial is in the manifest, the secret matches — and the
+        // device still cannot enter somebody's home, because we have not tested it.
+        let svc = svc();
+        *svc.repo.serial_take.lock().unwrap() = SerialTake::Taken;
+        *svc.repo.certification.lock().unwrap() = "submitted".to_string();
+
+        let mut req = request(&svc, Uuid::new_v4());
+        req.product_key = "hv_test_strict".into();
+        let err = svc.claim(req).await.unwrap_err();
+
+        assert_eq!(err.error_code(), kernel::ErrorCode::ProductNotCertified);
+        assert!(err.to_string().contains("product_not_certified"), "{err}");
+        assert!(
+            svc.repo.claims.lock().unwrap().is_empty(),
+            "a refused claim must not have written a device"
+        );
     }
 
     #[tokio::test]

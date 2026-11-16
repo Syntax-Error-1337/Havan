@@ -22,6 +22,9 @@ pub enum ErrorCode {
     /// The vendor has no licence left for another device. Payment is due, not the
     /// caller's fault — and deliberately not a 403, which would read as "you may not".
     LicenceExhausted,
+    /// The product exists and is published, but we have not signed it off for the app.
+    /// A conflict about the product's state, not about the caller's rights.
+    ProductNotCertified,
     // 422
     ValidationFailed,
     UnknownPoint,
@@ -48,6 +51,7 @@ impl ErrorCode {
             ErrorCode::Conflict => "conflict",
             ErrorCode::AlreadyClaimed => "already_claimed",
             ErrorCode::LicenceExhausted => "licence_exhausted",
+            ErrorCode::ProductNotCertified => "product_not_certified",
             ErrorCode::ValidationFailed => "validation_failed",
             ErrorCode::UnknownPoint => "unknown_point",
             ErrorCode::ValueOutOfRange => "value_out_of_range",
@@ -68,6 +72,7 @@ impl ErrorCode {
             ErrorCode::NotFound => 404,
             ErrorCode::Conflict | ErrorCode::AlreadyClaimed => 409,
             ErrorCode::LicenceExhausted => 402,
+            ErrorCode::ProductNotCertified => 409,
             ErrorCode::ValidationFailed | ErrorCode::UnknownPoint | ErrorCode::ValueOutOfRange => {
                 422
             }
@@ -194,6 +199,7 @@ mod tests {
         assert_eq!(ErrorCode::ValidationFailed.status(), 422);
         assert_eq!(ErrorCode::AlreadyClaimed.status(), 409);
         assert_eq!(ErrorCode::LicenceExhausted.status(), 402);
+        assert_eq!(ErrorCode::ProductNotCertified.status(), 409);
         assert_eq!(ErrorCode::LicenceExhausted.as_str(), "licence_exhausted");
         assert_eq!(ErrorCode::Timeout.status(), 504);
     }

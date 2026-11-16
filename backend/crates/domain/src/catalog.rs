@@ -20,6 +20,10 @@ pub struct Product {
     pub name: String,
     pub category: String,
     pub status: String,
+    /// `uncertified | submitted | certified | revoked`. Publishing is the vendor saying it is
+    /// done; this is the operator saying it was tested. Only a certified product can be
+    /// claimed in the app.
+    pub certification: String,
     pub schema_version: i32,
     pub thing_model: ThingModel,
     #[serde(with = "time::serde::rfc3339")]
@@ -66,6 +70,22 @@ pub trait CatalogRepo {
         id: Uuid,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
 
+    /// Move a product's certification, but only along a legal edge of the state machine.
+    ///
+    /// `to` is the state being asked for; the repository checks the current state, so two
+    /// operators clicking certify at once cannot produce a half-certified product, and a
+    /// `revoked` product cannot be quietly re-certified without a new submission.
+    /// `vendor_id: None` is an operator acting across tenants, which is a different
+    /// privilege from a vendor acting on its own product — an argument, not an inference, so
+    /// the caller has to say which door it came through.
+    fn set_certification(
+        &self,
+        vendor_id: Option<Uuid>,
+        id: Uuid,
+        to: &str,
+        note: Option<&str>,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
     /// Published products by advertisement hash or key. Cross-tenant by design:
     /// a published product is public, and a radar does not know which vendor it
     /// is looking at.
@@ -73,6 +93,45 @@ pub trait CatalogRepo {
         &self,
         terms: &[String],
     ) -> impl Future<Output = Result<Vec<PublicProduct>, AppError>> + Send;
+}
+
+/// The certification state machine, as data.
+///
+/// A product earns its place in our app in steps, and every step is somebody's decision:
+/// the vendor says "ready" (submit), we say "tested" (certify), and we can take it back
+/// (revoke) without pretending the vendor never submitted it. Re-submitting after a revoke
+/// is the only way back in, which is what makes a revoke mean something.
+pub const CERTIFICATION_STATES: [&str; 4] = ["uncertified", "submitted", "certified", "revoked"];
+
+/// Is `from -> to` a legal certification move? Same-state is a no-op, so a retried POST is
+/// not an error the caller has to interpret.
+pub fn certification_transition(from: &str, to: &str) -> Result<(), AppError> {
+    if !CERTIFICATION_STATES.contains(&to) {
+        return Err(AppError::validation(format!(
+            "unknown certification state: {to}"
+        )));
+    }
+    if from == to {
+        return Ok(());
+    }
+
+    let legal = matches!(
+        (from, to),
+        ("uncertified", "submitted")
+            | ("submitted", "uncertified")
+            | ("submitted", "certified")
+            | ("certified", "revoked")
+            | ("revoked", "submitted")
+    );
+
+    if legal {
+        Ok(())
+    } else {
+        Err(AppError::code(
+            kernel::ErrorCode::Conflict,
+            format!("certification cannot go from {from} to {to}"),
+        ))
+    }
 }
 
 pub struct CatalogService<R> {
@@ -104,6 +163,9 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
             name: model.name.clone(),
             category: model.category.clone(),
             status: if publish_now { "published" } else { "draft" }.to_string(),
+            // Never certified on creation, however it was created: certification is a
+            // decision about a tested device, and nothing is tested at insert time.
+            certification: "uncertified".to_string(),
             schema_version: i32::from(model.schema_version),
             thing_model: model,
             created_at: kernel::now(),
@@ -111,6 +173,23 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
 
         self.repo.insert(vendor_id, &product).await?;
         Ok(product)
+    }
+
+    /// Move a product through certification. The repo checks the current state under a
+    /// row lock, so this is safe against two operators clicking at once.
+    pub async fn set_certification(
+        &self,
+        vendor_id: Option<Uuid>,
+        id: Uuid,
+        to: &str,
+        note: Option<&str>,
+    ) -> Result<(), AppError> {
+        if !CERTIFICATION_STATES.contains(&to) {
+            return Err(AppError::validation(format!(
+                "unknown certification state: {to}"
+            )));
+        }
+        self.repo.set_certification(vendor_id, id, to, note).await
     }
 
     pub async fn list(&self, vendor_id: Uuid) -> Result<Vec<Product>, AppError> {
@@ -276,6 +355,23 @@ mod tests {
             }
             Ok(())
         }
+        async fn set_certification(
+            &self,
+            _vendor: Option<Uuid>,
+            id: Uuid,
+            to: &str,
+            _note: Option<&str>,
+        ) -> Result<(), AppError> {
+            // The real one locks the row and checks the edge; the fake only needs the edge,
+            // because that is the rule being tested.
+            let mut all = self.products.lock().unwrap();
+            let Some(p) = all.iter_mut().find(|p| p.id == id) else {
+                return Err(AppError::not_found("product"));
+            };
+            certification_transition(&p.certification, to)?;
+            p.certification = to.to_string();
+            Ok(())
+        }
     }
 
     fn bulb(switch: bool) -> ThingModel {
@@ -354,6 +450,48 @@ mod tests {
         let mut model = bulb(true);
         model.product_key = "HV Not A Key".into();
         let err = svc.create(V, model, false).await.unwrap_err();
+        assert_eq!(err.code_kind(), ErrorCode::ValidationFailed);
+    }
+
+    #[test]
+    fn certification_only_moves_along_the_edges_we_meant() {
+        // The happy path, both ways out of submitted, and the revoke that has to be
+        // re-submitted rather than undone.
+        for (from, to) in [
+            ("uncertified", "submitted"),
+            ("submitted", "certified"),
+            ("submitted", "uncertified"),
+            ("certified", "revoked"),
+            ("revoked", "submitted"),
+        ] {
+            assert!(
+                certification_transition(from, to).is_ok(),
+                "{from} -> {to} should be allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn certification_refuses_the_shortcuts() {
+        // Skipping the test is the one that matters: no product goes straight from
+        // uncertified to certified, because that is the whole point of the gate.
+        for (from, to) in [
+            ("uncertified", "certified"),
+            ("revoked", "certified"),
+            ("certified", "uncertified"),
+            ("certified", "submitted"),
+        ] {
+            let err = certification_transition(from, to).unwrap_err();
+            assert_eq!(err.code_kind(), ErrorCode::Conflict, "{from} -> {to}");
+        }
+    }
+
+    #[test]
+    fn certification_is_idempotent_and_rejects_nonsense() {
+        // A retried POST is not an error the caller has to interpret.
+        assert!(certification_transition("certified", "certified").is_ok());
+
+        let err = certification_transition("uncertified", "approved").unwrap_err();
         assert_eq!(err.code_kind(), ErrorCode::ValidationFailed);
     }
 }

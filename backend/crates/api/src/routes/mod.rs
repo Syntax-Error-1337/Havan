@@ -4,6 +4,7 @@ pub mod api_keys;
 pub mod auth;
 pub mod automations;
 pub mod catalog;
+pub mod certification;
 pub mod devices;
 pub mod history;
 pub mod homes;

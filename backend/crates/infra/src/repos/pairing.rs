@@ -263,8 +263,8 @@ impl PairingRepo for PgPairing {
 
     async fn product_by_key(&self, product_key: &str) -> Result<Option<ProductRecord>, AppError> {
         let mut tx = self.tx().await?;
-        let row = sqlx::query_as::<_, (Uuid, Uuid, serde_json::Value)>(
-            r#"SELECT id, vendor_id, thing_model FROM products
+        let row = sqlx::query_as::<_, (Uuid, Uuid, serde_json::Value, String)>(
+            r#"SELECT id, vendor_id, thing_model, certification FROM products
                WHERE product_key = $1 AND status = 'published'"#,
         )
         .bind(product_key)
@@ -273,7 +273,7 @@ impl PairingRepo for PgPairing {
         .map_err(db)?;
         tx.commit().await.map_err(db)?;
 
-        let Some((id, vendor_id, model)) = row else {
+        let Some((id, vendor_id, model, certification)) = row else {
             return Ok(None);
         };
         let thing_model: protocol::thing_model::ThingModel = serde_json::from_value(model)
@@ -283,6 +283,7 @@ impl PairingRepo for PgPairing {
             id,
             vendor_id,
             thing_model,
+            certification,
         }))
     }
 

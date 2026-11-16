@@ -223,6 +223,7 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | GET/PATCH | `/vendor/products/{id}` | |
 | POST | `/vendor/products/{id}/validate` | the six rules from the thing model |
 | POST | `/vendor/products/{id}/publish` | |
+| POST | `/vendor/products/{id}/certification/submit` | `{note?}` → asks us to test it; only a published product |
 | GET/POST | `/vendor/products/{id}/firmware` | upload → presigned PUT |
 | POST | `/vendor/firmware/{id}/sign` | portal signs with the vendor key |
 | GET/POST | `/vendor/ota-campaigns` | |
@@ -250,6 +251,26 @@ ingest lag, per-vendor token buckets.
 |---|---|---|
 | GET | `/ops/licences?vendor_id=&limit=` | one vendor's balance and recent activations |
 | POST | `/ops/licences` | `{vendor_id, quantity, unit_price_cents, currency?, expires_in_days?, note?}` → `{id, summary}` |
+| POST | `/ops/products/{id}/certification/certify` | `{note?}` → the sign-off that lets a device into the app |
+| POST | `/ops/products/{id}/certification/revoke` | `{note?}` → new claims refused, existing devices untouched |
+
+### Product certification
+
+Publishing is the vendor saying the product is done; certification is us saying we tested it.
+Only a certified product can be claimed, which is what keeps a vendor's unfinished device out
+of our consumer app:
+
+```
+uncertified --submit--> submitted --certify--> certified --revoke--> revoked
+                 ^            |                                        |
+                 +--withdraw--+                          submit ------+
+```
+
+Every other move is a `409` naming the states — in particular `uncertified → certified`,
+because skipping the test is the whole thing the gate exists to prevent. Same-state is a
+no-op, so a retried POST is not an error. Revoking stops **new** activations and leaves
+devices already in homes alone; a revoked product has to be submitted again, which is what
+makes a revoke mean something rather than a toggle.
 
 ### Device licences
 
