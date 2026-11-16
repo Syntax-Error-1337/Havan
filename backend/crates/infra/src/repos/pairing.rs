@@ -26,6 +26,39 @@ impl PgPairing {
     async fn tx(&self) -> Result<Transaction<'static, Postgres>, AppError> {
         self.pg.scoped(&TenantCtx::system("provision-claim")).await
     }
+
+    /// Write the charge for one activation.
+    ///
+    /// Idempotent per `(product, serial)` rather than per request: a claim replayed by a
+    /// proxy or retried over a flaky link is one device, and must be one line on the
+    /// invoice. `ON CONFLICT DO NOTHING` is what makes "billed once" a database fact
+    /// instead of a promise the caller keeps.
+    async fn record_activation(
+        &self,
+        tx: &mut Transaction<'static, Postgres>,
+        vendor_id: Uuid,
+        product_id: Uuid,
+        serial: &str,
+        unit_price_cents: i32,
+        currency: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"INSERT INTO licence_activations
+                   (id, vendor_id, product_id, serial, unit_price_cents, currency)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               ON CONFLICT (product_id, serial) DO NOTHING"#,
+        )
+        .bind(kernel::new_id())
+        .bind(vendor_id)
+        .bind(product_id)
+        .bind(serial)
+        .bind(unit_price_cents)
+        .bind(currency)
+        .execute(&mut **tx)
+        .await
+        .map_err(db)?;
+        Ok(())
+    }
 }
 
 fn db(e: sqlx::Error) -> AppError {
@@ -33,8 +66,86 @@ fn db(e: sqlx::Error) -> AppError {
 }
 
 impl PairingRepo for PgPairing {
-    async fn take_serial(&self, product_id: Uuid, serial: &str) -> Result<SerialTake, AppError> {
+    async fn take_serial(
+        &self,
+        product_id: Uuid,
+        serial: &str,
+        allow_unknown: bool,
+    ) -> Result<SerialTake, AppError> {
         let mut tx = self.tx().await?;
+
+        // The vendor who made the product is who this activation is billed to.
+        let vendor: Option<(Uuid,)> =
+            sqlx::query_as("SELECT vendor_id FROM products WHERE id = $1")
+                .bind(product_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+        let Some((vendor_id,)) = vendor else {
+            return Ok(SerialTake::Unknown);
+        };
+
+        // Serialise activation per vendor. Without this, two claims arriving together
+        // both read a balance of one and both spend it, and the vendor is activated one
+        // device beyond what they paid for. Activation is rare compared to telemetry, so
+        // a per-vendor lock costs nothing and makes the balance exact.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
+            .bind(vendor_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+
+        // Ask the manifest first whether this serial is already spoken for. It costs
+        // nothing and it needs no licence: a device re-presenting its own serial must be
+        // told "already claimed", not "unpaid" — the two send the caller somewhere
+        // different, and only one of them is true.
+        let claimed: Option<(Option<time::OffsetDateTime>,)> = sqlx::query_as(
+            "SELECT claimed_at FROM product_serials WHERE product_id = $1 AND serial = $2",
+        )
+        .bind(product_id)
+        .bind(serial)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        if let Some((Some(_),)) = claimed {
+            tx.commit().await.map_err(db)?;
+            return Ok(SerialTake::AlreadyClaimed);
+        }
+
+        // Derived, never stored: a counter that can drift from the rows it summarises is
+        // a counter that eventually bills someone for a device that does not exist.
+        let balance: (i64,) = sqlx::query_as(
+            r#"SELECT COALESCE((
+                        SELECT sum(quantity) FROM licence_grants
+                         WHERE vendor_id = $1
+                           AND (expires_at IS NULL OR expires_at > now())
+                    ), 0)
+                    - (SELECT count(*) FROM licence_activations WHERE vendor_id = $1)"#,
+        )
+        .bind(vendor_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        if balance.0 <= 0 {
+            // Dropping the transaction rolls back; nothing was taken.
+            return Ok(SerialTake::LicenceExhausted);
+        }
+
+        // The price is copied at activation, so a later price change cannot rewrite an
+        // invoice that has already gone out.
+        let price: Option<(i32, String)> = sqlx::query_as(
+            r#"SELECT unit_price_cents, currency FROM licence_grants
+                WHERE vendor_id = $1 AND (expires_at IS NULL OR expires_at > now())
+                ORDER BY granted_at DESC
+                LIMIT 1"#,
+        )
+        .bind(vendor_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        let (unit_price_cents, currency) = price.unwrap_or((0, "USD".to_string()));
 
         // One statement, so two devices presenting the same serial cannot both
         // win: the row is only taken if nobody took it first.
@@ -54,6 +165,15 @@ impl PairingRepo for PgPairing {
         .map_err(db)?;
 
         if taken.is_some() {
+            self.record_activation(
+                &mut tx,
+                vendor_id,
+                product_id,
+                serial,
+                unit_price_cents,
+                &currency,
+            )
+            .await?;
             tx.commit().await.map_err(db)?;
             return Ok(SerialTake::Taken);
         }
@@ -65,13 +185,28 @@ impl PairingRepo for PgPairing {
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(db)?;
-        tx.commit().await.map_err(db)?;
 
-        Ok(if exists.is_some() {
-            SerialTake::AlreadyClaimed
-        } else {
-            SerialTake::Unknown
-        })
+        if exists.is_some() {
+            tx.commit().await.map_err(db)?;
+            return Ok(SerialTake::AlreadyClaimed);
+        }
+
+        // Trust on first use: no manifest row exists, and the product says that is
+        // allowed. The device is real, so it is charged like any other.
+        if allow_unknown {
+            self.record_activation(
+                &mut tx,
+                vendor_id,
+                product_id,
+                serial,
+                unit_price_cents,
+                &currency,
+            )
+            .await?;
+        }
+
+        tx.commit().await.map_err(db)?;
+        Ok(SerialTake::Unknown)
     }
 
     async fn mint_ticket(&self, claims: &TicketClaims) -> Result<(), AppError> {

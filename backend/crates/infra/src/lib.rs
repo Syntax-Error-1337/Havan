@@ -15,6 +15,7 @@ pub use redis::Cache;
 pub use repos::api_key::PgApiKeys;
 pub use repos::fleet::PgFleet;
 pub use repos::history::PgHistory;
+pub use repos::licence::PgLicence;
 pub use repos::notification::PgNotifications;
 pub use repos::ota::PgOta;
 pub use repos::scenes::PgScenes;

@@ -95,6 +95,10 @@ pub enum SerialTake {
     /// The product has no manifest entry for it.
     #[default]
     Unknown,
+    /// The vendor has no licence left, so this device cannot be activated. Distinct from
+    /// the manifest answers on purpose: the serial may be perfectly valid and the device
+    /// perfectly real — the vendor simply has not paid for another activation.
+    LicenceExhausted,
 }
 
 pub trait PairingRepo {
@@ -110,6 +114,19 @@ pub trait PairingRepo {
         &self,
         product_key: &str,
     ) -> impl Future<Output = Result<Option<ProductRecord>, AppError>> + Send;
+
+    /// Take this serial out of the manifest, and charge the vendor for it.
+    ///
+    /// The two happen in one transaction because they are one fact: a device becoming
+    /// billable. `allow_unknown` is passed in rather than looked up again here so the
+    /// product's own rule decides whether a serial outside the manifest may be activated
+    /// — and still be charged.
+    fn take_serial(
+        &self,
+        product_id: Uuid,
+        serial: &str,
+        allow_unknown: bool,
+    ) -> impl Future<Output = Result<SerialTake, AppError>> + Send;
 
     fn device_by_serial(
         &self,
@@ -139,16 +156,6 @@ pub trait PairingRepo {
         &self,
         days: i64,
     ) -> impl Future<Output = Result<Vec<ExpiringCertificate>, AppError>> + Send;
-
-    /// Claim a serial from the vendor's manifest, atomically.
-    ///
-    /// Two devices presenting the same serial must not both win, so this is a
-    /// conditional update rather than a select followed by an insert.
-    fn take_serial(
-        &self,
-        product_id: Uuid,
-        serial: &str,
-    ) -> impl Future<Output = Result<SerialTake, AppError>> + Send;
 
     /// Atomically: put the device in the home, write its points from the model,
     /// and burn the ticket. Returns the device id and how many points landed.
@@ -425,7 +432,11 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
             None => {
                 // No device row yet: the manifest decides whether this serial may
                 // exist at all.
-                match self.repo.take_serial(product.id, &req.serial).await? {
+                match self
+                    .repo
+                    .take_serial(product.id, &req.serial, allow_unknown)
+                    .await?
+                {
                     SerialTake::Taken => (
                         crate::identity::hash_password(&req.secret)?,
                         default_name(&product),
@@ -434,6 +445,15 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
                         return Err(AppError::code(
                             ErrorCode::AlreadyClaimed,
                             "serial_already_claimed: another device has this serial",
+                        ));
+                    }
+                    SerialTake::LicenceExhausted => {
+                        // The hardware is fine and the serial may be fine; the vendor is
+                        // out of activations. Say exactly that, because the person holding
+                        // the phone can do nothing about it and the operator can.
+                        return Err(AppError::code(
+                            ErrorCode::LicenceExhausted,
+                            "licence_exhausted: the vendor has no activation left for another device",
                         ));
                     }
                     SerialTake::Unknown if allow_unknown => (
@@ -614,6 +634,7 @@ mod tests {
             &self,
             _product_id: Uuid,
             _serial: &str,
+            _allow_unknown: bool,
         ) -> Result<SerialTake, AppError> {
             Ok(*self.serial_take.lock().unwrap())
         }

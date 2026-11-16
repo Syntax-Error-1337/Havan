@@ -1,41 +1,43 @@
 //! Operator endpoints: the ones a person with a shell uses, not a customer.
 
-use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 use crate::app::AppState;
+use crate::error::ApiError;
 use crate::limits::Peer;
 
-/// `GET /metrics` — Prometheus text.
+/// The operator's door.
 ///
 /// Loopback is allowed without a token because that is how a sidecar or a local scrape
 /// reaches it, and requiring a secret there buys nothing. Anywhere else needs
 /// `x-ops-token` matching `OPS_TOKEN`; with no `OPS_TOKEN` configured the endpoint is
 /// unreachable from outside the machine rather than open.
+pub fn require_ops(state: &AppState, headers: &HeaderMap, peer: &Peer) -> Result<(), ApiError> {
+    if peer.0.is_some_and(|ip| ip.is_loopback()) {
+        return Ok(());
+    }
+
+    let presented = headers
+        .get("x-ops-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    let expected = state.cfg.ops_token.as_ref().map(|s| s.expose());
+
+    match expected {
+        Some(expected) if constant_time_eq(presented, expected) => Ok(()),
+        _ => Err(ApiError(kernel::AppError::code(
+            kernel::ErrorCode::Unauthorized,
+            "this endpoint needs a valid x-ops-token",
+        ))),
+    }
+}
+
+/// `GET /metrics` — Prometheus text.
 pub async fn metrics(State(state): State<AppState>, headers: HeaderMap, peer: Peer) -> Response {
-    let loopback = peer.0.is_some_and(|ip| ip.is_loopback());
-
-    if !loopback {
-        let presented = headers
-            .get("x-ops-token")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or_default();
-        let expected = state.cfg.ops_token.as_ref().map(|s| s.expose());
-
-        match expected {
-            Some(expected) if constant_time_eq(presented, expected) => {}
-            _ => {
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    Json(serde_json::json!({
-                        "error": { "code": "unauthorized", "message": "metrics need a valid x-ops-token" }
-                    })),
-                )
-                    .into_response();
-            }
-        }
+    if let Err(refusal) = require_ops(&state, &headers, &peer) {
+        return refusal.into_response();
     }
 
     (

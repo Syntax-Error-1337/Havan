@@ -235,6 +235,7 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | GET | `/vendor/sdk` | SDK versions + download links |
 | GET/PUT | `/vendor/branding` | white-label app config |
 | GET | `/vendor/audit` | |
+| GET | `/vendor/licences?limit=` | `{summary:{granted,used,remaining,activated_this_period,granted_value_cents,used_value_cents,unit_price_cents,currency}, activations:[…]}` |
 
 Key issuance for mTLS lives here too: `POST /vendor/ca/intermediate` returns a
 CSR-signing endpoint and the vendor's CA cert; the vendor keeps the private key.
@@ -244,6 +245,28 @@ CSR-signing endpoint and the vendor's CA cert; the vendor keeps the private key.
 `/ops/*` — guarded by `OPS_TOKEN`, loopback-bound unless explicitly exposed.
 Tenant CRUD, quotas, cert expiry report, campaign halt-all, job queue depth,
 ingest lag, per-vendor token buckets.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/ops/licences?vendor_id=&limit=` | one vendor's balance and recent activations |
+| POST | `/ops/licences` | `{vendor_id, quantity, unit_price_cents, currency?, expires_in_days?, note?}` → `{id, summary}` |
+
+### Device licences
+
+The platform charges a vendor **per device that goes live in the app**. The billable
+moment is the claim: the activation row is written by the same transaction that takes the
+serial out of the manufacturing manifest, so a device cannot exist unbilled and a retried
+claim cannot be billed twice (`UNIQUE (product_id, serial)`).
+
+The balance is `grants − activations`, derived on every read rather than stored, so it
+cannot drift from the rows it summarises.
+
+A claim with no licence left fails with **402 `licence_exhausted`** — not 403. The caller
+is allowed; the vendor has not paid. Nothing about the device is wrong, and the message
+says so, because the person holding the phone can only wait for the vendor to buy more.
+
+Expired grants stop counting the moment they expire. Devices already activated keep
+working, forever: a customer's bulb is not collateral for a vendor's invoice.
 
 ## WebSocket protocol
 

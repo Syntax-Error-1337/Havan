@@ -13,6 +13,7 @@ pub mod history;
 pub mod homes;
 pub mod identity;
 pub mod ingest;
+pub mod licence;
 pub mod notification;
 pub mod ota;
 pub mod pairing;

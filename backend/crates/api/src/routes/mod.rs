@@ -8,6 +8,7 @@ pub mod devices;
 pub mod history;
 pub mod homes;
 pub mod internal_mqtt;
+pub mod licence;
 pub mod notifications;
 pub mod ops;
 pub mod ota;
