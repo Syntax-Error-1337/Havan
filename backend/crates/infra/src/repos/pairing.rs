@@ -119,6 +119,19 @@ impl PairingRepo for PgPairing {
             .await
             .map_err(db)?;
 
+        // Suspension before anything else, and before the manifest: a suspended vendor's device must
+        // hear why, and "already claimed" or "out of licences" would both be the wrong reason.
+        let status: Option<(String,)> =
+            sqlx::query_as("SELECT status FROM vendors WHERE id = $1")
+                .bind(vendor_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+        if status.is_some_and(|(s,)| s != "active") {
+            tx.commit().await.map_err(db)?;
+            return Ok(SerialTake::VendorSuspended);
+        }
+
         // Ask the manifest first whether this serial is already spoken for. It costs
         // nothing and it needs no licence: a device re-presenting its own serial must be
         // told "already claimed", not "unpaid" — the two send the caller somewhere

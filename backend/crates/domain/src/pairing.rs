@@ -103,6 +103,9 @@ pub enum SerialTake {
     /// the manifest answers on purpose: the serial may be perfectly valid and the device
     /// perfectly real — the vendor simply has not paid for another activation.
     LicenceExhausted,
+    /// The operator suspended this vendor. The serial may be perfect and the licence paid; what is
+    /// missing is permission to sell, and it is the operator who can restore it.
+    VendorSuspended,
 }
 
 pub trait PairingRepo {
@@ -472,6 +475,14 @@ impl<R: PairingRepo + Send + Sync> PairingService<R> {
                         return Err(AppError::code(
                             ErrorCode::LicenceExhausted,
                             "licence_exhausted: the vendor has no activation left for another device",
+                        ));
+                    }
+                    SerialTake::VendorSuspended => {
+                        // Devices already in people's homes are untouched; this refusal only
+                        // reaches a device being activated for the first time.
+                        return Err(AppError::code(
+                            ErrorCode::Forbidden,
+                            "vendor_suspended: this vendor may not activate new devices",
                         ));
                     }
                     SerialTake::Unknown if allow_unknown => (

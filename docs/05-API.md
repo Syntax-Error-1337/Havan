@@ -291,6 +291,10 @@ ingest lag, per-vendor token buckets.
 | POST | `/ops/licences` | `{vendor_id, quantity, unit_price_cents, currency?, expires_in_days?, note?}` → `{id, summary}` |
 | POST | `/ops/products/{id}/certification/certify` | `{note?}` → the sign-off that lets a device into the app |
 | POST | `/ops/products/{id}/certification/revoke` | `{note?}` → new claims refused, existing devices untouched |
+| GET | `/ops/vendors?limit=` | every vendor with products, devices and licence usage |
+| POST | `/ops/vendors` | `{slug, name, quota_devices?}` — onboard a tenant |
+| GET | `/ops/vendors/{id}` | one vendor |
+| PATCH | `/ops/vendors/{id}` | `{status?, quota_devices?, name?}` — suspend, resume, set or clear a ceiling |
 | GET | `/ops/conformance/checklist` | what `scripts/conformance.py` will check, as data |
 | POST | `/ops/conformance/sessions` | `{vendor_id, product_id}` → `{product_key, serial, secret, ticket, home_id, allow_unknown_serial}` |
 | GET | `/ops/devices/{id}/state?vendor_id=` | the platform's own view: online, last seen, per-point values, recent commands |
@@ -312,6 +316,22 @@ Issuing is idempotent (`ON CONFLICT (vendor_id, period) DO NOTHING`, then return
 document), because a nightly retry or two operators clicking at once must not produce two bills. A
 month that has not started is refused: an invoice for devices that are not activated yet is an
 invoice for an intention.
+
+### Suspending a vendor
+
+`PATCH /ops/vendors/{id}` with `{"status": "suspended"}` implements the clause in `docs/11` exactly,
+and the wording matters because a lawyer will read it:
+
+- **new activations stop.** The claim path answers `403 vendor_suspended` — a typed refusal that
+  names the vendor, not the serial or the money, because both may be perfectly fine;
+- **existing devices keep working.** No device row is touched. Their reports, commands and OTA
+  continue, because a suspended vendor's customers are still *our* customers;
+- **the portal goes read-only.** Any non-`GET` under `/v1/vendor/*` answers `403` while the status is
+  not `active`; reading the fleet still works, so the vendor can answer their own support tickets
+  while an invoice dispute is sorted out.
+
+`deleted` exists in the schema and is deliberately unreachable from the console: deleting a tenant
+with devices in people's homes is a decision made with a database client and a second person.
 
 ### Conformance
 

@@ -73,6 +73,8 @@ impl FromRequestParts<AppState> for VendorAuth {
                     ))
                 })?;
 
+            ensure_vendor_may_write(state, parts, vendor_id).await?;
+
             return Ok(VendorAuth {
                 vendor_id,
                 // A key is not a person; the nil uuid says so rather than being
@@ -90,11 +92,43 @@ impl FromRequestParts<AppState> for VendorAuth {
             ))
         })?;
 
+        ensure_vendor_may_write(state, parts, vendor_id).await?;
+
         Ok(VendorAuth {
             vendor_id,
             user_id: claims.sub,
             request_id: request_id(parts),
         })
+    }
+}
+
+/// A suspended vendor's portal is read-only.
+///
+/// Checked only for methods that change something, because that is the only case where it matters
+/// and reading a fleet is how a suspended vendor answers their own customers while they sort the
+/// invoice out. The promise (docs/11) is that existing devices keep working and the console keeps
+/// showing them — a vendor who cannot see their own fleet would be punished twice.
+async fn ensure_vendor_may_write(
+    state: &AppState,
+    parts: &Parts,
+    vendor_id: uuid::Uuid,
+) -> Result<(), ApiError> {
+    let read_only_method = matches!(
+        parts.method,
+        axum::http::Method::GET | axum::http::Method::HEAD | axum::http::Method::OPTIONS
+    );
+    if read_only_method {
+        return Ok(());
+    }
+
+    match state.vendors.status_of(vendor_id).await {
+        Ok(status) if status == "active" => Ok(()),
+        Ok(_) => Err(ApiError(kernel::AppError::code(
+            kernel::ErrorCode::Forbidden,
+            "vendor_suspended: this account is read-only until the operator restores it",
+        ))),
+        // A portal that cannot read the status must not be able to write either.
+        Err(e) => Err(ApiError(e)),
     }
 }
 
