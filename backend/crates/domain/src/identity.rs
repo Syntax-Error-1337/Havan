@@ -112,6 +112,13 @@ pub trait IdentityRepo {
 
     fn revoke_family(&self, family_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
 
+    /// Record that this person signed in. Best effort: a login must not fail because a
+    /// timestamp could not be written.
+    fn touch_vendor_login(
+        &self,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
     fn find_vendor_user(
         &self,
         vendor_id: Uuid,
@@ -236,6 +243,12 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
         if !verify_password(password, &user.password_hash) {
             return Err(invalid_credentials());
         }
+
+        // The portal shows "last login", and a column nothing ever writes shows "never" forever.
+        if let Err(e) = self.repo.touch_vendor_login(user.id).await {
+            tracing::warn!(error = %e, "could not record the vendor login time");
+        }
+
         self.issue_refresh(None, Some(user.id), kernel::new_id(), Some(user.vendor_id))
             .await
     }
@@ -463,6 +476,10 @@ mod tests {
                 .find(|r| r.id == id)
                 .cloned())
         }
+        async fn touch_vendor_login(&self, _user_id: Uuid) -> Result<(), AppError> {
+            Ok(())
+        }
+
         async fn mark_used(&self, id: Uuid) -> Result<(), AppError> {
             if let Some(r) = self.refresh.lock().unwrap().iter_mut().find(|r| r.id == id) {
                 r.used_at = Some(kernel::now());

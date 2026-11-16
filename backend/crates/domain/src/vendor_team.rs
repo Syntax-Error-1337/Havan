@@ -101,6 +101,9 @@ pub struct TeamMember {
     pub email: String,
     pub display_name: String,
     pub role: String,
+    // RFC3339, not the time crate's default tuple: a browser's `new Date()` cannot parse the
+    // tuple, and the screen silently renders "Invalid Date".
+    #[serde(with = "time::serde::rfc3339::option")]
     pub last_login_at: Option<time::OffsetDateTime>,
 }
 
@@ -109,6 +112,7 @@ pub struct PendingInvite {
     pub id: Uuid,
     pub email: String,
     pub role: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub expires_at: time::OffsetDateTime,
     pub expired: bool,
 }
@@ -191,6 +195,40 @@ mod tests {
         assert!(may_remove(Role::Admin, Role::Admin, 2).is_err());
         assert!(may_remove(Role::Admin, Role::Owner, 2).is_err());
         assert!(may_remove(Role::Admin, Role::Developer, 1).is_ok());
+    }
+
+    #[test]
+    fn timestamps_cross_the_wire_as_rfc3339() {
+        // A browser's `new Date()` cannot parse the time crate's default tuple, and the failure is
+        // silent: the screen renders "Invalid Date". Found by looking at the page, so it is pinned
+        // by the shape of the JSON, not by a rendering test.
+        let at = time::OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
+
+        let member = TeamMember {
+            user_id: Uuid::nil(),
+            email: "a@b.test".into(),
+            display_name: "A".into(),
+            role: "owner".into(),
+            last_login_at: Some(at),
+        };
+        let json = serde_json::to_string(&member).unwrap();
+        assert!(
+            json.contains("\"last_login_at\":\"2023-11-14T22:13:20Z\""),
+            "{json}"
+        );
+
+        let invite = PendingInvite {
+            id: Uuid::nil(),
+            email: "a@b.test".into(),
+            role: "viewer".into(),
+            expires_at: at,
+            expired: false,
+        };
+        let json = serde_json::to_string(&invite).unwrap();
+        assert!(
+            json.contains("\"expires_at\":\"2023-11-14T22:13:20Z\""),
+            "{json}"
+        );
     }
 
     #[test]

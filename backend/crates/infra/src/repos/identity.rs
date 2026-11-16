@@ -198,6 +198,23 @@ impl IdentityRepo for PgIdentity {
             .map_err(db)
     }
 
+    async fn touch_vendor_login(&self, user_id: Uuid) -> Result<(), AppError> {
+        // System scope: authentication runs before a tenant exists, and this is the row that was
+        // just authenticated, so there is nothing to enumerate.
+        let mut tx = self
+            .pg
+            .scoped(&TenantCtx::system("vendor-login-touch"))
+            .await?;
+        sqlx::query("UPDATE vendor_users SET last_login_at = now() WHERE id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::Database(Box::new(e)))?;
+        tx.commit()
+            .await
+            .map_err(|e| AppError::Database(Box::new(e)))
+    }
+
     async fn find_vendor_user(
         &self,
         vendor_id: Uuid,

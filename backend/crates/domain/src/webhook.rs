@@ -61,6 +61,7 @@ pub struct WebhookSubscription {
     pub url: String,
     pub events: Vec<String>,
     pub active: bool,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: time::OffsetDateTime,
 }
 

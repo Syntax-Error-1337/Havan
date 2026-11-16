@@ -44,6 +44,7 @@ pub struct ActivationRow {
     pub serial: String,
     pub product_key: String,
     pub product_name: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub activated_at: time::OffsetDateTime,
     pub unit_price_cents: i32,
 }
