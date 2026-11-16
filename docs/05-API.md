@@ -281,9 +281,14 @@ the portal somewhere different.
 
 ## Operator (internal)
 
-`/ops/*` — guarded by `OPS_TOKEN`, loopback-bound unless explicitly exposed.
-Tenant CRUD, quotas, cert expiry report, campaign halt-all, job queue depth,
-ingest lag, per-vendor token buckets.
+`/ops/*` — loopback without a token, `OPS_TOKEN` from anywhere else. The same door backs the
+**operator console** in the portal at `/admin` (vendors, health, certification queue, billing).
+
+The surface is deliberately small: what changes money and permission (vendors and their quotas,
+licence grants, invoices, certification), what explains the platform to itself (health, one device's
+state, the conformance lab), and the erasure sweep. There is no endpoint here for metrics, queue depth
+or per-vendor rate limits — those live on `/metrics` and in the platform's own configuration, and a
+console that duplicated them would be a second source of truth.
 
 | Method | Path | Notes |
 |---|---|---|
@@ -291,6 +296,9 @@ ingest lag, per-vendor token buckets.
 | POST | `/ops/licences` | `{vendor_id, quantity, unit_price_cents, currency?, expires_in_days?, note?}` → `{id, summary}` |
 | POST | `/ops/products/{id}/certification/certify` | `{note?}` → the sign-off that lets a device into the app |
 | POST | `/ops/products/{id}/certification/revoke` | `{note?}` → new claims refused, existing devices untouched |
+| GET | `/ops/overview` | vendors, suspended, awaiting certification, invoices this month |
+| GET | `/ops/health` | devices online/total, heard in 15 min, points and commands per hour, notify/webhook backlogs, the five quietest devices and the five stuck commands |
+| GET | `/ops/certification/queue` | submitted products across vendors, oldest first |
 | GET | `/ops/vendors?limit=` | every vendor with products, devices and licence usage |
 | POST | `/ops/vendors` | `{slug, name, quota_devices?}` — onboard a tenant |
 | GET | `/ops/vendors/{id}` | one vendor |

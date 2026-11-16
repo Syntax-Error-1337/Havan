@@ -48,6 +48,28 @@ trust-on-first-use claim — which is exactly the property a billable unit needs
 
 So the work is not to invent a licence system. It is to put **money and a gate** around this one.
 
+## Where each item landed
+
+The sections below are written as they were planned — "add a balance", "add a gate" — which reads like
+a to-do list. This table is the state, so the plan is not mistaken for the backlog:
+
+| # | Item | State | Where |
+|---|---|---|---|
+| 1 | Licence grants and the activation ledger | **done** | `0020`–`0021`, `domain/licence.rs`, `GET/POST /ops/licences`, `GET /vendor/licences` |
+| 2 | Billing views and invoices | **done** | `0030`, `/vendor/invoices`, `POST /ops/invoices`, `/ops/invoices.csv` (`draft` until issued, frozen after) |
+| 3 | Certification before a device is claimable | **done** | `0022`, `POST /vendor/products/{id}/certification/submit`, `/ops/products/{id}/certification/{certify,revoke}` |
+| 4 | A vendor never sees our customers | **done, and the guard enumerates the routers** | `api/tests/vendor_shapes.rs` — 25 vendor routes, every one either fetched or explained |
+| 5 | Backups that are known to restore | **done** | `scripts/backup.sh`, `scripts/restore-drill.sh`; transcript in `docs/09` |
+| 6 | Data lifecycle | **done** | `0023`–`0024`, `0029`, `/me/export`, `DELETE /me`, retention from `licence_grants.retention_days`, hourly purge + `POST /ops/privacy/purge` |
+| 7 | Vendor teams, SSO, TOTP | **done except SSO enforcement** (needs an IdP to validate an assertion against) | `0025`, `0027`, `0031`, `/vendor/team`, `/vendor/sso`, `/vendor/security`, `/vendor/totp/*` |
+| 8 | Outbound events | **done** | `0026`, `worker/webhooks.rs`, `webhook_outbox`, HMAC-signed with backoff |
+| 9 | Support surface | **done** | `GET /vendor/support-bundle` (allowlist, never a redacted row) |
+| 10 | Firmware signing and rollback | **done** | `api/tests/firmware_signing.rs`, campaign gate + `docs/10` §2 |
+
+Beyond the ten: a **device conformance suite** (`scripts/conformance.py`, 7/7 live) so certification
+is something we run rather than something we assert, and an **operator console** (`/admin` in the
+portal) with the vendor book, certification queue, billing and platform health.
+
 ## P0 — the revenue engine
 
 **1. Licence grants: a vendor must own the right to activate before they can.** Today a vendor uploads

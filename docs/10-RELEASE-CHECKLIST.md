@@ -9,7 +9,7 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 
 | Gate | Command | Green means |
 |---|---|---|
-| Build and tests | `make check` | fmt, clippy `-D warnings`, the whole suite as `haven_app` on `haven_test` (30 binaries) |
+| Build and tests | `make check` | fmt, clippy `-D warnings`, the whole suite as `haven_app` on `haven_test` (46 binaries) |
 | Customer journey | `make e2e` | register → home → ticket → forged ticket refused → claim → replay refused → command, over HTTP |
 | Licences | `make licences` | 342 crates, 1 068 node packages, none outside the allowlist (ADR-002) |
 | Read performance | `make bench` | timings against `docs/08-PERFORMANCE.md` |
@@ -17,7 +17,7 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | Degradation | `make chaos` | 18/18: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered |
 | App | `cd app && npx tsc --noEmit && npm test` | 70 tests, 15 suites |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 59 tests |
-| Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 38 tests per project against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
+| Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 39 tests per project against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
 | Conformance | `make conformance VENDOR=<uuid> PRODUCT=<uuid>` | 7/7: a real device claims, connects, reports, is commanded, acks, reconnects, and an unknown serial is handled the way the product declares |
 
 Two of these are worth running twice: `make chaos` because it stops containers, and
@@ -69,7 +69,7 @@ Order matters — each step assumes the previous one is green:
 Reality check: no firmware agent exists in this repo. `/tmp/ota_success.py` and the
 simulator *report* OTA progress; nothing actually flashes.
 
-## 3. Multi-replica — done for workers, open for API instances
+## 3. Multi-replica — done, workers and API instances
 
 `make multi-replica` starts two workers and asserts what one worker cannot show:
 
