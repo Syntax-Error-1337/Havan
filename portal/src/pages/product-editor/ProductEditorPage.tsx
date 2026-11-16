@@ -5,6 +5,7 @@ import {
   useUpdateProduct,
   useValidateProduct,
   usePublishProduct,
+  useSubmitCertification,
   type RuleViolation,
 } from '../../entities/product';
 import { ApiError } from '../../shared/api/client';
@@ -24,6 +25,7 @@ export function ProductEditorPage() {
   const update = useUpdateProduct(id ?? '');
   const validate = useValidateProduct(id ?? '');
   const publish = usePublishProduct(id ?? '');
+  const certify = useSubmitCertification(id ?? '');
 
   const [draft, setDraft] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
@@ -97,7 +99,11 @@ export function ProductEditorPage() {
           </Link>
           <h2 style={{ margin: '4px 0 0' }}>{product.name}</h2>
           <p className="muted" style={{ margin: '4px 0 0' }}>
-            <code>{product.product_key}</code> · <span className={`badge badge--${product.status}`}>{product.status}</span>
+            <code>{product.product_key}</code> ·{' '}
+            <span className={`badge badge--${product.status}`}>{product.status}</span> ·{' '}
+            <span className={`badge badge--cert-${product.certification}`}>
+              {product.certification}
+            </span>
           </p>
         </div>
 
@@ -125,6 +131,14 @@ export function ProductEditorPage() {
               {publish.isPending ? 'Publishing…' : 'Publish'}
             </button>
           )}
+          {/* Certification is ours to grant, theirs to ask for. The button only ever asks. */}
+          {readOnly &&
+          (product.certification === 'uncertified' ||
+            product.certification === 'revoked') ? (
+            <button className="btn" onClick={() => certify.mutate()} disabled={certify.isPending}>
+              {certify.isPending ? 'Submitting…' : 'Submit for certification'}
+            </button>
+          ) : null}
         </div>
       </div>
 

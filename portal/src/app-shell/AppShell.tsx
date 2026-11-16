@@ -6,6 +6,8 @@ import { ProductEditorPage } from '../pages/product-editor/ProductEditorPage';
 import { FirmwarePage } from '../pages/firmware/FirmwarePage';
 import { CampaignsPage } from '../pages/campaigns/CampaignsPage';
 import { ApiKeysPage } from '../pages/api-keys/ApiKeysPage';
+import { LicencesPage } from '../pages/licences/LicencesPage';
+import { TeamPage } from '../pages/team/TeamPage';
 import { FleetPage } from '../pages/fleet/FleetPage';
 import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
 import { AuditPage } from '../pages/audit/AuditPage';
@@ -46,6 +48,12 @@ export function AppShell() {
           <Link to="/campaigns" className="muted">
             Rollouts
           </Link>
+          <Link to="/licences" className="muted">
+            Licences
+          </Link>
+          <Link to="/team" className="muted">
+            Team
+          </Link>
           <Link to="/api-keys" className="muted">
             API keys
           </Link>
@@ -65,6 +73,8 @@ export function AppShell() {
               explanation. */}
           <Route path="/rollouts" element={<Navigate to="/campaigns" replace />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
+          <Route path="/licences" element={<LicencesPage />} />
+          <Route path="/team" element={<TeamPage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

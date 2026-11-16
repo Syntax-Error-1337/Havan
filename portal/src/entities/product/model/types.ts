@@ -11,6 +11,8 @@ export type Product = {
   name: string;
   category: string;
   status: 'draft' | 'published' | 'deprecated';
+  /** Operator sign-off. Only a certified product can be claimed in the Haven app. */
+  certification: 'uncertified' | 'submitted' | 'certified' | 'revoked';
   schema_version: number;
   thing_model: ThingModel;
   created_at: string;

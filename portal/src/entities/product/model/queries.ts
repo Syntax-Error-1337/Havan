@@ -53,6 +53,27 @@ export function useValidateProduct(id: string) {
   });
 }
 
+/**
+ * Ask the operator to certify a product.
+ *
+ * Publisher's counterpart: publishing is the vendor saying "done", certification is the operator
+ * saying "tested". Nothing the vendor can do here makes a product claimable — that is the point.
+ */
+export function useSubmitCertification(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      request<{ id: string; certification: string }>(
+        `/vendor/products/${id}/certification/submit`,
+        { method: 'POST', body: JSON.stringify({}) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.product(id) });
+      qc.invalidateQueries({ queryKey: qk.products });
+    },
+  });
+}
+
 export function usePublishProduct(id: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -135,6 +135,20 @@ button {
   border: 1px solid var(--border);
 }
 
+.badge--cert-certified {
+  background: color-mix(in oklab, var(--ok, #1f7a4d) 18%, transparent);
+  color: var(--ok, #1f7a4d);
+}
+.badge--cert-submitted {
+  background: color-mix(in oklab, var(--warn, #8a5a00) 18%, transparent);
+  color: var(--warn, #8a5a00);
+}
+.badge--cert-uncertified,
+.badge--cert-revoked {
+  background: color-mix(in oklab, var(--danger, #b42318) 14%, transparent);
+  color: var(--danger, #b42318);
+}
+
 .badge--published {
   color: var(--success);
   border-color: color-mix(in srgb, var(--success) 40%, transparent);

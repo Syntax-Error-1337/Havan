@@ -5,4 +5,6 @@ export const qk = {
   firmware: (productId: string) => ['firmware', productId] as const,
   campaigns: ['campaigns'] as const,
   apiKeys: ['api-keys'] as const,
+  licences: ['licences'] as const,
+  team: ['team'] as const,
 };

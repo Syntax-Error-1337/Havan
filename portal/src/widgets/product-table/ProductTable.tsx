@@ -17,6 +17,7 @@ export function ProductTable({ products }: { products: Product[] }) {
             <th>Category</th>
             <th>Capabilities</th>
             <th>Status</th>
+            <th>Certification</th>
           </tr>
         </thead>
         <tbody>
@@ -32,6 +33,13 @@ export function ProductTable({ products }: { products: Product[] }) {
               <td>{product.thing_model.capabilities.length}</td>
               <td>
                 <span className={`badge badge--${product.status}`}>{product.status}</span>
+              </td>
+              <td>
+                {/* Two gates, deliberately separate: publishing is the vendor's promise,
+                    certification is ours. A vendor can only ask for the second. */}
+                <span className={`badge badge--cert-${product.certification}`}>
+                  {product.certification}
+                </span>
               </td>
             </tr>
           ))}

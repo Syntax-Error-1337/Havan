@@ -19,6 +19,7 @@ const model = {
 const product = (over: Partial<Product> = {}): Product => ({
   id: 'prod-1',
   vendor_id: 'v1',
+  certification: 'certified',
   product_key: 'hv_acme_bulb1',
   name: 'Acme Bulb',
   category: 'light',
