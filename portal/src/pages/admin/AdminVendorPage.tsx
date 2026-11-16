@@ -8,6 +8,7 @@ import {
 } from '../../entities/admin';
 import { currentPeriod } from '../../entities/invoice';
 import { formatMoney } from '../../entities/licence';
+import { Stat } from '../../shared/ui/Stat';
 import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
@@ -65,21 +66,21 @@ export function AdminVendorPage() {
       </div>
 
       <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
-        <Figure label="Granted" value={s ? String(s.granted) : '—'} note="authorised, unexpired" />
-        <Figure label="Activated" value={s ? String(s.used) : '—'} note="devices live, all time" />
-        <Figure
+        <Stat label="Granted" value={s ? String(s.granted) : '—'} note="authorised, unexpired" />
+        <Stat label="Activated" value={s ? String(s.used) : '—'} note="devices live, all time" />
+        <Stat
           label="Remaining"
           value={s ? String(s.remaining) : '—'}
           note="granted − activated"
           tone={s && s.remaining < 0 ? 'warn' : undefined}
         />
-        <Figure label="This month" value={s ? String(s.activated_this_period) : '—'} note="activations" />
-        <Figure
+        <Stat label="This month" value={s ? String(s.activated_this_period) : '—'} note="activations" />
+        <Stat
           label="Quota"
           value={v.quota_devices === null ? 'none' : String(v.quota_devices)}
           note={`${v.devices} devices live`}
         />
-        <Figure label="Products" value={String(v.products)} note="in the catalog" />
+        <Stat label="Products" value={String(v.products)} note="in the catalog" />
       </div>
 
       <div className="card" style={{ marginBottom: 20 }} data-testid="vendor-invoice">
@@ -142,37 +143,5 @@ export function AdminVendorPage() {
 
       {patch.error ? <p className="error">{patch.error.message}</p> : null}
     </>
-  );
-}
-
-function Figure({
-  label,
-  value,
-  note,
-  tone,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  tone?: 'warn';
-}) {
-  return (
-    <div className="card" style={{ minWidth: 140, flex: '1 1 140px' }}>
-      <div className="muted" style={{ fontSize: 12 }}>
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 22,
-          fontWeight: 600,
-          color: tone === 'warn' ? 'var(--danger, #b42318)' : undefined,
-        }}
-      >
-        {value}
-      </div>
-      <div className="muted" style={{ fontSize: 12 }}>
-        {note}
-      </div>
-    </div>
   );
 }

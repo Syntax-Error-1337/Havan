@@ -98,6 +98,31 @@ broker started → within one sweep the row is `dispatched attempts=2` and the w
 - **Real hardware.** No device is involved, so "the command reached the device" is out of
   scope by construction.
 
+## Silence is not presence
+
+`online` was only ever written by an incoming report: `UPDATE devices SET online = $2,
+last_seen_at = now()`. Nothing cleared it, so a device that died without a will message — a power
+cut, a dead radio, a simulator killed at the terminal — read as online for as long as its row
+existed. The operator console's health page caught it on its first read: **99 devices online, none
+heard from in fifteen minutes, the oldest report four days old.**
+
+The sweep now runs in the worker every minute and marks devices offline after **90 seconds** of
+silence: two missed keepalives, long enough that one dropped packet does not flap a device and short
+enough that the number means something. Verified live: `online` went 99 → 0 and agreed with
+`seen_recently`.
+
+Two figures rather than one, and the difference is the point:
+
+- **online** is what the platform believes — the last shadow said so;
+- **heard recently** is what actually arrived in the last fifteen minutes.
+
+When they disagree, something is holding a stale connection. That is a real fault a single flag
+would have hidden, and it is why `/ops/health` and `/admin/health` show both.
+
+Not covered: a device on a metered link that reports hourly would be marked offline between reports.
+Ninety seconds matches this fleet's keepalive; a different fleet needs a different window, which is
+why the sweep takes it as an argument.
+
 ## Backup and restore
 
 A backup nobody has restored is a hypothesis. `scripts/backup.sh` dumps, verifies the dump with

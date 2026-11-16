@@ -1,4 +1,5 @@
 import { useHealth, useOverview } from '../../entities/admin';
+import { Stat } from '../../shared/ui/Stat';
 
 /**
  * The screen an on-call rotation opens first.
@@ -27,43 +28,43 @@ export function AdminHealthPage() {
       </p>
 
       <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
-        <Tile
+        <Stat
           label="Devices"
           value={`${h.online} / ${h.devices}`}
           note="online / total"
           tone={talking ? 'ok' : quiet ? 'warn' : undefined}
         />
-        <Tile
+        <Stat
           label="Heard in 15 min"
           value={String(h.seen_recently)}
           note="reported recently"
           tone={h.seen_recently === 0 && h.devices > 0 ? 'warn' : undefined}
         />
-        <Tile label="Points last hour" value={String(h.points_last_hour)} note="telemetry" />
-        <Tile label="Commands last hour" value={String(h.commands_last_hour)} note="requested" />
+        <Stat label="Points last hour" value={String(h.points_last_hour)} note="telemetry" />
+        <Stat label="Commands last hour" value={String(h.commands_last_hour)} note="requested" />
       </div>
 
       <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
-        <Tile
+        <Stat
           label="Undelivered commands"
           value={String(h.undelivered)}
           note="refused while the broker was down, waiting"
           tone={h.undelivered > 0 ? 'warn' : 'ok'}
         />
-        <Tile
+        <Stat
           label="Unsent notifications"
           value={String(h.undelivered_notifications)}
           note="queued for a phone"
           tone={h.undelivered_notifications > 50 ? 'warn' : undefined}
         />
-        <Tile
+        <Stat
           label="Webhook backlog"
           value={String(h.webhook_backlog)}
           note="waiting on a vendor's endpoint"
           tone={h.webhook_backlog > 100 ? 'warn' : undefined}
         />
         {overview.data ? (
-          <Tile
+          <Stat
             label="Vendors"
             value={`${overview.data.vendors - overview.data.suspended} / ${overview.data.vendors}`}
             note="selling / total"
@@ -152,41 +153,4 @@ function formatSilence(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 48) return `${hours} h`;
   return `${Math.floor(hours / 24)} d`;
-}
-
-function Tile({
-  label,
-  value,
-  note,
-  tone,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  tone?: 'ok' | 'warn';
-}) {
-  return (
-    <div className="card" style={{ minWidth: 180, flex: '1 1 180px' }}>
-      <div className="muted" style={{ fontSize: 12 }}>
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 26,
-          fontWeight: 600,
-          color:
-            tone === 'warn'
-              ? 'var(--danger, #b42318)'
-              : tone === 'ok'
-                ? 'var(--ok, #1f7a4d)'
-                : undefined,
-        }}
-      >
-        {value}
-      </div>
-      <div className="muted" style={{ fontSize: 12 }}>
-        {note}
-      </div>
-    </div>
-  );
 }

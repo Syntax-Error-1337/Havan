@@ -51,6 +51,11 @@ a Mac with Xcode, and `npm run start:mcp` gives the agent screenshot/tap tools t
 Product editor with thing-model validation, firmware upload, OTA campaigns (with
 halt), API keys, serial manifest, **fleet list** and **analytics**.
 
+**Also built since:** licences and invoices, team and invitations, webhooks, two-factor
+policy, the federated-sign-in intent (ADR-005), and the **operator console** at `/admin` —
+vendors, health, certification queue, billing — which the plan did not foresee because it
+treats the operator as a database client.
+
 **Done:** a new product can be defined, validated, published and used by the
 simulator end to end; a vendor can then see every device they shipped — bound or in
 stock, online or not, which firmware — and the counts behind it. Verified against the
