@@ -29,7 +29,7 @@
     "@types/node": "^26.6.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react-swc": "^3.7.2",
+    "@vitejs/plugin-react-swc": "^4.3.3",
     "jsdom": "^31.0.0",
     "typescript": "~5.7.2",
     "vite": "^6.4.6",
