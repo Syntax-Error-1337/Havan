@@ -264,7 +264,7 @@ async fn command_status(
     ))
 }
 
-fn to_point_value(v: serde_json::Value) -> ApiResult<PointValue> {
+pub(crate) fn to_point_value(v: serde_json::Value) -> ApiResult<PointValue> {
     match v {
         serde_json::Value::Bool(b) => Ok(PointValue::Bool(b)),
         serde_json::Value::Number(n) => n

@@ -133,6 +133,15 @@ check: testdb ## fmt + clippy + tests + no secrets in the index
 audit: ## dependency advisories: shipped code must be clean, tooling must be clean at high
 	bash scripts/audit.sh
 
+.PHONY: conformance
+# A vendor runs this before asking us to certify a product; we run it before we say yes. It drives
+# a real device through the app's contract, so it is the only check that can answer "does this
+# product actually work", and it reads its answers from the platform rather than from its own log.
+conformance: ## run the device conformance suite: make conformance VENDOR=<uuid> PRODUCT=<uuid>
+	@test -n "$(VENDOR)" -a -n "$(PRODUCT)" || \
+	  { echo "usage: make conformance VENDOR=<uuid> PRODUCT=<uuid>"; exit 2; }
+	python3 scripts/conformance.py --vendor $(VENDOR) --product $(PRODUCT)
+
 .PHONY: test
 test: testdb ## tests only
 	$(CARGO_TEST) test --workspace

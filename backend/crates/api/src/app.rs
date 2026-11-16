@@ -147,6 +147,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::scenes::router())
         .merge(routes::licence::router())
         .merge(routes::certification::router())
+        .merge(routes::conformance::router())
         .merge(routes::privacy::router())
         .merge(routes::vendor_team::router())
         .merge(routes::sso::router())

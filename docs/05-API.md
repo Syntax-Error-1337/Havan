@@ -268,6 +268,30 @@ ingest lag, per-vendor token buckets.
 | POST | `/ops/licences` | `{vendor_id, quantity, unit_price_cents, currency?, expires_in_days?, note?}` → `{id, summary}` |
 | POST | `/ops/products/{id}/certification/certify` | `{note?}` → the sign-off that lets a device into the app |
 | POST | `/ops/products/{id}/certification/revoke` | `{note?}` → new claims refused, existing devices untouched |
+| GET | `/ops/conformance/checklist` | what `scripts/conformance.py` will check, as data |
+| POST | `/ops/conformance/sessions` | `{vendor_id, product_id}` → `{product_key, serial, secret, ticket, home_id, allow_unknown_serial}` |
+| GET | `/ops/devices/{id}/state?vendor_id=` | the platform's own view: online, last seen, per-point values, recent commands |
+| POST | `/ops/conformance/devices/{id}/commands?vendor_id=` | `{code, value}` → issue a command to a device **in the conformance lab only** |
+
+### Conformance
+
+`scripts/conformance.py` drives a real device through the contract the app depends on and reads its
+answers back from `/ops/devices/{id}/state` rather than from its own log: claim, connect, report,
+receive a command, acknowledge it, reconnect, and a serial outside the manifest.
+
+A session creates a device in a home named **Conformance lab**, owned by an account that cannot be
+signed into (`conformance+<vendor>@haven.invalid`). It is real data on purpose — the same claim, the
+same licence ledger, the same broker — and invisible to every customer. Two rules keep it honest:
+
+- A conformance run **activates a licence**, exactly like a customer's device. No licences left is a
+  `402`; the run does not proceed on credit.
+- The command door acts as the lab's owner and **refuses any device outside the lab** (`403`), so an
+  operator token cannot make somebody's bulb blink.
+
+What "outside the manifest" means is the product's declaration, not the suite's habit: a
+manifest-only product must refuse the serial, a trust-on-first-use product must accept it and charge
+for it. The run reads `allow_unknown_serial` from the thing model and checks what the product
+promised.
 
 ### Product certification
 

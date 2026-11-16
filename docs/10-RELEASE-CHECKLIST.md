@@ -16,7 +16,8 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | Ingest | `make load RATE=600 SECONDS=20` | ~600 msg/s with **no** loss; above that loss is expected and documented |
 | Degradation | `make chaos` | 18/18: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered |
 | App | `cd app && npx tsc --noEmit && npm test` | 70 tests, 15 suites |
-| Portal | `cd portal && npx tsc --noEmit && npm test` | 50 tests |
+| Portal | `cd portal && npx tsc --noEmit && npm test` | 59 tests |
+| Conformance | `make conformance VENDOR=<uuid> PRODUCT=<uuid>` | 7/7: a real device claims, connects, reports, is commanded, acks, reconnects, and an unknown serial is handled the way the product declares |
 
 Two of these are worth running twice: `make chaos` because it stops containers, and
 `make load` because a first run after a long idle can time out on a cold cache.

@@ -7,6 +7,7 @@ pub mod api_key;
 pub mod audit;
 pub mod automation;
 pub mod catalog;
+pub mod conformance;
 pub mod devices;
 pub mod fleet;
 pub mod history;
