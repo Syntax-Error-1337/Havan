@@ -1,0 +1,4 @@
+# Playwright output: traces, screenshots and videos are per-run artefacts, not source.
+test-results/
+playwright-report/
+blob-report/

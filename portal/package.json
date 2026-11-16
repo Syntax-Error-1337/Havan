@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test --project=desktop",
+    "test:e2e:phone": "playwright test --project=phone",
+    "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -18,10 +21,12 @@
     "react-router-dom": "^7.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.9",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react-swc": "^3.7.2",

@@ -7,4 +7,7 @@ export const qk = {
   apiKeys: ['api-keys'] as const,
   licences: ['licences'] as const,
   team: ['team'] as const,
+  invoices: ['invoices'] as const,
+  webhooks: ['webhooks'] as const,
+  security: ['security'] as const,
 };

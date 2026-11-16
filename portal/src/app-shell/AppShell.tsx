@@ -11,6 +11,9 @@ import { TeamPage } from '../pages/team/TeamPage';
 import { FleetPage } from '../pages/fleet/FleetPage';
 import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
 import { AuditPage } from '../pages/audit/AuditPage';
+import { InvoicesPage } from '../pages/invoices/InvoicesPage';
+import { WebhooksPage } from '../pages/webhooks/WebhooksPage';
+import { SecurityPage } from '../pages/security/SecurityPage';
 
 /**
  * The gate lives here, not in each page: a new screen cannot forget it.
@@ -51,8 +54,17 @@ export function AppShell() {
           <Link to="/licences" className="muted">
             Licences
           </Link>
+          <Link to="/invoices" className="muted">
+            Invoices
+          </Link>
           <Link to="/team" className="muted">
             Team
+          </Link>
+          <Link to="/webhooks" className="muted">
+            Webhooks
+          </Link>
+          <Link to="/security" className="muted">
+            Security
           </Link>
           <Link to="/api-keys" className="muted">
             API keys
@@ -75,6 +87,9 @@ export function AppShell() {
           <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="/licences" element={<LicencesPage />} />
           <Route path="/team" element={<TeamPage />} />
+          <Route path="/invoices" element={<InvoicesPage />} />
+          <Route path="/webhooks" element={<WebhooksPage />} />
+          <Route path="/security" element={<SecurityPage />} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
