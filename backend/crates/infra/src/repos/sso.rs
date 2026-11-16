@@ -83,6 +83,24 @@ impl SsoRepo for PgSso {
 
         domain::sso::validate_domain(domain.unwrap_or(""))?;
 
+        // Turning it on while somebody has no identity bound is the one way this feature can hurt a
+        // team: the moment enforcement lands, that person cannot sign in at all. Refusing here means
+        // the mistake is caught by the owner pressing the toggle, not by a colleague at 9am.
+        if required {
+            let counts = self.config(vendor_id).await?;
+            if counts.bound_members < counts.total_members {
+                let mut err = AppError::code(
+                    kernel::ErrorCode::Conflict,
+                    "every member needs an identity bound before SSO can be required",
+                );
+                if let AppError::Coded { details, .. } = &mut err {
+                    details.insert("bound".into(), counts.bound_members.to_string());
+                    details.insert("total".into(), counts.total_members.to_string());
+                }
+                return Err(err);
+            }
+        }
+
         let mut tx = self.vendor_tx(vendor_id).await?;
         sqlx::query("UPDATE vendors SET sso_required = $2, sso_domain = $3 WHERE id = $1")
             .bind(vendor_id)

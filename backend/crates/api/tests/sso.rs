@@ -78,6 +78,19 @@ async fn an_owner_can_record_the_intent_and_bind_identities() {
         .await
         .expect("bind");
 
+    // One of two members is still unbound, so requiring SSO is refused — the mistake is caught by
+    // the owner pressing the toggle, not by a colleague who cannot sign in tomorrow.
+    let err = sso
+        .configure(f.vendor_id, f.owner_id, true, Some("vendor.test"))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code_kind(), ErrorCode::Conflict);
+
+    // With everybody bound it is allowed, and the domain is stored.
+    sso.bind_subject(f.vendor_id, f.developer_id, "idp|dev-1")
+        .await
+        .expect("bind dev");
+
     let after = sso
         .configure(f.vendor_id, f.owner_id, true, Some("vendor.test"))
         .await
@@ -85,9 +98,9 @@ async fn an_owner_can_record_the_intent_and_bind_identities() {
 
     assert!(after.required);
     assert_eq!(after.domain.as_deref(), Some("vendor.test"));
-    assert_eq!(after.bound_members, 1);
-    // The gap is reported, not hidden: one of two members can still only use a password.
+    assert_eq!(after.bound_members, 2);
     assert_eq!(after.total_members, 2);
+    // Still not enforced: the flag records intent until an assertion can be validated (ADR-005).
     assert!(!after.enforced);
 }
 
