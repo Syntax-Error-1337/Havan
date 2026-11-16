@@ -130,6 +130,14 @@ audit: ## dependency advisories: shipped code must be clean, tooling must be cle
 test: testdb ## tests only
 	$(CARGO_TEST) test --workspace
 
+.PHONY: backup
+backup: ## verified database dump into .haven/backups
+	@scripts/backup.sh
+
+.PHONY: restore-drill
+restore-drill: ## restore the newest dump into a throwaway database and compare counts
+	@scripts/restore-drill.sh
+
 .PHONY: fmt
 fmt: ## format
 	$(CARGO) fmt --all
