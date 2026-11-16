@@ -34,7 +34,7 @@ pub struct ExportBundle {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ErasureReport {
     pub homes_deleted: i64,
     pub devices_deleted: i64,
@@ -42,6 +42,19 @@ pub struct ErasureReport {
     pub notifications_deleted: i64,
     pub sessions_revoked: i64,
     pub push_tokens_removed: i64,
+    /// The vendor's retention window that applies to this person, from the licence they were
+    /// covered by. Reported rather than applied silently: the person is entitled to know when the
+    /// receipt of their request disappears.
+    pub retention_days: i64,
+    #[serde(with = "time::serde::rfc3339")]
+    pub purge_after: time::OffsetDateTime,
+}
+
+/// What a purge run did. Ids, not counts: a deletion nobody can name is a deletion nobody can
+/// audit.
+#[derive(Debug, Clone, Serialize)]
+pub struct PurgeReport {
+    pub purged: Vec<Uuid>,
 }
 
 pub trait PrivacyRepo {
@@ -50,4 +63,10 @@ pub trait PrivacyRepo {
     /// Erase the person, keep the amounts. Refuses with a `409` when they still own a home that
     /// somebody else lives in, because the alternative is deciding for a stranger.
     fn erase(&self, user_id: Uuid) -> impl Future<Output = Result<ErasureReport, AppError>> + Send;
+
+    /// Delete every tombstone whose retention window has passed, and leave a receipt for each.
+    ///
+    /// `limit` bounds one run so a backlog is worked through in batches instead of holding a
+    /// transaction open for a thousand rows while the rest of the platform waits.
+    fn purge_due(&self, limit: i64) -> impl Future<Output = Result<PurgeReport, AppError>> + Send;
 }

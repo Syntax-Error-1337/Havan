@@ -20,6 +20,23 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/me/export", get(export))
         .route("/me", delete(erase))
+        .route("/ops/privacy/purge", axum::routing::post(purge))
+}
+
+/// `POST /v1/ops/privacy/purge`
+///
+/// The worker runs this hourly; the door exists so an operator can prove it works without waiting
+/// for a tick, and so a backlog can be cleared by hand after an outage. Safe to call repeatedly:
+/// a tombstone that is not due is not touched.
+async fn purge(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    peer: crate::limits::Peer,
+) -> ApiResult<Json<domain::privacy::PurgeReport>> {
+    super::ops::require_ops(&state, &headers, &peer)?;
+
+    // Batched, so one request cannot hold a transaction open over an unbounded backlog.
+    Ok(Json(state.privacy.purge_due(500).await.map_err(ApiError)?))
 }
 
 async fn export(State(state): State<AppState>, user: Auth) -> ApiResult<impl IntoResponse> {

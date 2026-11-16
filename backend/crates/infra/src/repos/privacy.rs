@@ -1,6 +1,6 @@
 use domain::privacy::{
     EXPORT_NOTIFICATION_LIMIT, EXPORT_TELEMETRY_DAYS, EXPORT_TELEMETRY_MAX_ROWS, ErasureReport,
-    ExportBundle, PrivacyRepo,
+    ExportBundle, PrivacyRepo, PurgeReport,
 };
 use kernel::{AppError, TenantCtx};
 use serde_json::Value;
@@ -168,6 +168,30 @@ impl PrivacyRepo for PgPrivacy {
             return Err(AppError::not_found("user"));
         }
 
+        // Read before anything is deleted: the window comes from the licence covering the devices
+        // in this person's homes, and those rows are about to go. Learned the hard way — computing
+        // it later silently fell back to the default for everybody.
+        //
+        // A person can have devices from more than one vendor, so the *longest* window wins: the
+        // alternative is destroying data one vendor is still obliged to keep.
+        let retention: (i32,) = sqlx::query_as(
+            r#"SELECT coalesce(max(g.retention_days), 90)
+                 FROM licence_grants g
+                WHERE (g.expires_at IS NULL OR g.expires_at > now())
+                  AND g.vendor_id IN (
+                      SELECT DISTINCT d.vendor_id
+                        FROM devices d
+                        JOIN homes h ON h.id = d.home_id
+                       WHERE h.owner_id = $1
+                          OR h.id IN (SELECT home_id FROM home_members WHERE user_id = $1)
+                  )"#,
+        )
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db)?;
+        let retention_days = i64::from(retention.0);
+
         // A home with other people in it is not ours to delete. Erasing this account would either
         // evict them or leave them with a home whose owner no longer exists, so the request is
         // refused with the count and the operator (or the person) transfers ownership first.
@@ -247,8 +271,9 @@ impl PrivacyRepo for PgPrivacy {
             .rows_affected();
 
         // The row stays as a tombstone: referential integrity for audit rows, and `@invalid`
-        // cannot receive mail if anything still tries.
-        sqlx::query(
+        // cannot receive mail if anything still tries. `purge_after` is set here, once, because a
+        // renegotiated grant afterwards must not move the finish line for somebody who has left.
+        let purge_after: (time::OffsetDateTime,) = sqlx::query_as(
             r#"UPDATE users
                   SET email = 'erased+' || id::text || '@invalid',
                       phone = NULL,
@@ -256,11 +281,14 @@ impl PrivacyRepo for PgPrivacy {
                       display_name = 'Deleted account',
                       avatar_url = NULL,
                       totp_secret = NULL,
-                      disabled_at = now()
-                WHERE id = $1"#,
+                      disabled_at = now(),
+                      purge_after = now() + make_interval(days => $2)
+                WHERE id = $1
+             RETURNING purge_after"#,
         )
         .bind(user_id)
-        .execute(&mut *tx)
+        .bind(retention.0)
+        .fetch_one(&mut *tx)
         .await
         .map_err(db)?;
 
@@ -271,6 +299,8 @@ impl PrivacyRepo for PgPrivacy {
             notifications_deleted: notifications as i64,
             sessions_revoked: sessions as i64,
             push_tokens_removed: tokens as i64,
+            retention_days,
+            purge_after: purge_after.0,
         };
 
         sqlx::query(
@@ -286,5 +316,49 @@ impl PrivacyRepo for PgPrivacy {
 
         tx.commit().await.map_err(db)?;
         Ok(report)
+    }
+
+    async fn purge_due(&self, limit: i64) -> Result<PurgeReport, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("dsar-purge")).await?;
+
+        // `purge_after <= now()` and nothing else: a tombstone that is not due is not a candidate,
+        // so a run can be repeated as often as the worker likes without shortening anybody's
+        // window. The order is oldest-first so a backlog drains in the order people asked.
+        let purged: Vec<(Uuid,)> = sqlx::query_as(
+            r#"DELETE FROM users
+                WHERE id IN (
+                    SELECT id FROM users
+                     WHERE purge_after IS NOT NULL AND purge_after <= now()
+                     ORDER BY purge_after
+                     LIMIT $1
+                )
+                RETURNING id"#,
+        )
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        // The receipt is the point of keeping anything: a person who complains about a deletion
+        // gets a row that says when it happened and how long we kept it, and no way to look them
+        // up again. `data_requests` has no foreign key precisely so it survives this.
+        for (user_id,) in &purged {
+            sqlx::query(
+                r#"INSERT INTO data_requests (id, user_id, kind, completed_at, detail)
+                   VALUES ($1, $2, 'purge', now(), $3)"#,
+            )
+            .bind(kernel::new_id())
+            .bind(user_id)
+            .bind(serde_json::json!({ "note": "retention window elapsed; tombstone deleted" }))
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        }
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(PurgeReport {
+            purged: purged.into_iter().map(|(id,)| id).collect(),
+        })
     }
 }

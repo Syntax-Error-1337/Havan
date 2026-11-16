@@ -215,12 +215,21 @@ aborting the burst.
 |---|---|---|
 | GET | `/me/export` | everything we hold about the caller, as a download: profile, homes, rooms, devices and their last state, scenes, automations, alerts, and the last 7 days of telemetry (≤5000 rows) |
 | DELETE | `/me` | erases the account: memberships, alerts, sessions, push tokens, and homes nobody else lives in; anonymises the person |
+| POST | `/ops/privacy/purge` | deletes tombstones whose retention window has passed, up to 500 per call; returns the ids purged |
 
 An export contains the caller's data only — another member of the same home appears as a role and
 a count, never as a person. An erasure is refused with **409** while the caller still owns a home
 somebody else lives in, because deleting it would evict a stranger; transfer ownership first. Each
 request leaves a receipt in `data_requests`, which survives the account, so "when was this erased"
 stays answerable.
+
+The erasure is not the end of it. `licence_grants.retention_days` is the term the vendor bought, and
+`DELETE /me` sets `users.purge_after` from the longest window among the vendors whose devices were in
+the person's homes — decided once, at erasure, because a renegotiated grant afterwards must not move
+the finish line in either direction. The worker sweeps hourly and deletes tombstones whose window has
+passed, writing a `purge` receipt as it goes; the ops door does the same on demand, so a backlog can
+be cleared without waiting for a tick. Repeats are safe: a tombstone that is not due is not a
+candidate.
 
 ## Vendor (portal)
 

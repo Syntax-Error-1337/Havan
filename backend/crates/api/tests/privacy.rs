@@ -36,6 +36,7 @@ struct Seeded {
     user_id: Uuid,
     home_id: Uuid,
     device_id: Uuid,
+    vendor_id: Uuid,
     email: String,
     serial: String,
 }
@@ -146,6 +147,7 @@ async fn seed(f: &Fixture, shared_with_another: bool) -> Seeded {
         user_id,
         home_id,
         device_id,
+        vendor_id,
         email,
         serial,
     }
@@ -258,6 +260,112 @@ async fn erasure_anonymises_removes_private_rows_and_deletes_an_empty_home() {
     .await
     .expect("receipt");
     assert_eq!(receipt, 1, "the erasure leaves a receipt");
+}
+
+/// The retention window comes from the licence covering the person's devices, and the tombstone is
+/// scheduled — not deleted — at erasure time.
+#[tokio::test]
+async fn erasure_schedules_the_purge_from_the_licence() {
+    let Some(f) = fixture().await else {
+        eprintln!("skipping: no TEST_DATABASE_URL");
+        return;
+    };
+    let s = seed(&f, false).await;
+    let pool = admin(&f).await;
+
+    // Seven days, which is not the 90-day default: a passing test must come from the licence and
+    // not from the fallback.
+    sqlx::query(
+        "INSERT INTO licence_grants (id, vendor_id, quantity, unit_price_cents, currency, retention_days)
+         VALUES ($1, $2, 10, 249, 'USD', 7)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(s.vendor_id)
+    .execute(&pool)
+    .await
+    .expect("grant");
+
+    let privacy = infra::PgPrivacy::new(f.pg.clone());
+    let report = privacy.erase(s.user_id).await.expect("erase");
+
+    assert_eq!(report.retention_days, 7);
+
+    let scheduled: (Option<time::OffsetDateTime>,) =
+        sqlx::query_as("SELECT purge_after FROM users WHERE id = $1")
+            .bind(s.user_id)
+            .fetch_one(&pool)
+            .await
+            .expect("tombstone");
+
+    let purge_after = scheduled.0.expect("purge_after set");
+    let days = (purge_after - time::OffsetDateTime::now_utc()).whole_days();
+    assert!(
+        (6..=7).contains(&days),
+        "expected roughly seven days, got {days}"
+    );
+}
+
+/// A tombstone that is not due is left alone, however often the sweep runs.
+#[tokio::test]
+async fn a_tombstone_is_deleted_only_once_its_window_has_passed() {
+    let Some(f) = fixture().await else {
+        eprintln!("skipping: no TEST_DATABASE_URL");
+        return;
+    };
+    let s = seed(&f, false).await;
+    let pool = admin(&f).await;
+
+    sqlx::query(
+        "INSERT INTO licence_grants (id, vendor_id, quantity, unit_price_cents, currency, retention_days)
+         VALUES ($1, $2, 10, 249, 'USD', 30)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(s.vendor_id)
+    .execute(&pool)
+    .await
+    .expect("grant");
+
+    let privacy = infra::PgPrivacy::new(f.pg.clone());
+    privacy.erase(s.user_id).await.expect("erase");
+
+    // Due in 30 days: the sweep must not touch it, and running twice must not change that.
+    for _ in 0..2 {
+        let report = privacy.purge_due(500).await.expect("purge");
+        assert!(
+            !report.purged.contains(&s.user_id),
+            "purged a tombstone whose window had not passed"
+        );
+    }
+
+    // Bring the window forward, the way a month would.
+    sqlx::query("UPDATE users SET purge_after = now() - interval '1 second' WHERE id = $1")
+        .bind(s.user_id)
+        .execute(&pool)
+        .await
+        .expect("advance");
+
+    let report = privacy.purge_due(500).await.expect("purge");
+    assert!(report.purged.contains(&s.user_id));
+
+    let gone: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM users WHERE id = $1")
+        .bind(s.user_id)
+        .fetch_optional(&pool)
+        .await
+        .expect("lookup");
+    assert!(gone.is_none(), "the tombstone survived its purge");
+
+    // The receipt outlives the row: no foreign key, so a person asking later can still be answered.
+    let receipt: Option<(String,)> =
+        sqlx::query_as("SELECT kind FROM data_requests WHERE user_id = $1 AND kind = 'purge'")
+            .bind(s.user_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("receipt");
+    assert!(receipt.is_some(), "no purge receipt was written");
+
+    // And a second run is a no-op rather than an error.
+    let again = privacy.purge_due(500).await.expect("second purge");
+    assert!(!again.purged.contains(&s.user_id));
 }
 
 #[tokio::test]

@@ -9,6 +9,7 @@ use anyhow::Context;
 use domain::devices::CommandRepo;
 use domain::notification::NotificationRepo;
 use domain::pairing::PairingRepo;
+use domain::privacy::PrivacyRepo;
 use protocol::topics;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use std::sync::Arc;
@@ -216,6 +217,35 @@ async fn main() -> anyhow::Result<()> {
                 )));
             }
         }
+    }
+
+    // Erased accounts, once their retention window has passed. Hourly, because the window is
+    // measured in days and a lighter tick would only make the backlog look bigger than it is.
+    //
+    // The loop is safe to run on three replicas: `purge_due` deletes by `purge_after <= now()`, so
+    // whoever claims a row first wins and the others find nothing. The batched `limit` is what keeps
+    // one replica from holding a long transaction while the rest of the platform waits.
+    {
+        let privacy = infra::PgPrivacy::new(pg.clone());
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(3600));
+            loop {
+                tick.tick().await;
+                match privacy.purge_due(500).await {
+                    Ok(report) if report.purged.is_empty() => {}
+                    Ok(report) => {
+                        info!(
+                            purged = report.purged.len(),
+                            "erased accounts past their retention"
+                        );
+                        for id in report.purged {
+                            info!(user = %id, "deleted an erased account");
+                        }
+                    }
+                    Err(e) => warn!(error = ?e, "privacy purge failed"),
+                }
+            }
+        });
     }
 
     // Certificate expiry. A device whose certificate lapses stops connecting, and the
