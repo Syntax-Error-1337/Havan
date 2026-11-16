@@ -1,4 +1,5 @@
 import { useAudit, type AuditEntry } from '../../entities/audit';
+import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
  * The audit trail.
@@ -38,36 +39,38 @@ export function AuditPage() {
           </p>
         </div>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th className="nowrap">When</th>
-              <th>Action</th>
-              <th>Target</th>
-              <th>Who</th>
-              <th className="nowrap">From</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => (
-              <tr key={entry.id}>
-                <td className="nowrap muted">{when(entry.ts)}</td>
-                <td>
-                  <span className="mono">{entry.action}</span>
-                  <Detail detail={entry.detail} />
-                </td>
-                <td className="muted">
-                  {entry.target_kind}
-                  {entry.target_id ? (
-                    <span className="mono"> {entry.target_id.slice(0, 8)}</span>
-                  ) : null}
-                </td>
-                <td className="muted">{who(entry)}</td>
-                <td className="mono muted">{entry.ip ?? '—'}</td>
+        <TableFrame label="Audit trail">
+  <table className="table">
+            <thead>
+              <tr>
+                <th className="nowrap">When</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Who</th>
+                <th className="nowrap">From</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td className="nowrap muted">{when(entry.ts)}</td>
+                  <td>
+                    <span className="mono">{entry.action}</span>
+                    <Detail detail={entry.detail} />
+                  </td>
+                  <td className="muted">
+                    {entry.target_kind}
+                    {entry.target_id ? (
+                      <span className="mono"> {entry.target_id.slice(0, 8)}</span>
+                    ) : null}
+                  </td>
+                  <td className="muted">{who(entry)}</td>
+                  <td className="mono muted">{entry.ip ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+</TableFrame>
       )}
 
       {hasNextPage ? (

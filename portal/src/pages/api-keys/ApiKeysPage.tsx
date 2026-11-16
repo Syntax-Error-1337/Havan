@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { keyState, useApiKeys, useCreateApiKey, useRevokeApiKey } from '../../entities/api-key';
+import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
  * API keys for a vendor's own tooling.
@@ -105,57 +106,59 @@ export function ApiKeysPage() {
             No keys yet. Create one and copy the secret before you close the page.
           </p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Prefix</th>
-                <th>Created</th>
-                <th>Last used</th>
-                <th>State</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((key) => {
-                const state = keyState(key);
-                return (
-                  <tr key={key.id}>
-                    <td>{key.name}</td>
-                    <td>
-                      <code className="muted">hv_{key.prefix}_…</code>
-                    </td>
-                    <td className="muted">
-                      {new Date(key.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="muted">
-                      {key.last_used_at
-                        ? new Date(key.last_used_at).toLocaleString()
-                        : 'never'}
-                    </td>
-                    <td>
-                      <span className={`badge badge--${state === 'revoked' ? 'halted' : 'running'}`}>
-                        {state}
-                      </span>
-                    </td>
-                    <td>
-                      {state === 'revoked' ? (
-                        <span className="muted">—</span>
-                      ) : (
-                        <button
-                          className="btn"
-                          disabled={revoke.isPending}
-                          onClick={() => revoke.mutate(key.id)}
-                        >
-                          Revoke
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <TableFrame label="API keys">
+  <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Prefix</th>
+                  <th>Created</th>
+                  <th>Last used</th>
+                  <th>State</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keys.map((key) => {
+                  const state = keyState(key);
+                  return (
+                    <tr key={key.id}>
+                      <td>{key.name}</td>
+                      <td>
+                        <code className="muted">hv_{key.prefix}_…</code>
+                      </td>
+                      <td className="muted">
+                        {new Date(key.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="muted">
+                        {key.last_used_at
+                          ? new Date(key.last_used_at).toLocaleString()
+                          : 'never'}
+                      </td>
+                      <td>
+                        <span className={`badge badge--${state === 'revoked' ? 'halted' : 'running'}`}>
+                          {state}
+                        </span>
+                      </td>
+                      <td>
+                        {state === 'revoked' ? (
+                          <span className="muted">—</span>
+                        ) : (
+                          <button
+                            className="btn"
+                            disabled={revoke.isPending}
+                            onClick={() => revoke.mutate(key.id)}
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+</TableFrame>
         )}
       </div>
     </>

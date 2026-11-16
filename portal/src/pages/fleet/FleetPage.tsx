@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { useFleet, type FleetFilter } from '../../entities/fleet';
+import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
  * The fleet: every device the vendor has shipped, and what it is doing.
@@ -61,38 +62,40 @@ export function FleetPage() {
           </p>
         </div>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Serial</th>
-              <th>Product</th>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Firmware</th>
-              <th className="nowrap">Last seen</th>
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map((device) => (
-              <tr key={device.id}>
-                <td className="mono">{device.serial}</td>
-                <td>{device.product_name}</td>
-                <td>{device.name}</td>
-                <td>
-                  <span
-                    className={`badge ${device.online ? 'badge--online' : 'badge--offline'}`}
-                    data-testid="fleet-state"
-                  >
-                    {device.online ? 'online' : 'offline'}
-                  </span>{' '}
-                  <span className="muted">{device.bound ? 'bound' : 'unbound'}</span>
-                </td>
-                <td className="mono">{device.fw_version ?? '—'}</td>
-                <td className="muted">{device.last_seen_at ? ago(device.last_seen_at) : 'never'}</td>
+        <TableFrame label="Fleet devices">
+  <table className="table">
+            <thead>
+              <tr>
+                <th>Serial</th>
+                <th>Product</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Firmware</th>
+                <th className="nowrap">Last seen</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {devices.map((device) => (
+                <tr key={device.id}>
+                  <td className="mono">{device.serial}</td>
+                  <td>{device.product_name}</td>
+                  <td>{device.name}</td>
+                  <td>
+                    <span
+                      className={`badge ${device.online ? 'badge--online' : 'badge--offline'}`}
+                      data-testid="fleet-state"
+                    >
+                      {device.online ? 'online' : 'offline'}
+                    </span>{' '}
+                    <span className="muted">{device.bound ? 'bound' : 'unbound'}</span>
+                  </td>
+                  <td className="mono">{device.fw_version ?? '—'}</td>
+                  <td className="muted">{device.last_seen_at ? ago(device.last_seen_at) : 'never'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+</TableFrame>
       )}
 
       {hasNextPage ? (

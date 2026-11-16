@@ -12,6 +12,7 @@ import {
   useStartCampaign,
 } from '../../entities/ota';
 import { ApiError } from '../../shared/api/client';
+import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
  * Rollouts. The table answers one question — "is my fleet up to date?" — and
@@ -165,89 +166,91 @@ export function CampaignsPage() {
             No rollouts yet. Register firmware on a product, then start a campaign.
           </p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Rollout</th>
-                <th>State</th>
-                <th>Progress</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const product = (products ?? []).find((p) => p.id === row.campaign.product_id);
-                const done = percentDone(row.progress);
-                return (
-                  <tr key={row.campaign.id}>
-                    <td>{product?.name ?? row.campaign.product_id.slice(0, 8)}</td>
-                    <td>{row.campaign.rollout_pct}%</td>
-                    <td>
-                      <span className={`badge badge--${row.campaign.status}`}>
-                        {row.campaign.status}
-                      </span>
-                    </td>
-                    <td>
-                      <div
-                        className={`progress ${
-                          row.progress.failed > 0
-                            ? 'progress--failed'
-                            : row.complete
-                              ? 'progress--clean'
-                              : ''
-                        }`}
-                        title={`${done}% of ${row.progress.total}`}
-                      >
-                        <span style={{ width: `${done}%` }} />
-                      </div>
-                      <span className="muted" style={{ fontSize: 12 }}>
-                        {headline(row)}
-                      </span>
-                    </td>
-                    <td>
-                      {row.campaign.status === 'draft' ? (
-                        <button
-                          className="btn btn--primary"
-                          disabled={start.isPending}
-                          onClick={() => start.mutate(row.campaign.id)}
+          <TableFrame label="Firmware rollouts">
+  <table className="table">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Rollout</th>
+                  <th>State</th>
+                  <th>Progress</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const product = (products ?? []).find((p) => p.id === row.campaign.product_id);
+                  const done = percentDone(row.progress);
+                  return (
+                    <tr key={row.campaign.id}>
+                      <td>{product?.name ?? row.campaign.product_id.slice(0, 8)}</td>
+                      <td>{row.campaign.rollout_pct}%</td>
+                      <td>
+                        <span className={`badge badge--${row.campaign.status}`}>
+                          {row.campaign.status}
+                        </span>
+                      </td>
+                      <td>
+                        <div
+                          className={`progress ${
+                            row.progress.failed > 0
+                              ? 'progress--failed'
+                              : row.complete
+                                ? 'progress--clean'
+                                : ''
+                          }`}
+                          title={`${done}% of ${row.progress.total}`}
                         >
-                          Start
-                        </button>
-                      ) : row.campaign.status === 'running' ? (
-                        // A rollout going badly needs a stop, and it needs it at
-                        // 2am without a terminal.
-                        <button
-                          className="btn"
-                          disabled={halt.isPending && halt.variables === row.campaign.id}
-                          onClick={() => halt.mutate(row.campaign.id)}
-                        >
-                          {halt.isPending && halt.variables === row.campaign.id ? 'Halting…' : 'Halt'}
-                        </button>
-                      ) : (
-                        <div className="row" style={{ gap: 8 }}>
-                          {/* A finished rollout is exactly when someone finds out the
-                              image was bad — so the way back belongs next to Halt. */}
+                          <span style={{ width: `${done}%` }} />
+                        </div>
+                        <span className="muted" style={{ fontSize: 12 }}>
+                          {headline(row)}
+                        </span>
+                      </td>
+                      <td>
+                        {row.campaign.status === 'draft' ? (
+                          <button
+                            className="btn btn--primary"
+                            disabled={start.isPending}
+                            onClick={() => start.mutate(row.campaign.id)}
+                          >
+                            Start
+                          </button>
+                        ) : row.campaign.status === 'running' ? (
+                          // A rollout going badly needs a stop, and it needs it at
+                          // 2am without a terminal.
                           <button
                             className="btn"
-                            disabled={rollback.isPending && rollback.variables === row.campaign.id}
-                            onClick={() => rollback.mutate(row.campaign.id)}
+                            disabled={halt.isPending && halt.variables === row.campaign.id}
+                            onClick={() => halt.mutate(row.campaign.id)}
                           >
-                            {rollback.isPending && rollback.variables === row.campaign.id
-                              ? 'Rolling back…'
-                              : 'Roll back'}
+                            {halt.isPending && halt.variables === row.campaign.id ? 'Halting…' : 'Halt'}
                           </button>
-                          <Link className="muted" to={`/products/${row.campaign.product_id}/firmware`}>
-                            Firmware
-                          </Link>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        ) : (
+                          <div className="row" style={{ gap: 8 }}>
+                            {/* A finished rollout is exactly when someone finds out the
+                                image was bad — so the way back belongs next to Halt. */}
+                            <button
+                              className="btn"
+                              disabled={rollback.isPending && rollback.variables === row.campaign.id}
+                              onClick={() => rollback.mutate(row.campaign.id)}
+                            >
+                              {rollback.isPending && rollback.variables === row.campaign.id
+                                ? 'Rolling back…'
+                                : 'Roll back'}
+                            </button>
+                            <Link className="muted" to={`/products/${row.campaign.product_id}/firmware`}>
+                              Firmware
+                            </Link>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+</TableFrame>
         )}
       </div>
     </>

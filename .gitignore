@@ -9,3 +9,5 @@ sdk/esp8266/.pio
 sdk/esp8266/compile_commands.json
 sdk/c/tests/test_haven
 sdk/esp8266/.cache/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

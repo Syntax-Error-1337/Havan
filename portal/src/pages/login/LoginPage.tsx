@@ -56,6 +56,10 @@ export function LoginPage() {
             onChange={(e) => setVendorId(e.target.value)}
             autoComplete="off"
             spellCheck={false}
+            required
+            // A vendor id is a UUID; the browser can refuse a truncated paste before the request.
+            pattern="[0-9a-fA-F-]{36}"
+            title="36 characters, as shown in the vendor settings"
           />
         </label>
 
@@ -67,6 +71,7 @@ export function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="username"
             type="email"
+            required
           />
         </label>
 
@@ -78,10 +83,15 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             type="password"
+            required
           />
         </label>
 
-        {error ? <p className="error">{error}</p> : null}
+        {error ? (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        ) : null}
 
         <button className="btn btn--primary" type="submit" disabled={pending} style={{ width: '100%' }}>
           {pending ? 'Signing in…' : 'Sign in'}

@@ -86,7 +86,7 @@ describe('rollouts', () => {
   it('offers a way back once a rollout has finished', async () => {
     const calls = stubFetch((url) =>
       url.endsWith('/vendor/campaigns')
-        ? [row({ status: 'complete', rollout_pct: 100 }, { success: 10, failed: 0 })]
+        ? [row({ status: 'completed', rollout_pct: 100 }, { success: 10, failed: 0 })]
         : [product],
     );
     renderPage();
@@ -108,7 +108,7 @@ describe('rollouts', () => {
         };
       }
       return url.endsWith('/vendor/campaigns')
-        ? [row({ status: 'complete', rollout_pct: 100 }, { success: 10, failed: 0 })]
+        ? [row({ status: 'completed', rollout_pct: 100 }, { success: 10, failed: 0 })]
         : [product];
     });
     renderPage();

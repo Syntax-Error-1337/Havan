@@ -54,9 +54,18 @@ button {
   display: flex;
   align-items: baseline;
   gap: calc(var(--space) * 1.5);
+  /* A nav that cannot wrap does not degrade, it clips: at phone width the last link is simply
+     gone, with no scrollbar and no affordance to say something is missing. */
+  flex-wrap: wrap;
+  row-gap: calc(var(--space) * 1);
   padding: calc(var(--space) * 2) calc(var(--space) * 3);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+}
+
+.topbar nav {
+  flex-wrap: wrap;
+  row-gap: calc(var(--space) * 0.5);
 }
 
 .brand {
@@ -278,4 +287,68 @@ select.input {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* A table on a narrow screen has two honest options: scroll, or become stacked cards. Scrolling
+   keeps the row/column semantics that make it a table; stacking needs a label map per table and
+   loses the comparison a table exists for. So the frame scrolls — with a sticky header, a visible
+   scrollbar, and a focus ring, because a scroll container that only answers to a trackpad cannot
+   be used from the keyboard at all. */
+.table-frame {
+  --scrollbar-thumb: color-mix(in srgb, var(--muted) 55%, var(--surface));
+  --scrollbar-track: var(--surface);
+
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: min(70vh, 640px);
+  container-type: inline-size;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.table-frame:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* A horizontal scrollbar sits flush against whatever follows, so the next control looks like it
+   belongs to the table — and on a phone the scrollbar is the only thing between them. */
+.table-frame + * {
+  margin-block-start: calc(var(--space) * 1.5);
+}
+
+/* `separate` is what lets a sticky header paint over the rows it covers; with `collapse` the
+   header's borders disappear the moment it sticks. */
+.table-frame .table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-frame .table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+/* Query the container, not the viewport: the same table is cramped inside a card on a wide
+   screen, and a viewport query would never notice. Cells stop wrapping rather than crushing into
+   two-word columns. */
+@container (width < 620px) {
+  .table-frame .table th,
+  .table-frame .table td {
+    padding-inline: calc(var(--space) * 1.25);
+    white-space: nowrap;
+  }
+}
+
+/* Validation after commitment: `:user-invalid` starts matching when the field is blurred or the
+   form is submitted, not on the first keystroke the way `:invalid` does. */
+.input:user-invalid {
+  border-color: var(--danger);
+}
+
+.input:user-invalid:focus {
+  outline-color: color-mix(in srgb, var(--danger) 45%, transparent);
 }

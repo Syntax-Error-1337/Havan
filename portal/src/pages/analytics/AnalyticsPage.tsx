@@ -1,4 +1,5 @@
 import { useFleetStats } from '../../entities/fleet';
+import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
  * Fleet health, as counts.
@@ -41,48 +42,52 @@ export function AnalyticsPage() {
       {data.by_product.length === 0 ? (
         <p className="muted">No devices yet.</p>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Devices</th>
-              <th>Online</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.by_product.map((row) => (
-              <tr key={row.product_key}>
-                <td>
-                  {row.name} <span className="muted mono">{row.product_key}</span>
-                </td>
-                <td>{row.total}</td>
-                <td>{row.online}</td>
+        <TableFrame label="Devices by product">
+  <table className="table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Devices</th>
+                <th>Online</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.by_product.map((row) => (
+                <tr key={row.product_key}>
+                  <td>
+                    {row.name} <span className="muted mono">{row.product_key}</span>
+                  </td>
+                  <td>{row.total}</td>
+                  <td>{row.online}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+</TableFrame>
       )}
 
       <h2>Firmware</h2>
       {data.firmware.length === 0 ? (
         <p className="muted">No device has reported a version yet.</p>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Version</th>
-              <th>Devices</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.firmware.map((row) => (
-              <tr key={row.version ?? 'unknown'}>
-                <td className="mono">{row.version ?? 'never reported'}</td>
-                <td>{row.devices}</td>
+        <TableFrame label="Firmware distribution">
+  <table className="table">
+            <thead>
+              <tr>
+                <th>Version</th>
+                <th>Devices</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.firmware.map((row) => (
+                <tr key={row.version ?? 'unknown'}>
+                  <td className="mono">{row.version ?? 'never reported'}</td>
+                  <td>{row.devices}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+</TableFrame>
       )}
     </div>
   );

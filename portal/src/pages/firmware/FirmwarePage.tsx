@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useProduct } from '../../entities/product';
 import { useAddFirmware, useFirmware } from '../../entities/ota';
 import { ApiError } from '../../shared/api/client';
+import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
  * Firmware for one product.
@@ -163,30 +164,32 @@ export function FirmwarePage() {
             No firmware registered. A rollout needs at least one image.
           </p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Version</th>
-                <th>Size</th>
-                <th>Digest</th>
-                <th>Registered</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(images ?? []).map((image) => (
-                <tr key={image.id}>
-                  <td>
-                    <code>{image.version}</code>
-                  </td>
-                  <td>{(image.size / 1024).toFixed(0)} KB</td>
-                  <td>
-                    <code className="muted">{image.sha256.slice(0, 12)}…</code>
-                  </td>
-                  <td className="muted">{new Date(image.created_at).toLocaleDateString()}</td>
+          <TableFrame label="Firmware builds">
+  <table className="table">
+              <thead>
+                <tr>
+                  <th>Version</th>
+                  <th>Size</th>
+                  <th>Digest</th>
+                  <th>Registered</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(images ?? []).map((image) => (
+                  <tr key={image.id}>
+                    <td>
+                      <code>{image.version}</code>
+                    </td>
+                    <td>{(image.size / 1024).toFixed(0)} KB</td>
+                    <td>
+                      <code className="muted">{image.sha256.slice(0, 12)}…</code>
+                    </td>
+                    <td className="muted">{new Date(image.created_at).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+</TableFrame>
         )}
       </div>
     </>
