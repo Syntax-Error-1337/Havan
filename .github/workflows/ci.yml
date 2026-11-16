@@ -51,7 +51,7 @@ jobs:
       HAVEN_VAULT_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -93,7 +93,7 @@ jobs:
     # The SDK contract is prose plus types; this job proves the two agree.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: protocol tests
         run: cargo test --manifest-path backend/Cargo.toml -p protocol
@@ -106,7 +106,7 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -126,7 +126,7 @@ jobs:
       run:
         working-directory: portal
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
