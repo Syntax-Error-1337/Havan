@@ -45,6 +45,7 @@ pub struct AppState {
     pub licences: Arc<infra::PgLicence>,
     pub privacy: Arc<infra::PgPrivacy>,
     pub vendor_team: Arc<infra::PgVendorTeam>,
+    pub support: Arc<infra::PgSupport>,
     pub fleet: Arc<domain::fleet::FleetService<infra::PgFleet>>,
     pub audit: Arc<domain::audit::AuditService<infra::PgAudit>>,
     /// The device CA. Created on first use rather than at boot, so a machine that only
@@ -86,6 +87,7 @@ impl AppState {
         let licences = Arc::new(infra::PgLicence::new(pg.clone()));
         let privacy = Arc::new(infra::PgPrivacy::new(pg.clone()));
         let vendor_team = Arc::new(infra::PgVendorTeam::new(pg.clone()));
+        let support = Arc::new(infra::PgSupport::new(pg.clone()));
         let fleet = Arc::new(domain::fleet::FleetService::new(Arc::new(
             infra::PgFleet::new(pg.clone()),
         )));
@@ -115,6 +117,7 @@ impl AppState {
             licences,
             privacy,
             vendor_team,
+            support,
             fleet,
             audit,
             ca: Arc::new(tokio::sync::OnceCell::new()),

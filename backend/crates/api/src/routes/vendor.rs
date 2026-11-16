@@ -28,6 +28,8 @@ pub fn router() -> Router<AppState> {
         // deliberately without customer identity — see `domain::fleet`.
         .route("/vendor/devices", get(fleet))
         .route("/vendor/analytics", get(analytics))
+        // What a vendor hands their support desk: allowlisted, never a redacted row.
+        .route("/vendor/support-bundle", get(support_bundle))
         // Who did what. Read-only, newest first, keyset-paginated.
         .route("/vendor/audit", get(audit))
 }
@@ -251,6 +253,26 @@ async fn fleet(
             .await
             .map_err(ApiError)?,
     ))
+}
+
+/// `GET /vendor/support-bundle?device_id=` — an allowlisted bundle for a support ticket.
+async fn support_bundle(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    axum::extract::Query(q): axum::extract::Query<SupportQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    Ok(Json(
+        state
+            .support
+            .bundle(vendor.vendor_id, q.device_id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+struct SupportQuery {
+    device_id: Option<Uuid>,
 }
 
 /// `GET /vendor/analytics` — counts over the vendor's own devices. No estimates: every

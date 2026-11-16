@@ -170,6 +170,38 @@ impl Harness {
     }
 }
 
+/// The bundle has to be *useful*, not merely safe: a support engineer opens it to find out what the
+/// device is and whether it has been commanded.
+#[tokio::test]
+async fn the_support_bundle_says_what_the_device_is() {
+    let Some(h) = boot().await else { return };
+    let (token, _home, _home_name, _owner_email) = h.vendor_with_a_customer().await;
+
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(format!("{}/v1/vendor/support-bundle", h.base))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("bundle")
+        .json()
+        .await
+        .expect("json");
+
+    assert_eq!(body["format_version"], 1);
+    assert_eq!(body["vendor"]["name"], "Shapes Vendor");
+    assert!(
+        body["devices"][0]["serial"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+    );
+    assert_eq!(body["devices"][0]["bound"], serde_json::json!(true));
+    assert!(body["licences"]["granted"].is_number());
+    assert!(
+        body["notes"].as_array().is_some_and(|n| !n.is_empty()),
+        "a bundle explains what it leaves out"
+    );
+}
+
 #[tokio::test]
 async fn no_vendor_response_carries_a_customer() {
     let Some(h) = boot().await else { return };
@@ -182,6 +214,9 @@ async fn no_vendor_response_carries_a_customer() {
         "/v1/vendor/audit",
         "/v1/vendor/licences",
         "/v1/vendor/products",
+        // The bundle is the artefact that leaves the building — pasted into a ticket — so it is
+        // exactly the response that must never carry a customer.
+        "/v1/vendor/support-bundle",
     ];
 
     for path in endpoints {
