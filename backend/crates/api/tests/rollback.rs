@@ -116,8 +116,11 @@ impl Harness {
             // `firmware` carries no vendor column: an image belongs to a product, and the
             // product belongs to the vendor.
             sqlx::query(
-                r#"INSERT INTO firmware (id, product_id, version, size, sha256, ed25519_sig, object_key, created_at)
-                   VALUES ($1,$2,$3,1024,$4,'sig',$5, now() - ($6 || ' minutes')::interval)"#,
+                // `signed` because a campaign cannot start on an unsigned image — the device
+                // verifies the signature before it writes to flash, so an unsigned rollout would
+                // silently do nothing on every board.
+                r#"INSERT INTO firmware (id, product_id, version, size, sha256, ed25519_sig, object_key, created_at, status)
+                   VALUES ($1,$2,$3,1024,$4,'sig',$5, now() - ($6 || ' minutes')::interval, 'signed')"#,
             )
             .bind(id)
             .bind(product)
