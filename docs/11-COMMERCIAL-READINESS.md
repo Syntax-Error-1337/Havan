@@ -8,10 +8,15 @@
 > Every "missing" claim below was checked by search at `caa4fd8`; each P0/P1 item is meant to be
 > expanded into a task-level plan before it is built.
 >
-> **Status:** items 1, 2, 3 and 5 have landed (`0020`–`0022`, `domain::licence`, `domain::catalog`
-> certification, `PgLicence`, the vendor and ops routes, `scripts/backup.sh`,
-> `scripts/restore-drill.sh`). Open: the portal screens for the balance and certification, the
-> vendor-response guard test (4), export/delete (6), and everything from P1.
+> **Status:** every P0 and P1 item here has landed — licences and billing views (`0020`–`0021`),
+> certification (`0022`), the vendor-response guard, backups and the restore drill, export/delete
+> (`0023`), vendor team invitations (`0025`), outbound webhooks (`0026`), the support bundle, firmware
+> signing enforcement, and SSO configuration (`0027`, ADR-005).
+>
+> Still open, and named so nobody has to rediscover them: the **portal screens** for the balance,
+> certification and team; **SSO enforcement**, which waits for a real identity provider (ADR-005);
+> a **live APNs call**, which needs an Apple account and a device; and the hardware certification in
+> `docs/10-RELEASE-CHECKLIST.md`.
 
 ## The two relationships, and who is not the customer
 
