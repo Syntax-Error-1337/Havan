@@ -114,6 +114,19 @@ Leases are sized by the batch, not by taste: one pass claims `BATCH` rows and se
 time with a request timeout, so the lease must outlast `BATCH × timeout` or a worker hands its own
 tail to the next one.
 
+The full audit, so the next loop has a precedent to copy:
+
+| Loop | How it claims | Proven by |
+|---|---|---|
+| automation scheduler | `FOR UPDATE SKIP LOCKED` inside the lease update | `worker/tests/lease.rs` |
+| OTA dispatch | `state = 'sent'` inside the selecting statement | `worker/tests/ota_claim.rs` |
+| webhook delivery | lease on `next_attempt_at` (5 min) | `api/tests/webhooks.rs` |
+| push delivery | lease on `next_attempt_at` (5 min) | `worker/tests/push.rs` |
+| certificate expiry | not a claim — the warning insert dedupes per member and bucket | `notify_certificate_expiry` |
+
+Only the last is allowed to skip a claim, and only because the insert itself is the guard: a second
+worker's insert finds the row already there and does nothing.
+
 ## A webhook is a delivery per endpoint
 
 Vendor webhooks were written as "one row, one event": the outbox inserted a row per subscription,
