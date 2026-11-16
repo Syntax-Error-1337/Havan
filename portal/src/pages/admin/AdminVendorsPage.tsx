@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { useCreateVendor, usePatchVendor, useVendors, type VendorRow } from '../../entities/admin';
 import { TableFrame } from '../../shared/ui/TableFrame';
@@ -93,7 +94,9 @@ export function AdminVendorsPage() {
             {vendors.map((v) => (
               <tr key={v.id} data-testid={`vendor-${v.slug}`}>
                 <td>
-                  <strong>{v.name}</strong>
+                  <Link to={`/admin/vendors/${v.id}`}>
+                    <strong>{v.name}</strong>
+                  </Link>
                   <div className="muted">
                     <code>{v.slug}</code>
                   </div>

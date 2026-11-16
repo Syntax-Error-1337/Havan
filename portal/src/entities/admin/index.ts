@@ -59,6 +59,63 @@ export function useVendors() {
   });
 }
 
+export function useVendor(id: string) {
+  return useQuery({
+    queryKey: [...adminKeys.vendors, id] as const,
+    queryFn: () => adminRequest<VendorRow>(`/ops/vendors/${id}`),
+    retry: false,
+  });
+}
+
+export type VendorLicences = {
+  summary: {
+    granted: number;
+    used: number;
+    remaining: number;
+    activated_this_period: number;
+    granted_value_cents: number;
+    used_value_cents: number;
+    unit_price_cents: number;
+    currency: string;
+  };
+  activations: {
+    serial: string;
+    product_key: string;
+    product_name: string;
+    activated_at: string;
+    unit_price_cents: number;
+  }[];
+};
+
+/** The operator sees a vendor's ledger, which is the same read the vendor portal does. */
+export function useVendorLicences(id: string) {
+  return useQuery({
+    queryKey: [...adminKeys.vendors, id, 'licences'] as const,
+    queryFn: () => adminRequest<VendorLicences>(`/ops/licences?vendor_id=${id}&limit=20`),
+    retry: false,
+  });
+}
+
+export type VendorInvoice = {
+  period: string;
+  currency: string;
+  quantity: number;
+  amount_cents: number;
+  status: 'draft' | 'issued';
+  issued_at: string | null;
+};
+
+export function useVendorInvoice(id: string, period: string) {
+  return useQuery({
+    queryKey: [...adminKeys.vendors, id, 'invoice', period] as const,
+    queryFn: () =>
+      adminRequest<VendorInvoice>(
+        `/ops/invoices?vendor_id=${id}&period=${encodeURIComponent(period)}`,
+      ),
+    retry: false,
+  });
+}
+
 export function useCreateVendor() {
   const qc = useQueryClient();
   return useMutation({

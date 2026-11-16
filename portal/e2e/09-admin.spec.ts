@@ -38,6 +38,18 @@ test('every vendor is listed with what they have live', async ({ page }) => {
   await expect(page.getByTestId('vendor-acme')).toBeVisible();
 });
 
+test('opening a vendor answers the phone call', async ({ page }) => {
+  // The seeded vendor is the one with data: products, devices and a ledger.
+  await page.getByTestId('vendor-acme').getByRole('link').first().click();
+
+  await expect(page.getByTestId('vendor-heading')).toHaveText('Acme Devices');
+  // Balance, and the activations behind it — the two questions a vendor asks first.
+  await expect(page.getByText('Granted').first()).toBeVisible();
+  await expect(page.getByText('Remaining').first()).toBeVisible();
+  await expect(page.getByTestId('vendor-invoice')).toContainText(/draft|issued/);
+  await expect(page.getByRole('columnheader', { name: 'Serial' })).toBeVisible();
+});
+
 test('a vendor is onboarded from the console', async ({ page }) => {
   const slug = `e2e-${Date.now().toString(36)}`;
 

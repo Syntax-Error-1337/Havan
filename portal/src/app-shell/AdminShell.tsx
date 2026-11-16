@@ -7,6 +7,7 @@ import { AdminBillingPage } from '../pages/admin/AdminBillingPage';
 import { AdminHealthPage } from '../pages/admin/AdminHealthPage';
 import { AdminCertificationPage } from '../pages/admin/AdminCertificationPage';
 import { AdminLoginPage } from '../pages/admin/AdminLoginPage';
+import { AdminVendorPage } from '../pages/admin/AdminVendorPage';
 import { AdminVendorsPage } from '../pages/admin/AdminVendorsPage';
 
 /**
@@ -89,6 +90,7 @@ export function AdminShell() {
             be matched against "/admin" itself and silently render nothing. */}
         <Routes>
           <Route path="/admin" element={<AdminVendorsPage />} />
+          <Route path="/admin/vendors/:id" element={<AdminVendorPage />} />
           <Route path="/admin/health" element={<AdminHealthPage />} />
           <Route path="/admin/certification" element={<AdminCertificationPage />} />
           <Route path="/admin/billing" element={<AdminBillingPage />} />
