@@ -280,7 +280,10 @@ const NOT_FETCHABLE: &[(&str, &str)] = &[
     ),
     ("/vendor/webhooks", "POST subscribes; GET is fetched"),
     ("/vendor/webhooks/{id}", "DELETE unsubscribes"),
-    ("/vendor/security", "PATCH changes the policy; GET is fetched"),
+    (
+        "/vendor/security",
+        "PATCH changes the policy; GET is fetched",
+    ),
     (
         "/vendor/invoices/{period}",
         "GET with a period path parameter, which this guard does not know",
