@@ -87,7 +87,11 @@ services:
     volumes:
       - haven-s3:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/status >/dev/null || exit 1"]
+      # `curl`, not `wget`: this image's wget exits 1 even when the gateway answers 200, so
+      # the container was permanently "unhealthy" and every `compose up --wait` exited 1 —
+      # on the command that starts the stack. A check that is always red is a check people
+      # learn to skip, and this one was teaching them to skip the whole stack coming up.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:9000/status || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
