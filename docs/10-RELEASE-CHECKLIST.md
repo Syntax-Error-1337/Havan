@@ -9,7 +9,7 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 
 | Gate | Command | Green means |
 |---|---|---|
-| Build and tests | `make check` | fmt, clippy `-D warnings`, no secrets in the index, every route's path parameters match its handler, the whole suite as `haven_app` on `haven_test` (47 binaries) |
+| Build and tests | `make check` | fmt, clippy `-D warnings`, no secrets in the index, every route's path parameters match its handler, the whole suite as `haven_app` on `haven_test` (48 binaries) |
 | Customer journey | `make e2e` | 34 assertions: register → home → ticket → forged ticket refused → claim → replay refused → command → history → another account cannot read or command, over HTTP |
 | Licences | `make licences` | 365 crates, 1 035 node packages, none outside the allowlist (ADR-002) |
 | Read performance | `make bench` | timings against `docs/08-PERFORMANCE.md` |

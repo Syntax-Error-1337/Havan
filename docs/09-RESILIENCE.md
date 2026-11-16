@@ -98,6 +98,22 @@ broker started → within one sweep the row is `dispatched attempts=2` and the w
 - **Real hardware.** No device is involved, so "the command reached the device" is out of
   scope by construction.
 
+## Every queue claims before it sends
+
+Three queues deliver out of a table: automations, webhook deliveries, and push notifications. Two of
+them claimed their work with a lease; push selected the rows and committed, so two worker replicas
+walked the same notifications and one alert buzzed a phone twice.
+
+The lesson is the shape, not the third fix: **reading a queue is not owning it.** A `SELECT` that
+decides what to send has to move the row's own clock forward in the same statement — `next_attempt_at`
+here — because the transaction that selected it is gone by the time the request leaves the process. A
+lease also makes the crash case boring: the row comes back when the lease expires, without anybody
+writing a recovery path.
+
+Leases are sized by the batch, not by taste: one pass claims `BATCH` rows and sends them one at a
+time with a request timeout, so the lease must outlast `BATCH × timeout` or a worker hands its own
+tail to the next one.
+
 ## A webhook is a delivery per endpoint
 
 Vendor webhooks were written as "one row, one event": the outbox inserted a row per subscription,

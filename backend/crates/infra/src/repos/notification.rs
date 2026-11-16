@@ -178,15 +178,31 @@ impl NotificationRepo for PgNotifications {
 }
 
 impl PushRepo for PgNotifications {
+    /// Claim the queue, not merely read it.
+    ///
+    /// The first version selected the rows and committed before sending, so two worker replicas
+    /// both walked the same notifications and one alert buzzed a phone twice. The scheduler and the
+    /// webhook outbox already claim with a lease; this is the same statement.
+    ///
+    /// Five minutes is one pass's worst case: 20 rows, each a request to Apple with a timeout.
     async fn undelivered(&self, limit: i64) -> Result<Vec<Delivery>, AppError> {
         let mut tx = self.pg.scoped(&TenantCtx::system("push")).await?;
         let rows: Vec<(Uuid, Uuid, String, String, String, serde_json::Value)> = sqlx::query_as(
-            r#"SELECT id, user_id, kind, title, body, data
-                 FROM notifications
-                WHERE delivered_at IS NULL
-                  AND delivery_attempts < $2
-                ORDER BY created_at
-                LIMIT $1"#,
+            r#"WITH claimed AS (
+                   SELECT id
+                     FROM notifications
+                    WHERE delivered_at IS NULL
+                      AND delivery_attempts < $2
+                      AND next_attempt_at <= now()
+                    ORDER BY created_at
+                    LIMIT $1
+                    FOR UPDATE SKIP LOCKED
+               )
+               UPDATE notifications n
+                  SET next_attempt_at = now() + interval '5 minutes'
+                 FROM claimed c
+                WHERE n.id = c.id
+               RETURNING n.id, n.user_id, n.kind, n.title, n.body, n.data"#,
         )
         .bind(limit)
         .bind(domain::notification::MAX_ATTEMPTS)
@@ -251,6 +267,10 @@ impl PushRepo for PgNotifications {
             r#"UPDATE notifications
                   SET delivery_attempts = delivery_attempts + 1,
                       delivery_error = $2,
+                      -- The lease from the claim is replaced by the retry's own schedule, so a
+                      -- failed push is not re-offered the moment its lease expires.
+                      next_attempt_at = now() + least(
+                          make_interval(secs => power(2, delivery_attempts)::int), interval '1 hour'),
                       delivered_at = CASE
                           WHEN delivery_attempts + 1 >= $3 THEN now()
                           ELSE delivered_at END
