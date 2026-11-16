@@ -107,4 +107,16 @@ describe('the last-seen column', () => {
     expect(ago(new Date(now - 3 * 3_600_000).toISOString())).toBe('3h ago');
     expect(ago(new Date(now - 2 * 86_400_000).toISOString())).toBe('2d ago');
   });
+
+  it('puts the device table in a scrollable, named region', async () => {
+    // The behaviour lives in CSS and cannot be measured here, but the wiring can: if a refactor
+    // drops TableFrame the page silently returns to a table that clips on a phone, and no other
+    // test would notice.
+    stubFetch(() => ({ devices: [device()], next_cursor: null } as unknown as Page));
+    renderPage();
+
+    expect(await screen.findByRole('region', { name: 'Fleet devices' })).toContainElement(
+      screen.getByRole('table'),
+    );
+  });
 });
