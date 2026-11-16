@@ -97,6 +97,22 @@ export function usePatchVendor() {
   });
 }
 
+export type QuietDevice = {
+  serial: string | null;
+  name: string;
+  vendor: string;
+  last_seen_at: string | null;
+  silent_minutes: number;
+};
+
+export type StuckCommand = {
+  device: string | null;
+  vendor: string;
+  op: string;
+  attempts: number;
+  requested_at: string;
+};
+
 export type PlatformHealth = {
   devices: number;
   online: number;
@@ -106,6 +122,8 @@ export type PlatformHealth = {
   undelivered: number;
   undelivered_notifications: number;
   webhook_backlog: number;
+  quietest: QuietDevice[];
+  stuck_commands: StuckCommand[];
 };
 
 export function useHealth() {

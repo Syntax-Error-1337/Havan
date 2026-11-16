@@ -25,6 +25,30 @@ pub struct PlatformHealth {
     pub undelivered_notifications: i64,
     /// Webhook deliveries waiting on a vendor's endpoint.
     pub webhook_backlog: i64,
+    /// The devices that have been silent longest — the answer to "which ones", not "how many".
+    pub quietest: Vec<QuietDevice>,
+    /// Command requests the platform could not deliver, oldest first.
+    pub stuck_commands: Vec<StuckCommand>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QuietDevice {
+    pub serial: Option<String>,
+    pub name: String,
+    pub vendor: String,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub last_seen_at: Option<time::OffsetDateTime>,
+    pub silent_minutes: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StuckCommand {
+    pub device: Option<String>,
+    pub vendor: String,
+    pub op: String,
+    pub attempts: i32,
+    #[serde(with = "time::serde::rfc3339")]
+    pub requested_at: time::OffsetDateTime,
 }
 
 #[derive(Clone)]
@@ -56,6 +80,43 @@ impl PgPlatformHealth {
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| AppError::Database(Box::new(e)))?;
+
+        // Five each, not a page: a health screen is for the first look, and a list long enough to
+        // scroll is a list somebody abandons.
+        type QuietRow = (
+            Option<String>,
+            String,
+            String,
+            Option<time::OffsetDateTime>,
+            i64,
+        );
+        type StuckRow = (Option<String>, String, String, i32, time::OffsetDateTime);
+
+        let quietest: Vec<QuietRow> = sqlx::query_as(
+            r#"SELECT d.serial, d.name, v.name, d.last_seen_at,
+                          (EXTRACT(EPOCH FROM (now() - d.last_seen_at)) / 60)::bigint
+                     FROM devices d JOIN vendors v ON v.id = d.vendor_id
+                    WHERE d.last_seen_at IS NOT NULL
+                    ORDER BY d.last_seen_at ASC
+                    LIMIT 5"#,
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(Box::new(e)))?;
+
+        let stuck: Vec<StuckRow> = sqlx::query_as(
+            r#"SELECT d.serial, v.name, c.op, c.attempts, c.requested_at
+                 FROM commands c
+                 JOIN vendors v ON v.id = c.vendor_id
+                 LEFT JOIN devices d ON d.id = c.device_id
+                WHERE c.status = 'unreachable'
+                ORDER BY c.requested_at ASC
+                LIMIT 5"#,
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(Box::new(e)))?;
+
         tx.commit()
             .await
             .map_err(|e| AppError::Database(Box::new(e)))?;
@@ -69,6 +130,30 @@ impl PgPlatformHealth {
             undelivered: row.5,
             undelivered_notifications: row.6,
             webhook_backlog: row.7,
+            quietest: quietest
+                .into_iter()
+                .map(
+                    |(serial, name, vendor, last_seen_at, silent_minutes)| QuietDevice {
+                        serial,
+                        name,
+                        vendor,
+                        last_seen_at,
+                        silent_minutes,
+                    },
+                )
+                .collect(),
+            stuck_commands: stuck
+                .into_iter()
+                .map(
+                    |(device, vendor, op, attempts, requested_at)| StuckCommand {
+                        device,
+                        vendor,
+                        op,
+                        attempts,
+                        requested_at,
+                    },
+                )
+                .collect(),
         })
     }
 }

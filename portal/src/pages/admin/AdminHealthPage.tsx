@@ -72,6 +72,64 @@ export function AdminHealthPage() {
         ) : null}
       </div>
 
+      <div className="row" style={{ gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
+        <div className="card" style={{ flex: '1 1 320px' }}>
+          <strong>Quietest devices</strong>
+          <p className="muted" style={{ margin: '4px 0 8px', fontSize: 12 }}>
+            Silent longest — the five to look at first, not a list to scroll.
+          </p>
+          {h.quietest.length === 0 ? (
+            <p className="muted">No device has ever reported.</p>
+          ) : (
+            <table className="table">
+              <tbody>
+                {h.quietest.map((d) => (
+                  <tr key={`${d.serial ?? d.name}-${d.last_seen_at}`}>
+                    <td>
+                      <code>{d.serial ?? '—'}</code>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {d.name} · {d.vendor}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }} className="muted">
+                      {formatSilence(d.silent_minutes)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="card" style={{ flex: '1 1 320px' }}>
+          <strong>Commands we could not send</strong>
+          <p className="muted" style={{ margin: '4px 0 8px', fontSize: 12 }}>
+            Refused rather than lost; redelivered when the broker returns.
+          </p>
+          {h.stuck_commands.length === 0 ? (
+            <p className="muted">Nothing waiting.</p>
+          ) : (
+            <table className="table">
+              <tbody>
+                {h.stuck_commands.map((c) => (
+                  <tr key={`${c.device ?? c.vendor}-${c.requested_at}`}>
+                    <td>
+                      <code>{c.device ?? '—'}</code>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {c.op} · {c.vendor}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }} className="muted">
+                      {c.attempts} attempt{c.attempts === 1 ? '' : 's'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
       {quiet ? (
         <p className="card" data-testid="health-quiet">
           <strong>Nothing has reported in fifteen minutes.</strong> Either the fleet is asleep or the
@@ -86,6 +144,14 @@ export function AdminHealthPage() {
       </p>
     </>
   );
+}
+
+/** Minutes into something a person reads at a glance: "4 days" beats "5760 minutes". */
+function formatSilence(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.floor(hours / 24)} d`;
 }
 
 function Tile({

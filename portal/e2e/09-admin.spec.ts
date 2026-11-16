@@ -117,11 +117,17 @@ test('health answers "is anything talking to us" without interpreting a log', as
   await page.getByRole('link', { name: 'Health' }).click();
 
   await expect(page.getByRole('heading', { name: 'Health' })).toBeVisible();
-  await expect(page.getByText('Devices')).toBeVisible();
+  // The tile labels repeat inside the offender tables, so each is matched once.
+  await expect(page.getByText('Devices', { exact: true }).first()).toBeVisible();
   // The two numbers that disagree when a device holds a stale connection — the fault the platform's
   // own `online` flag used to hide by never clearing it.
   await expect(page.getByText('Heard in 15 min')).toBeVisible();
-  await expect(page.getByText('Undelivered commands')).toBeVisible();
+  await expect(page.getByText('Undelivered commands').first()).toBeVisible();
+
+  // A count nobody can act on is a count that gets ignored: the screen names the devices that have
+  // been quiet longest, and the commands waiting to be sent.
+  await expect(page.getByText('Quietest devices')).toBeVisible();
+  await expect(page.getByText('Commands we could not send')).toBeVisible();
 });
 
 test('the console fits a phone viewport', async ({ page }) => {
