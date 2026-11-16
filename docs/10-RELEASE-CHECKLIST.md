@@ -18,6 +18,7 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | App | `cd app && npx tsc --noEmit && npm test` | 81 tests, 17 suites (the script passes `--forceExit`; see the note below) |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 59 tests |
 | Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 40 tests per project (80 total) against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
+| Vendor surfaces | `make vendor-smoke` | 25 assertions live: two-factor enrol → confirm → enforced sign-in → disabled, webhook shown once then removed, SSO refused while nobody is bound, an empty invoice period that is a document and not an error |
 | Conformance | `make conformance VENDOR=<uuid> PRODUCT=<uuid>` | 7/7: a real device claims, connects, reports, is commanded, acks, reconnects, and an unknown serial is handled the way the product declares |
 
 Two of these are worth running twice: `make chaos` because it stops containers, and

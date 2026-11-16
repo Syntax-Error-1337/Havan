@@ -134,6 +134,12 @@ check: testdb ## fmt + clippy + tests + no secrets in the index + routes match t
 audit: ## dependency advisories: shipped code must be clean, tooling must be clean at high
 	bash scripts/audit.sh
 
+.PHONY: vendor-smoke
+# The surfaces behind settings screens that no test clicks through by hand. The notifications bug
+# passed every test in the repo and answered 404 to the app; a request is the only thing that says so.
+vendor-smoke: ## live pass over vendor two-factor, SSO, invoices, webhooks and support bundle
+	python3 scripts/vendor-smoke.py
+
 .PHONY: conformance
 # A vendor runs this before asking us to certify a product; we run it before we say yes. It drives
 # a real device through the app's contract, so it is the only check that can answer "does this
