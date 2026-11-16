@@ -45,7 +45,7 @@ pub async fn run(pg: Pg) {
             let body = serde_json::json!({
                 "id": delivery.id,
                 "event": delivery.event,
-                "created_at": kernel::now(),
+                "created_at": kernel::now_rfc3339(),
                 "data": delivery.payload,
             });
             let bytes = serde_json::to_vec(&body).unwrap_or_default();

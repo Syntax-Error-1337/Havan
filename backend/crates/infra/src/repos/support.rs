@@ -128,7 +128,7 @@ impl PgSupport {
 
         Ok(json!({
             "format_version": 1,
-            "generated_at": kernel::now(),
+            "generated_at": kernel::now_rfc3339(),
             "platform": { "api_version": env!("CARGO_PKG_VERSION") },
             "vendor": vendor,
             "licences": licences,

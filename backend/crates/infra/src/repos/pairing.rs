@@ -62,8 +62,8 @@ impl PgPairing {
         // about a licence exactly when the licence is consumed, and delivery happens later so a
         // slow endpoint cannot slow down a customer's pairing.
         sqlx::query(
-            r#"INSERT INTO webhook_outbox (id, vendor_id, event, payload)
-               SELECT gen_random_uuid(), $1, 'licence.activated', jsonb_build_object(
+            r#"INSERT INTO webhook_outbox (id, vendor_id, subscription_id, event, payload)
+               SELECT gen_random_uuid(), $1, w.id, 'licence.activated', jsonb_build_object(
                           'serial', $3::text,
                           'product_id', $2::uuid,
                           'unit_price_cents', $4::int,
@@ -77,6 +77,25 @@ impl PgPairing {
         .bind(serial)
         .bind(unit_price_cents)
         .bind(currency)
+        .execute(&mut **tx)
+        .await
+        .map_err(db)?;
+
+        // The same moment is also the device being claimed. Two events, one transaction: a vendor
+        // who subscribes only to `device.claimed` was told nothing at all, because nothing ever
+        // wrote that event — it was offered in the portal and could never arrive.
+        sqlx::query(
+            r#"INSERT INTO webhook_outbox (id, vendor_id, subscription_id, event, payload)
+               SELECT gen_random_uuid(), $1, w.id, 'device.claimed', jsonb_build_object(
+                          'serial', $3::text,
+                          'product_id', $2::uuid)
+                 FROM vendor_webhooks w
+                WHERE w.vendor_id = $1 AND w.active
+                  AND 'device.claimed' = ANY (w.events)"#,
+        )
+        .bind(vendor_id)
+        .bind(product_id)
+        .bind(serial)
         .execute(&mut **tx)
         .await
         .map_err(db)?;

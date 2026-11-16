@@ -114,7 +114,7 @@ async fn the_outbox_delivers_once_then_stops_being_due() {
     let hooks = infra::PgWebhooks::new(f.pg.clone());
     let pool = admin(&f).await;
 
-    let (_, secret) = hooks
+    let (subscription, secret) = hooks
         .create(
             f.vendor_id,
             "https://vendor.example.test/hook",
@@ -125,10 +125,12 @@ async fn the_outbox_delivers_once_then_stops_being_due() {
 
     let id = Uuid::now_v7();
     sqlx::query(
-        "INSERT INTO webhook_outbox (id, vendor_id, event, payload) VALUES ($1, $2, 'licence.activated', $3)",
+        "INSERT INTO webhook_outbox (id, vendor_id, subscription_id, event, payload) \
+         VALUES ($1, $2, $3, 'licence.activated', $4)",
     )
     .bind(id)
     .bind(f.vendor_id)
+    .bind(subscription)
     .bind(serde_json::json!({ "serial": "SN-1" }))
     .execute(&pool)
     .await
@@ -152,13 +154,94 @@ async fn the_outbox_delivers_once_then_stops_being_due() {
     assert!(due.iter().all(|d| d.id != id), "a delivered row is not due");
 }
 
+/// Two endpoints, one event: both must be told.
+///
+/// The queue joined every row to every active subscription with a matching event and then marked
+/// the row delivered after the first success, so a vendor with two hooks heard each event at exactly
+/// one of them — and which one was down to join order. Delivery is per subscription now, and this
+/// asserts that a single event produces a delivery for each endpoint, each carrying its own secret.
+#[tokio::test]
+async fn an_event_reaches_every_endpoint_that_asked_for_it() {
+    let Some(f) = fixture().await else { return };
+    let hooks = infra::PgWebhooks::new(f.pg.clone());
+    let pool = admin(&f).await;
+
+    let (first, first_secret) = hooks
+        .create(
+            f.vendor_id,
+            "https://one.example.test/hook",
+            vec!["licence.activated".into()],
+        )
+        .await
+        .expect("first subscription");
+    let (second, second_secret) = hooks
+        .create(
+            f.vendor_id,
+            "https://two.example.test/hook",
+            vec!["licence.activated".into()],
+        )
+        .await
+        .expect("second subscription");
+
+    // One row per subscription is what enqueue writes; write both, as a claim would.
+    let mut rows = Vec::new();
+    for subscription in [first, second] {
+        let id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO webhook_outbox (id, vendor_id, subscription_id, event, payload) \
+             VALUES ($1, $2, $3, 'licence.activated', '{\"serial\":\"SN-2\"}'::jsonb)",
+        )
+        .bind(id)
+        .bind(f.vendor_id)
+        .bind(subscription)
+        .execute(&pool)
+        .await
+        .expect("outbox");
+        rows.push(id);
+    }
+
+    let due = hooks.due(500).await.expect("due");
+    let mine: Vec<_> = due.iter().filter(|d| rows.contains(&d.id)).collect();
+    assert_eq!(
+        mine.len(),
+        2,
+        "one delivery per subscription, not one per event"
+    );
+
+    let urls: Vec<&str> = mine.iter().map(|d| d.url.as_str()).collect();
+    assert!(urls.contains(&"https://one.example.test/hook"));
+    assert!(urls.contains(&"https://two.example.test/hook"));
+
+    // Each delivery is signed with its own endpoint's secret; sharing one would let a leaked
+    // secret from one vendor endpoint verify another's traffic.
+    for delivery in &mine {
+        let expected = if delivery.url.contains("one.") {
+            &first_secret
+        } else {
+            &second_secret
+        };
+        assert_eq!(&delivery.secret, expected);
+    }
+
+    // Delivering to one must not silence the other.
+    hooks.mark_delivered(mine[0].id).await.expect("delivered");
+    let after = hooks.due(500).await.expect("due again");
+    let remaining: Vec<_> = after.iter().filter(|d| rows.contains(&d.id)).collect();
+    assert_eq!(
+        remaining.len(),
+        1,
+        "the other endpoint is still owed the event"
+    );
+    assert_ne!(remaining[0].url, mine[0].url);
+}
+
 #[tokio::test]
 async fn a_failure_backs_off_and_is_bounded() {
     let Some(f) = fixture().await else { return };
     let hooks = infra::PgWebhooks::new(f.pg.clone());
     let pool = admin(&f).await;
 
-    hooks
+    let (subscription, _) = hooks
         .create(
             f.vendor_id,
             "https://vendor.example.test/hook",
@@ -168,12 +251,16 @@ async fn a_failure_backs_off_and_is_bounded() {
         .expect("create");
 
     let id = Uuid::now_v7();
-    sqlx::query("INSERT INTO webhook_outbox (id, vendor_id, event, payload) VALUES ($1, $2, 'licence.activated', '{}'::jsonb)")
-        .bind(id)
-        .bind(f.vendor_id)
-        .execute(&pool)
-        .await
-        .expect("outbox");
+    sqlx::query(
+        "INSERT INTO webhook_outbox (id, vendor_id, subscription_id, event, payload) \
+         VALUES ($1, $2, $3, 'licence.activated', '{}'::jsonb)",
+    )
+    .bind(id)
+    .bind(f.vendor_id)
+    .bind(subscription)
+    .execute(&pool)
+    .await
+    .expect("outbox");
 
     hooks
         .mark_failed(id, "endpoint answered 503")

@@ -15,6 +15,19 @@ pub fn now() -> OffsetDateTime {
     OffsetDateTime::now_utc()
 }
 
+/// The current time as RFC 3339, for JSON.
+///
+/// `json!` builds through `serde_json::value::Serializer`, which reports itself as *not*
+/// human-readable — so `OffsetDateTime` takes its compact tuple form and a caller receives
+/// `[2026,320,18,44,55,...]` where a date should be. Typed response structs are unaffected (SQLx's
+/// own mapping emits the string), which is why this only ever showed up in hand-built documents:
+/// the webhook body, the support bundle and the DSAR export.
+pub fn now_rfc3339() -> String {
+    now()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| now().unix_timestamp().to_string())
+}
+
 /// Epoch milliseconds, the unit every API boundary uses.
 pub fn now_ms() -> i64 {
     now().unix_timestamp_nanos() as i64 / 1_000_000

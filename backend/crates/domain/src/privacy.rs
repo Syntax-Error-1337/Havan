@@ -25,6 +25,10 @@ pub const EXPORT_NOTIFICATION_LIMIT: i64 = 500;
 #[derive(Debug, Clone, Serialize)]
 pub struct ExportBundle {
     pub format_version: i32,
+    /// RFC 3339, like every other timestamp the API returns. Without this attribute `time`
+    /// serialises as a tuple — `[2026,320,18,45,31,...]` — and the file a person is legally owed
+    /// arrives with a date no reader can parse.
+    #[serde(with = "time::serde::rfc3339")]
     pub exported_at: time::OffsetDateTime,
     pub user: Value,
     pub homes: Vec<Value>,

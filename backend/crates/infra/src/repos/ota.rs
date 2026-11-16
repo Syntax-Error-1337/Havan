@@ -675,24 +675,46 @@ impl OtaRepo for PgOta {
         .map_err(db)?
         .rows_affected();
 
-        let failed = sqlx::query(
-            r#"UPDATE ota_jobs
-                  SET state = 'failed',
-                      error = COALESCE(error, 'gave up after ' || attempts || ' attempts'),
-                      updated_at = now()
-                WHERE state IN ('sent', 'downloading')
-                  AND updated_at < now() - make_interval(secs => $1)
-                  AND attempts >= $2"#,
+        // Give up, and tell the vendor why. `firmware.failed` was offered as a subscription and
+        // written by nothing, so a vendor who chose it heard silence when an update died.
+        //
+        // One statement does both jobs and counts the jobs, not the announcements: the return value
+        // is how many updates were abandoned, and a vendor with no subscription still has them
+        // abandoned.
+        let failed: (i64,) = sqlx::query_as(
+            r#"WITH gone AS (
+                   UPDATE ota_jobs
+                      SET state = 'failed',
+                          error = COALESCE(error, 'gave up after ' || attempts || ' attempts'),
+                          updated_at = now()
+                    WHERE state IN ('sent', 'downloading')
+                      AND updated_at < now() - make_interval(secs => $1)
+                      AND attempts >= $2
+                RETURNING device_id, campaign_id, error
+               ), announced AS (
+                   INSERT INTO webhook_outbox (id, vendor_id, subscription_id, event, payload)
+                   SELECT gen_random_uuid(), c.vendor_id, w.id, 'firmware.failed',
+                          jsonb_build_object(
+                              'campaign_id', c.id,
+                              'product_id', c.product_id,
+                              'device_id', g.device_id,
+                              'reason', g.error)
+                     FROM gone g
+                     JOIN ota_campaigns c ON c.id = g.campaign_id
+                     JOIN vendor_webhooks w ON w.vendor_id = c.vendor_id AND w.active
+                    WHERE 'firmware.failed' = ANY (w.events)
+                RETURNING 1
+               )
+               SELECT (SELECT count(*) FROM gone)"#,
         )
         .bind(stale_after_secs as f64)
         .bind(max_attempts)
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await
-        .map_err(db)?
-        .rows_affected();
+        .map_err(db)?;
 
         tx.commit().await.map_err(db)?;
-        Ok(retried + failed)
+        Ok(retried + failed.0 as u64)
     }
 
     async fn complete_campaigns(&self) -> Result<u64, AppError> {

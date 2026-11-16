@@ -98,6 +98,35 @@ broker started → within one sweep the row is `dispatched attempts=2` and the w
 - **Real hardware.** No device is involved, so "the command reached the device" is out of
   scope by construction.
 
+## A webhook is a delivery per endpoint
+
+Vendor webhooks were written as "one row, one event": the outbox inserted a row per subscription,
+and then delivery re-joined every row to every active subscription with a matching event. With five
+endpoints that produced five deliveries per row sharing one outbox id, `mark_delivered` fired on the
+first success, and the other four never heard the event — while which one did depended on join order.
+Nothing tested it, because nothing had ever delivered to more than one endpoint.
+
+The row now names its subscription (`0033`), delivery reads that, and two endpoints are proven to
+receive the same event independently: verified live with two local receivers, each given its own
+delivery id and its own signature.
+
+Two further facts came out of the same pass:
+
+- **Two of the three advertised events were never emitted.** `device.claimed` and `firmware.failed`
+  were offered in the portal, validated at subscription time, and written by nothing — a vendor who
+  chose them heard silence forever. Both are now written where they happen: the claim transaction for
+  the first, the give-up transaction for the second.
+- **A timestamp in a hand-built document was an array.** `json!` builds through a serializer that
+  reports itself as not human-readable, so `OffsetDateTime` took its compact form and a receiver got
+  `created_at: [2026,320,18,44,55,...]`. Typed response structs were always fine, which is why only
+  the webhook body, the support bundle and the DSAR export were affected — including the export a
+  person is legally owed. All three emit RFC 3339 now.
+
+Rolling deploys were handled rather than assumed away: rows queued by an instance that has not been
+restarted arrive without a subscription, so the migration recovers the unambiguous ones (a vendor
+with exactly one endpoint for that event) and leaves the rest NULL rather than guessing — delivering
+to the wrong endpoint is worse than a missed delivery.
+
 ## What the drill learned when it was re-run
 
 The chaos drill was written before the operator console, the licence gate and the presence sweep

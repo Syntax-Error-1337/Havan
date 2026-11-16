@@ -135,15 +135,16 @@ impl WebhookRepo for PgWebhooks {
             .scoped(&TenantCtx::system("webhook-deliver"))
             .await?;
 
-        // Only the first active subscription per event is used per row: one outbox row is one
-        // delivery attempt, and a vendor with two endpoints for the same event gets two rows at
-        // enqueue time if they asked for two.
+        // One row, one subscription. The row names the subscription it was written for, because
+        // re-joining by `event = ANY (w.events)` matched *every* active endpoint: with five
+        // subscriptions that produced five deliveries per row sharing one outbox id, and
+        // `mark_delivered` fired on the first success — so four endpoints never heard the event and
+        // which one did depended on join order. `o.subscription_id` is that fix.
         let rows: Vec<(Uuid, Uuid, String, String, String, serde_json::Value, i32)> =
             sqlx::query_as(
                 r#"SELECT o.id, o.vendor_id, w.url, w.secret, o.event, o.payload, o.attempts
                      FROM webhook_outbox o
-                     JOIN vendor_webhooks w
-                       ON w.vendor_id = o.vendor_id AND w.active AND o.event = ANY (w.events)
+                     JOIN vendor_webhooks w ON w.id = o.subscription_id AND w.active
                     WHERE o.delivered_at IS NULL
                       AND o.attempts < $2
                       AND o.next_attempt_at <= now()
