@@ -160,7 +160,8 @@ streaming (WebRTC), offline local hub, on-prem single-tenant deploy.
 
 ## After v1: what the business needs
 
-The phases above describe the product. What a *paying vendor* needs next — metering and billing,
-per-vendor white-label delivery, backups that are known to restore, data export/delete, team
-management, outbound events — is planned separately in `docs/11-COMMERCIAL-READINESS.md`, with the
-evidence for each gap and the order to build them in.
+The phases above describe the product. What a *paying vendor* needs next — per-device licence grants
+and a billable activation ledger, product certification before a device is claimable in the app,
+backups that are known to restore, data export/delete, team management, outbound events — is planned
+separately in `docs/11-COMMERCIAL-READINESS.md`, with the evidence for each gap and the order to build
+them in.
