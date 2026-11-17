@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -13,6 +13,7 @@ import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
 import { useTheme } from '../../app-shell/theme';
 import { groupByRoom } from './sections';
+import { buildRows } from './rows';
 import { SceneStrip } from '../../widgets/scene-strip/SceneStrip';
 import { HomeHeader, StatRail } from '../../widgets/home/HomeHeader';
 import { HeroCard, pickHero } from '../../widgets/home/HeroCard';
@@ -21,16 +22,27 @@ import { HeroCard, pickHero } from '../../widgets/home/HeroCard';
 const TAB_BAR_CLEARANCE = 148;
 
 /**
+ * One row of the list.
+ *
+ * The screen is a virtualised list rather than a ScrollView full of tiles. A home with two hundred
+ * devices is rare and a home with two thousand is not impossible, and the old shape mounted every
+ * tile at once — a dashboard that is fine in a demo and a jank source for the customer who has been
+ * with us for three years. Virtualising is invisible until it matters, which is the point.
+ *
+ * The pairing rule lives in `rows.ts` and is unit-tested: it is data, and it is the part that breaks
+ * on an odd number of devices.
+ */
+/**
  * Home screen.
  *
- * One request paints it: `/homes/{id}/dashboard` returns the home, its rooms, its
- * devices with their points, its scenes and the unread count. The payload is then
- * written into the caches the widgets already read, so `DeviceTile` and `SceneStrip`
- * keep working without a second round trip — and the socket keeps patching them.
+ * One request paints it: `/homes/{id}/dashboard` returns the home, its rooms, its devices with their
+ * points, its scenes and the unread count. The payload is then written into the caches the widgets
+ * already read, so `DeviceTile` and `SceneStrip` keep working without a second round trip — and the
+ * socket keeps patching them.
  *
- * The order on screen is the order of the questions a person asks walking in: what
- * time is it and whose home is this, what is the house doing (the rail), what is the
- * one reading that matters (the hero), and only then the rooms.
+ * The order on screen is the order of the questions a person asks walking in: what time is it and
+ * whose home is this, what is the house doing (the rail), what is the one reading that matters (the
+ * hero), and only then the rooms.
  */
 export function DashboardPage() {
   const router = useRouter();
@@ -73,6 +85,8 @@ export function DashboardPage() {
   const sections = useMemo(() => groupByRoom(devices, rooms), [devices, rooms]);
   const summary = useMemo(() => summarise(devices), [devices]);
   const hero = useMemo(() => pickHero(devices), [devices]);
+
+  const rows = useMemo(() => buildRows(sections), [sections]);
 
   // A disabled query reports `isPending` forever, so the gate is "no home yet", not
   // "the homes list has not arrived" — with a stored home we never ask for it.
@@ -117,7 +131,9 @@ export function DashboardPage() {
 
   return (
     <Screen>
-      <ScrollView
+      <FlatList
+        data={rows}
+        keyExtractor={(row) => row.key}
         contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE + tokens.space.xl }}
         showsVerticalScrollIndicator={false}
         // Pull to refresh: the live socket keeps values current, but a person who has just plugged
@@ -131,122 +147,143 @@ export function DashboardPage() {
             progressBackgroundColor={color.surface}
           />
         }
-      >
-        <Box px="lg" py="md" gap="lg">
-          <HomeHeader name={homeName} person={person} subtitle={onlineText} clock={clock} />
+        ListHeaderComponent={
+          <>
+            <Box px="lg" py="md" gap="lg">
+              <HomeHeader name={homeName} person={person} subtitle={onlineText} clock={clock} />
 
-          <StatRail
-            summary={summary}
-            rooms={sections.filter((s) => s.title !== 'Unassigned').length}
-            showTemperature={Boolean(
-              hero?.points.some((p) => p.capability === 'temperature' && typeof p.value === 'number'),
-            )}
-          />
-
-          {hero ? <HeroCard device={hero} /> : null}
-
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Chip label={unread > 0 ? `Alerts · ${unread}` : 'Alerts'} onPress={() => router.push('/alerts')} urgent={unread > 0} />
-            <Chip label={addingRoom ? 'Cancel' : 'New room'} onPress={() => setAddingRoom((v) => !v)} selected={addingRoom} />
-            <Chip label="Automations" onPress={() => router.push('/automations')} />
-          </View>
-
-          {addingRoom ? (
-            <Box row gap="sm" style={{ alignItems: 'center' }}>
-              <TextInput
-                placeholder="Room name"
-                placeholderTextColor={color.muted}
-                value={roomName}
-                onChangeText={setRoomName}
-                autoFocus
-                style={{
-                  flex: 1,
-                  backgroundColor: color.glass,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: color.border,
-                  borderRadius: tokens.radius.md,
-                  padding: tokens.space.md,
-                  color: color.text,
-                }}
+              <StatRail
+                summary={summary}
+                rooms={sections.filter((s) => s.title !== 'Unassigned').length}
+                showTemperature={Boolean(
+                  hero?.points.some(
+                    (p) => p.capability === 'temperature' && typeof p.value === 'number',
+                  ),
+                )}
               />
-              <Button
-                label={createRoom.isPending ? 'Saving…' : 'Create'}
-                disabled={roomName.trim().length === 0 || createRoom.isPending}
-                onPress={() =>
-                  createRoom.mutate(
-                    { name: roomName.trim() },
-                    {
-                      onSuccess: () => {
-                        setRoomName('');
-                        setAddingRoom(false);
-                      },
-                    },
-                  )
-                }
-              />
-            </Box>
-          ) : null}
-        </Box>
 
-        {homeId ? (
-          <Box style={{ marginTop: tokens.space.lg }}>
-            <SceneStrip homeId={homeId} scenes={dashboard?.scenes} pending={!dashboard} />
-          </Box>
-        ) : null}
+              {hero ? <HeroCard device={hero} /> : null}
 
-        {isPending ? (
-          <HomeSkeleton />
-        ) : devices.length === 0 ? (
-          <Box p="xl" gap="md" center>
-            <AppText variant="title" weight="600">
-              No devices yet
-            </AppText>
-            <AppText tone="muted" style={{ textAlign: 'center' }}>
-              Tap Add and we will look for devices nearby.
-            </AppText>
-            <Pressable onPress={() => refetch()} accessibilityRole="button">
-              <AppText variant="body" tone="accent">
-                Try again
-              </AppText>
-            </Pressable>
-          </Box>
-        ) : (
-          sections.map((section) => (
-            /* A room is a heading over a grid, not a card around one: nesting a tile inside the
-               grouped-section card is what made the first version look like a card in a card. */
-            <Box key={section.title} style={{ marginBottom: tokens.space.xl }}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingHorizontal: tokens.space.lg,
-                  paddingBottom: tokens.space.sm,
-                }}
-              >
-                <AppText variant="subhead" weight="600">
-                  {section.title}
-                </AppText>
-                <AppText variant="tiny" tone="muted">
-                  {section.data.filter((d) => d.online).length}/{section.data.length} online
-                </AppText>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Chip
+                  label={unread > 0 ? `Alerts · ${unread}` : 'Alerts'}
+                  onPress={() => router.push('/alerts')}
+                  urgent={unread > 0}
+                />
+                <Chip
+                  label={addingRoom ? 'Cancel' : 'New room'}
+                  onPress={() => setAddingRoom((v) => !v)}
+                  selected={addingRoom}
+                />
+                <Chip label="Automations" onPress={() => router.push('/automations')} />
               </View>
 
-              <Box px="lg" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space.md }}>
-                {section.data.map((device) => (
-                  <Box key={device.id} style={{ width: section.data.length === 1 ? '100%' : '47%' }}>
-                    <DeviceTile
-                      device={device}
-                      onPress={() => router.push(`/device/${device.id}`)}
-                      wide={section.data.length === 1}
-                    />
-                  </Box>
-                ))}
-              </Box>
+              {addingRoom ? (
+                <Box row gap="sm" style={{ alignItems: 'center' }}>
+                  <TextInput
+                    placeholder="Room name"
+                    placeholderTextColor={color.muted}
+                    value={roomName}
+                    onChangeText={setRoomName}
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      backgroundColor: color.glass,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: color.border,
+                      borderRadius: tokens.radius.md,
+                      padding: tokens.space.md,
+                      color: color.text,
+                    }}
+                  />
+                  <Button
+                    label={createRoom.isPending ? 'Saving…' : 'Create'}
+                    disabled={roomName.trim().length === 0 || createRoom.isPending}
+                    onPress={() =>
+                      createRoom.mutate(
+                        { name: roomName.trim() },
+                        {
+                          onSuccess: () => {
+                            setRoomName('');
+                            setAddingRoom(false);
+                          },
+                        },
+                      )
+                    }
+                  />
+                </Box>
+              ) : null}
             </Box>
-          ))
-        )}
-      </ScrollView>
+
+            <Box style={{ marginTop: tokens.space.lg, marginBottom: tokens.space.lg }}>
+              <SceneStrip homeId={homeId} scenes={dashboard?.scenes} pending={!dashboard} />
+            </Box>
+          </>
+        }
+        ListEmptyComponent={
+          isPending ? (
+            <HomeSkeleton />
+          ) : (
+            <Box p="xl" gap="md" center>
+              <AppText variant="title" weight="600">
+                No devices yet
+              </AppText>
+              <AppText tone="muted" style={{ textAlign: 'center' }}>
+                Tap Add and we will look for devices nearby.
+              </AppText>
+              <Pressable onPress={() => refetch()} accessibilityRole="button">
+                <AppText variant="body" tone="accent">
+                  Try again
+                </AppText>
+              </Pressable>
+            </Box>
+          )
+        }
+        renderItem={({ item }) =>
+          item.kind === 'room' ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: tokens.space.lg,
+                paddingTop: tokens.space.md,
+                paddingBottom: tokens.space.sm,
+              }}
+            >
+              <AppText variant="subhead" weight="600">
+                {item.title}
+              </AppText>
+              <AppText variant="tiny" tone="muted">
+                {item.online}/{item.total} online
+              </AppText>
+            </View>
+          ) : (
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: tokens.space.md,
+                paddingHorizontal: tokens.space.lg,
+                paddingBottom: tokens.space.md,
+              }}
+            >
+              {item.devices.map((device) => (
+                <View key={device.id} style={{ width: item.wide ? '100%' : '47%' }}>
+                  <DeviceTile
+                    device={device}
+                    onPress={() => router.push(`/device/${device.id}`)}
+                    wide={item.wide}
+                  />
+                </View>
+              ))}
+            </View>
+          )
+        }
+        // A handful of rows fills the screen; the rest wait their turn instead of mounting.
+        initialNumToRender={8}
+        windowSize={7}
+        removeClippedSubviews
+      />
 
       <TabBar
         active="home"

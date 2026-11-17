@@ -31,6 +31,33 @@ Two things worth reading out of that table:
   thing to watch is that it does not become the screen's bottleneck on a device
   with a slower disk.
 
+### What a big home costs the phone, not the server
+
+Measured on the 100-device bench home by summing the row sizes the dashboard serialises:
+
+```sql
+select count(distinct d.id) devices, count(p.id) points,
+       pg_size_pretty(sum(pg_column_size(to_jsonb(d)))::bigint) device_json,
+       pg_size_pretty(sum(pg_column_size(to_jsonb(p)))::bigint) point_json
+from devices d left join device_points p on p.device_id = d.id
+where d.home_id = :bench;
+```
+
+**100 devices / 300 points → 183 kB of device JSON + 139 kB of point JSON**, about 322 kB
+uncompressed and ~30 kB after `CompressionLayer`. The number that matters is the extrapolation: a
+1 000-device home is ~3 MB on the wire and ~300 kB gzipped, and the dashboard is one request.
+
+Two consequences, one shipped and one still open:
+
+- **Shipped:** the home screen is a virtualised `FlatList` (`rows.ts` pairs the tiles, `windowSize` 7,
+  `initialNumToRender` 8). It used to be a `ScrollView` that mounted every tile at once, so a
+  three-year customer with 200 devices paid for 200 cards on first paint. The pairing rule — a room
+  of one takes the whole row, everything else pairs — is unit-tested, because that is the part that
+  breaks on an odd number.
+- **Open:** the dashboard payload itself is still unbounded. Past a few hundred devices the answer is
+  a paged device list kept warm by the socket, not one aggregate — that is a contract change, not a
+  query tweak, and it has not been done silently.
+
 ### Re-measured after two weeks of change
 
 Same script, same 100-device bench home, run on the same laptop — but with a much larger
