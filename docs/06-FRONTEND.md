@@ -154,6 +154,32 @@ Three decisions worth knowing:
 
 ## Portal (React)
 
+### Test data is data
+
+The vendor portal's first screen, on the seeded account, was **eighteen products named `E2E Bulb`**, each
+`draft` / `uncertified`, each with a red `Delete` button and nothing else. Scored **4/10** as a first
+impression — and it was about the *seed*, not the layout.
+
+The rows were real: `e2e/02-products.spec.ts` creates a product with a unique key on every run and cleaned up
+nothing. The file said so out loud — *"a draft product is harmless"* — and after eighteen runs the product list
+was a log of the suite's own executions. Test data is data: it is what the next person sees, it is what a
+screenshot in a sales deck shows, and a vendor's first ten minutes are the demo of the whole platform.
+
+The spec now deletes what it created (verified: eight tests, three products afterwards), and the debris was
+cleared — 14 `E2E Bulb` rows and one product called `ok` under the key `okok`. **Portal 4 → 8/10** with three
+real products on the page.
+
+### A table of things to remove
+
+Every row offered exactly one action, `Delete`, drawn as a filled red button — so a list of products read as a
+list of things to delete. Each row now reads `Open` then `Delete`, with the delete as a quiet red text button
+(`.btn--danger-quiet`) and the name as a link with a visible sibling that says so.
+
+The table grew the two controls a vendor with two hundred products needs: a search over **name and product
+key** (what is written on the box, and what is written in the firmware) and `All / Draft / Published` chips,
+because "what is not published yet" is the question asked before every demo. The count appears only when
+something is hidden (`1 of 3`) — `3 shown` beside `3 products` is one fact twice.
+
 ```
 src/
   app/            router, providers, layout, theme

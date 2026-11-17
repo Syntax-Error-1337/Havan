@@ -266,6 +266,24 @@ select.input {
   color: var(--muted);
 }
 
+/**
+ * A destructive row action that is not the row's main action.
+ *
+ * `Delete` used to be the only button in a products row and it was a filled red outline, so the table read
+ * as a list of things to remove. Deleting is the rare thing; it should look rare.
+ */
+.btn--danger-quiet {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.btn--danger-quiet:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
 .btn--quiet:hover:not(:disabled) {
   color: var(--text);
 }

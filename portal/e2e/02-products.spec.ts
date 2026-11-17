@@ -5,8 +5,9 @@ import { expect, test } from './fixtures';
  * published, and then asks to be certified.
  *
  * Each test creates a product with a unique key so the suite can be run repeatedly against the same
- * database, and cleans up nothing: a draft product is harmless and a published one is what the
- * seeded vendor already has.
+ * database — and then deletes it, which the first version of this file did not do. "A draft product is
+ * harmless" was wrong: after eighteen runs the vendor's product list was eighteen rows of `E2E Bulb`, and
+ * the first screen a vendor sees was someone else's test suite. Test data is data.
  */
 test('the product list shows status and certification separately', async ({ app }) => {
   await expect(app.getByRole('heading', { name: 'Products' })).toBeVisible();
@@ -33,6 +34,13 @@ test('a vendor creates a product, sees it validated, and publishes it', async ({
   await expect(app).toHaveURL(/\/products\/[0-9a-f-]{36}$/);
   // The editor holds the thing model, and the key it was created with is in it.
   await expect(app.getByRole('textbox', { name: 'Thing model' })).toContainText(key);
+
+  // Put it back. A suite that leaves a row behind every run turns the product list into a log of its own
+  // executions, which is exactly what the eighteen `E2E Bulb` rows were.
+  app.on('dialog', (dialog) => void dialog.accept());
+  await app.getByRole('link', { name: 'Products', exact: true }).click();
+  await app.getByRole('button', { name: `Delete E2E Bulb ${key.slice(-4)}` }).click();
+  await expect(app.getByRole('button', { name: `Delete E2E Bulb ${key.slice(-4)}` })).toHaveCount(0);
 });
 
 test('a product editor shows the certification state and offers to ask for a review', async ({ app }) => {

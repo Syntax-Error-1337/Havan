@@ -51,13 +51,19 @@ export function ProductTable({
               </td>
               {onDelete ? (
                 <td>
-                  <button
-                    className="btn btn--danger"
-                    aria-label={`Delete ${product.name}`}
-                    onClick={() => onDelete(product)}
-                  >
-                    Delete
-                  </button>
+                  {/* Open first, Delete quiet: the row's job is the product, not its removal. */}
+                  <div className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+                    <Link className="btn btn--quiet" to={`/products/${product.id}`} aria-label={`Open ${product.name}`}>
+                      Open
+                    </Link>
+                    <button
+                      className="btn btn--danger-quiet"
+                      aria-label={`Delete ${product.name}`}
+                      onClick={() => onDelete(product)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               ) : null}
             </tr>

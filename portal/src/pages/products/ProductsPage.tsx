@@ -26,6 +26,20 @@ export function ProductsPage() {
   const create = useCreateProduct();
   const remove = useDeleteProduct();
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState<'all' | 'draft' | 'published'>('all');
+
+  // A vendor with two hundred products cannot scan a table; the search matches what is written on the box
+  // (the name) and what is written in the firmware (the key). The status chips exist because "what is not
+  // published yet" is the question a vendor asks before every demo.
+  const needle = q.trim().toLowerCase();
+  const rows = (data ?? []).filter(
+    (p) =>
+      (status === 'all' || p.status === status) &&
+      (needle === '' ||
+        p.name.toLowerCase().includes(needle) ||
+        p.product_key.toLowerCase().includes(needle)),
+  );
 
   const onDelete = async (product: Product) => {
     setRefusal(null);
@@ -110,6 +124,35 @@ export function ProductsPage() {
         </form>
       ) : null}
 
+      <div className="row spread" style={{ marginBottom: 12, gap: 12 }}>
+        <input
+          className="input"
+          style={{ maxWidth: 320 }}
+          placeholder="Search a product or its key"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          aria-label="Search products"
+        />
+        <div className="row" style={{ gap: 6 }}>
+          {(['all', 'draft', 'published'] as const).map((value) => (
+            <button
+              key={value}
+              className={`btn ${status === value ? 'btn--primary' : 'btn--quiet'}`}
+              onClick={() => setStatus(value)}
+              aria-pressed={status === value}
+            >
+              {value === 'all' ? 'All' : value === 'draft' ? 'Draft' : 'Published'}
+            </button>
+          ))}
+        </div>
+        {/* Only when something is hidden: "3 shown" beside "3 products" is one fact twice. */}
+        {(data ?? []).length > rows.length ? (
+          <p className="muted" style={{ margin: 0, marginLeft: 'auto' }} data-testid="filtered-count">
+            {rows.length} of {(data ?? []).length}
+          </p>
+        ) : null}
+      </div>
+
       <div className="card" style={{ padding: 0 }}>
         {data.length === 0 ? (
           <p className="muted" style={{ padding: 24 }}>
@@ -122,7 +165,13 @@ export function ProductsPage() {
                 {refusal}
               </p>
             ) : null}
-            <ProductTable products={data} onDelete={onDelete} />
+            {rows.length === 0 ? (
+              <p className="muted" style={{ padding: 24 }} data-testid="no-products-match">
+                No product matches “{q}”. Clear the search or the filter.
+              </p>
+            ) : (
+              <ProductTable products={rows} onDelete={onDelete} />
+            )}
           </>
         )}
       </div>
