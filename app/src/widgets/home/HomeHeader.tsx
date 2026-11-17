@@ -21,6 +21,7 @@ export function HomeHeader({
   online,
   total,
   silent,
+  unknown = false,
   unread = 0,
   onOpenAlerts,
   onOpenHomes,
@@ -31,6 +32,11 @@ export function HomeHeader({
   /** Devices the home can hear from, and how many it has. The pill is the answer to "is my house up?" */
   online: number;
   total: number;
+  /**
+   * The counts are not known — the request failed. `0` is a number and "no devices" is a sentence, and
+   * neither is true when the hub could not be asked.
+   */
+  unknown?: boolean;
   /** Devices not reporting: the pill turns amber and says so, instead of printing a green number it doubts. */
   silent: number;
   /** Unread alerts. A status belongs in the header; as a pill beside "New room" it read as a filter. */
@@ -152,8 +158,10 @@ export function HomeHeader({
             {/* The number lives here and the *explanation* lives in the banner below, so the same count is
                 not printed twice in two different vocabularies ("1/6 online" / "5 not reporting"). */}
             <AppText variant="caption" weight="600">
-              {total === 0
-                ? 'no devices'
+              {unknown
+                ? 'unknown'
+                : total === 0
+                  ? 'no devices'
                 : silent === 0
                   ? `${online} of ${total} online`
                   : `${silent} offline`}

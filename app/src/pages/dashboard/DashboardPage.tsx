@@ -11,6 +11,7 @@ import {
   HomeSkeleton,
   Icon,
   TabBar,
+  QueryError,
   useActionSheet,
 } from '../../shared/ui';
 import { DeviceTile } from '../../entities/device';
@@ -91,7 +92,13 @@ export function DashboardPage() {
   // limit that keeps doubling stops moving after the second press — on a 1,200-device home the first
   // version re-fetched the same 500 devices and left the other 700 unreachable.
   const [tailCursors, setTailCursors] = useState<string[]>([]);
-  const { data: dashboard, isPending, refetch, isRefetching } = useDashboard(homeId ?? null);
+  const {
+    data: dashboard,
+    isPending,
+    refetch,
+    isRefetching,
+    isError: dashboardFailed,
+  } = useDashboard(homeId ?? null);
   const tails = useDashboardTail(homeId ?? null, tailCursors);
 
   // Seed the per-entity caches from the aggregate: the widgets below were written
@@ -197,8 +204,11 @@ export function DashboardPage() {
   // repeating the count — and says when the list is a page of it, because a grid that stops at 200 of 1,200
   // with no word about it looks like the other 1,000 were deleted.
   const roomCount = (dashboard?.rooms ?? []).length;
-  const subtitleText =
-    devices.length === totalDevices
+  // A failed request has no counts, and "0 devices · 0 rooms" is the same lie as "No devices yet": the
+  // em dash is this codebase's way of saying "not known yet", and it is also the honest answer here.
+  const subtitleText = dashboardFailed
+    ? '— devices · — rooms'
+    : devices.length === totalDevices
       ? `${totalDevices} ${totalDevices === 1 ? 'device' : 'devices'} · ${roomCount} ${
           roomCount === 1 ? 'room' : 'rooms'
         }`
@@ -232,6 +242,7 @@ export function DashboardPage() {
                 online={summary.online}
                 total={totalDevices}
                 silent={summary.silent}
+                unknown={dashboardFailed}
                 unread={unread}
                 onOpenAlerts={() => router.push('/alerts')}
                 onOpenHomes={() => router.push('/homes')}
@@ -456,6 +467,17 @@ export function DashboardPage() {
                 </AppText>
               </Pressable>
             </Box>
+          ) : dashboardFailed ? (
+            /* The same list is rendered for "this home is empty" and for "we could not ask", which is the
+               one thing a home screen must never confuse: a customer with six devices was told "No devices
+               yet — Tap Add and we will look for devices nearby" because a request failed on a train. The
+               empty state invites re-pairing hardware that is already on the wall. */
+            <QueryError
+              title="We could not load this home"
+              body="Your devices are still there — the app could not reach the hub. Nothing has changed."
+              onRetry={() => refetch()}
+              testID="home-unreachable"
+            />
           ) : (
             <Box p="xl" gap="md" center>
               <AppText variant="title" weight="600">

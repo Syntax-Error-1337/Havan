@@ -10,6 +10,7 @@ import {
   ScreenHeader,
   ValueField,
   defaultPointValue,
+  QueryError,
   readablePoint,
 } from '../../shared/ui';
 import { tokens } from '../../app-shell/theme';
@@ -37,7 +38,7 @@ export function ScenesPage() {
   // Falls back to the home the app would open: `/scenes` reached directly had no home, and therefore
   // no scenes and no devices, on a home that has four of each.
   const { homeId } = useCurrentHome();
-  const { data: scenes, isPending } = useScenes(homeId ?? undefined);
+  const { data: scenes, isPending, isError, refetch } = useScenes(homeId ?? undefined);
   const { data: devices } = useDevices(homeId ?? undefined);
   const activate = useActivateScene(homeId ?? undefined);
   const create = useCreateScene(homeId ?? undefined);
@@ -115,7 +116,16 @@ export function ScenesPage() {
           </AppText>
         </Box>
 
-        {(scenes ?? []).length === 0 && !isPending ? (
+        {/* "No scenes yet. Build one below." with a form that cannot save is the empty state doing the
+            job of the failure state — the same defect the dashboard had. */}
+        {isError ? (
+          <QueryError
+            title="We could not load your scenes"
+            body="Your scenes are still there — the app could not reach the hub."
+            onRetry={() => void refetch()}
+            testID="scenes-unreachable"
+          />
+        ) : (scenes ?? []).length === 0 && !isPending ? (
           <AppText tone="muted">No scenes yet. Build one below.</AppText>
         ) : null}
 

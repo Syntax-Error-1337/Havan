@@ -1,7 +1,7 @@
 import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Box, AppText, Button, Glass, Icon, Screen, ScreenHeader } from '../../shared/ui';
+import { Box, AppText, Button, Glass, Icon, QueryError, Screen, ScreenHeader } from '../../shared/ui';
 import { withAlpha } from '../../shared/ui/Glass';
 import { signalAccent } from '../../shared/config/tokens';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -22,7 +22,7 @@ import {
  * matters: a list where everything is styled equally is a list nobody scans.
  */
 export function AlertsPage() {
-  const { data: alerts, isPending, isError } = useNotifications();
+  const { data: alerts, isPending, isError, refetch } = useNotifications();
   const markRead = useMarkRead();
   const markAll = useMarkAllRead();
 
@@ -54,14 +54,20 @@ export function AlertsPage() {
           paddingBottom: tokens.layout.tabBarClearance,
         }}
       >
+        {/* "Nothing new" is a claim about the alerts; on a failed request the app has not counted them. */}
         <AppText variant="caption" tone="muted">
-          {unread === 0 ? 'Nothing new' : `${unread} unread`}
+          {isError ? '— unread' : unread === 0 ? 'Nothing new' : `${unread} unread`}
         </AppText>
 
         {isPending ? <AppText tone="muted">Loading…</AppText> : null}
 
         {isError ? (
-          <AppText tone="muted">Alerts are unavailable right now.</AppText>
+          <QueryError
+            title="We could not load your alerts"
+            body="Nothing has changed — the app could not reach the hub."
+            onRetry={() => void refetch()}
+            testID="alerts-unreachable"
+          />
         ) : null}
 
         {!isPending && !isError && (alerts ?? []).length === 0 ? (

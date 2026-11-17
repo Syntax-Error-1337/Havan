@@ -41,6 +41,31 @@ beforeEach(() => {
 });
 
 describe('dashboard', () => {
+  it('says the home could not be loaded instead of pretending it is empty', async () => {
+    // Measured with the dashboard request blocked: a home with six devices told the customer "No devices
+    // yet - Tap Add and we will look for devices nearby", which invites re-pairing hardware that is
+    // already on the wall. A failed request is not an empty house.
+    globalThis.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/dashboard')) {
+        return { ok: false, status: 500, text: async () => '{"error":"boom"}' } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(url.endsWith('/homes') ? [{ id: 'home-1', name: 'Workshop', role: 'owner', member_count: 1 }] : []),
+      } as Response;
+    }) as unknown as typeof fetch;
+
+    const view = await renderDashboard();
+
+    expect(await view.findByTestId('home-unreachable')).toBeTruthy();
+    expect(view.queryByText('No devices yet')).toBeNull();
+    // The counts are not known either, so the header does not print zeroes.
+    expect(view.getByText('— devices · — rooms')).toBeTruthy();
+  });
+
   it('shows devices grouped by room, and the unassigned ones apart', async () => {
     stubApi((url) => {
       if (url.includes('/scenes')) return [];

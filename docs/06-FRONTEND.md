@@ -353,6 +353,38 @@ failed six tests on the default 5 s timeout that pass in a second locally, so
 
 ## Design language
 
+### An empty house and an unanswered question
+
+Blocking the dashboard request at the network layer and reloading — the way a customer experiences a train
+tunnel — the app said:
+
+> **Home** · *no devices* · *0 devices · 0 rooms* · **No devices yet** — *Tap Add and we will look for devices
+> nearby.*
+
+The home has six devices and four rooms. Every word of that is a claim the app had no evidence for, and the last
+line invites someone to re-pair hardware that is already on the wall. `Try again` was underneath it, which only
+proves the code knew it had failed — the copy did not.
+
+The empty state had quietly become the failure state, and it was not only this screen. `QueryError` in
+`shared/ui` is now the one implementation, used by the dashboard, `/scenes` and `/alerts`, with three sentences
+doing the work: **what could not be loaded**, **that nothing has changed**, and **a way to ask again**. An error
+screen without a retry is a dead end with an explanation.
+
+The counts had to change too. `0 devices · 0 rooms` is not "unknown"; the header now prints `— devices · — rooms`
+and the presence pill says `unknown`, which is the same em-dash rule this document already applies while a count
+is in flight — a rule that turned out to matter more on the failure path than on the loading one.
+
+Three things were verified by blocking a real request and reading the screen:
+
+| Screen | Before | After |
+|---|---|---|
+| `/dashboard` | *No devices yet — Tap Add…* | *We could not load this home … Your devices are still there* |
+| `/scenes` | *No scenes yet. Build one below.* + a Save that cannot work | *We could not load your scenes* |
+| `/alerts` | *Nothing new* above *Alerts are unavailable right now* | *— unread* + *We could not load your alerts* |
+
+And the recovery was verified by unblocking and pressing `Try again`: the dashboard came back with `Workshop ·
+6 devices · 4 rooms`, and the request log shows the failing `0`-byte attempts followed by a `200`.
+
 ### The first frame was blank
 
 Throttled to Slow 3G and reloaded the app the way a customer does, the screen was a **blank white page for two
