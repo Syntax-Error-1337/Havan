@@ -44,10 +44,23 @@ pub async fn metrics(State(state): State<AppState>, headers: HeaderMap, peer: Pe
     // number: if this stays at zero the cache is not working, and if it climbs the database is not
     // being asked for an answer that has not changed.
     let theme_hits = state.theme.cache_hits();
+
+    // The stream's fan-out, in two numbers the operator can compare: channels should track *homes with
+    // a phone open*, sockets should track those phones. When the first version of this endpoint shipped,
+    // channels and sockets were the same number, because every socket held its own subscription.
+    let channels = state.hub.channel_count().await;
+    let sockets = state.hub.socket_count();
+
     let body = format!(
         "{}# HELP haven_theme_cache_hits_total Theme reads answered without a database query.\n\
          # TYPE haven_theme_cache_hits_total counter\n\
-         haven_theme_cache_hits_total {theme_hits}\n",
+         haven_theme_cache_hits_total {theme_hits}\n\
+         # HELP haven_stream_channels Redis subscriptions held by this process.\n\
+         # TYPE haven_stream_channels gauge\n\
+         haven_stream_channels {channels}\n\
+         # HELP haven_stream_sockets Open websockets on this process.\n\
+         # TYPE haven_stream_sockets gauge\n\
+         haven_stream_sockets {sockets}\n",
         kernel::metrics::render()
     );
 

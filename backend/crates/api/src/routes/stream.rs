@@ -5,13 +5,15 @@
 //! subscribes to the homes named in that same frame. Fan-out arrives over Redis,
 //! so any API instance can serve any socket and the worker needs no socket to
 //! every pod.
+//!
+//! One Redis subscription per *channel per process*, shared by every socket on it (`hub.rs`): a pod
+//! with five thousand phones on one home holds one subscription, not five thousand.
 
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use futures_util::StreamExt;
 use serde::Deserialize;
-use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::app::AppState;
@@ -88,20 +90,27 @@ async fn handle(mut socket: WebSocket, state: AppState) {
     let mut channels = homes.clone();
     channels.push(format!("user:{}", claims.sub));
 
-    let (tx, mut rx) = mpsc::channel::<String>(128);
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-    let url = state.cfg.redis_url.clone();
-    let subscribed = channels.clone();
-    tokio::spawn(async move {
-        if let Err(e) = pump(url, subscribed, tx, ready_tx).await {
-            tracing::warn!(error = ?e, "stream subscriber ended");
-        }
-    });
-
-    // "ready" means subscribed, not merely authenticated: Redis pub/sub has no
-    // replay, so a client that publishes right after "ready" must not be able to
-    // beat the SUBSCRIBE.
-    let _ = ready_rx.await;
+    // One Redis subscription per channel per process; every socket on the channel listens to the same
+    // in-process broadcast. `subscribe` only answers once Redis has acknowledged the SUBSCRIBE, so a
+    // client that publishes right after "ready" still cannot beat it.
+    let mut subscription = state.hub.subscribe(&channels).await;
+    // Boxed so the closure's type can be named: `select_all` needs a concrete stream type, and each
+    // receiver becomes an unfold over its own `broadcast::Receiver`.
+    let streams: Vec<std::pin::Pin<Box<dyn futures_util::Stream<Item = String> + Send>>> =
+        subscription
+            .receivers_mut()
+            .drain(..)
+            .map(|rx| {
+                Box::pin(futures_util::stream::unfold(rx, |mut rx| async move {
+                    match rx.recv().await {
+                        Ok(payload) => Some((payload, rx)),
+                        Err(_) => None,
+                    }
+                }))
+                    as std::pin::Pin<Box<dyn futures_util::Stream<Item = String> + Send>>
+            })
+            .collect();
+    let mut events = futures_util::stream::select_all(streams);
 
     let _ = socket
         .send(Message::Text(
@@ -123,36 +132,12 @@ async fn handle(mut socket: WebSocket, state: AppState) {
                 Some(Ok(_)) => {}
                 Some(Err(_)) => break,
             },
-            Some(event) = rx.recv() => {
+            Some(event) = events.next() => {
                 if socket.send(Message::Text(event.into())).await.is_err() { break; }
             }
         }
     }
-}
 
-/// One Redis subscription per socket. Redis pub/sub is cheap and this keeps the
-/// code obvious; swap for a shared fan-out when a single pod holds thousands.
-async fn pump(
-    url: String,
-    channels: Vec<String>,
-    tx: mpsc::Sender<String>,
-    ready: tokio::sync::oneshot::Sender<()>,
-) -> anyhow::Result<()> {
-    let client = redis::Client::open(url)?;
-    let mut pubsub = client.get_async_pubsub().await?;
-    for channel in &channels {
-        pubsub.subscribe(channel).await?;
-    }
-    let _ = ready.send(());
-
-    loop {
-        let Some(message) = pubsub.on_message().next().await else {
-            break;
-        };
-        let payload: String = message.get_payload()?;
-        if tx.send(payload).await.is_err() {
-            break;
-        }
-    }
-    Ok(())
+    // Handing the channels back is what stops the Redis task when this was the last socket on them.
+    state.hub.release(subscription).await;
 }

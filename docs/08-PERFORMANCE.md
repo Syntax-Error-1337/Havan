@@ -89,6 +89,33 @@ against 197k telemetry rows — so the query did not change; the endpoint's 20 m
 HTTP path around it, not a missing index. A timing that doubles without a plan to explain it is how
 people start "optimising" a thing that was never slow.
 
+## The live stream: one Redis subscription per channel, not per socket
+
+`/v1/stream` gave every websocket its own Redis pub/sub connection. Readable code, and the wrong shape for
+the thing this platform is for: a pod holding five thousand phones asked Redis for five thousand
+subscriptions and made it copy every device event five thousand times — once per socket, in a service
+whose whole job is fanning out device state.
+
+`crates/api/src/hub.rs` refcounts the channel instead: the first socket on `home:{id}` starts one task that
+subscribes once and forwards into an in-process broadcast; every other socket on that channel listens to
+the broadcast; the last socket to leave stops the task. A device event now costs Redis **one delivery per
+pod**, not per phone.
+
+Measured on this machine, six sockets on one home:
+
+| | before | after |
+|---|---|---|
+| `PUBSUB NUMSUB home:{id}` | 6 | **1** |
+| Redis deliveries per device event | 6 | **1** |
+| `haven_stream_channels` / `haven_stream_sockets` in `/metrics` | equal | **2 / 6** |
+
+Both numbers are exported as gauges because the ratio *is* the health check: channels should track homes
+with a phone open, sockets should track phones. If they converge again, the fan-out has regressed.
+
+The cost is one extra hop through an in-process broadcast channel per event (~microseconds), and one
+bounded backlog per channel: a socket that falls 256 messages behind is not reading, and is better
+dropped than allowed to stall its neighbours.
+
 ## Query plans
 
 Timings say *how long*; plans say *why*, and they are the thing to re-check after

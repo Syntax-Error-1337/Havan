@@ -60,6 +60,8 @@ pub struct AppState {
     /// serves app traffic never generates a private key it does not need — and so the
     /// tests that never issue a certificate do not write one to disk.
     ca: Arc<tokio::sync::OnceCell<haven_cert::Ca>>,
+    /// One Redis subscription per channel per process, shared by every socket on it.
+    pub hub: Arc<crate::hub::Hub>,
 }
 
 impl AppState {
@@ -72,6 +74,7 @@ impl AppState {
 
     pub fn new(cfg: Arc<Config>, pg: Pg, cache: Cache, mqtt: Mqtt) -> Self {
         let pool = pg.pool().clone();
+        let cfg_redis = cfg.redis_url.clone();
         let identity = Arc::new(IdentityService::new(
             Arc::new(PgIdentity::new(pg.clone())),
             cfg.jwt_secret.expose(),
@@ -143,6 +146,7 @@ impl AppState {
             fleet,
             audit,
             ca: Arc::new(tokio::sync::OnceCell::new()),
+            hub: crate::hub::Hub::new(cfg_redis),
         }
     }
 }
