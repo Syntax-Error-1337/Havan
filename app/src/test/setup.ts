@@ -4,6 +4,18 @@
  * should fail, not silently connect.
  */
 
+import { configure } from '@testing-library/react-native';
+
+/**
+ * Waiting budgets, for tests that do real async work.
+ *
+ * `findBy*` gives up after one second by default. On a laptop running three test workers that is
+ * enough; under load it is not, and the failure looks like a broken screen ("cannot find Lamp") rather
+ * than like a slow machine. Five seconds is still far below jest's own timeout, so a genuinely missing
+ * element still fails the test — it just fails for the right reason.
+ */
+configure({ asyncUtilTimeout: 5_000 });
+
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(async () => null),
   setItemAsync: jest.fn(async () => undefined),

@@ -15,7 +15,7 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | Read performance | `make bench` | timings against `docs/08-PERFORMANCE.md` |
 | Ingest | `make load RATE=600 SECONDS=20` | zero loss at whatever the host's generator reaches (~330/s single, 522/s with two); the loss column is the assertion, not the rate |
 | Degradation | `make chaos` | 20/20: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered, `/ops/health` refuses rather than showing an empty platform |
-| App | `cd app && npx tsc --noEmit && npm test` | 94 tests, 19 suites (the script passes `--forceExit`; see the note below) |
+| App | `cd app && npx tsc --noEmit && npm test` | 100 tests, 19 suites (the script passes `--forceExit`; see the note below) |
 | Palette contrast | `make contrast` (inside `make check`) | every text pair ≥ 4.5:1, every glyph and category accent ≥ 3:1, in both appearances |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 63 tests |
 | Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 40 tests per project (80 total) against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
@@ -30,6 +30,13 @@ suites failed because a worker would not exit; the failures are teardown, not as
 therefore passes `--forceExit`, which makes the exit code mean what it looks like. That is a
 papering-over, not a fix: the leak is React Query's timers outliving the test, and the honest repair
 is unmounting in `afterEach` — worth doing, not worth blocking a release on.
+
+**A one-second wait is a test that measures the machine.** `findBy*` gives up after 1 s by default,
+which is ample on an idle laptop and not ample with several jest workers competing for a CPU. That
+surfaced as an intermittent "cannot find Lamp" in the dashboard suite — a *test* artefact that reads
+exactly like a broken screen, and the kind of failure people learn to re-run instead of read. The suite
+now configures `asyncUtilTimeout: 5_000` once, in `src/test/setup.ts`; a genuinely missing element
+still fails, and fails for the right reason.
 
 ## 1. The phone pass — Phase 4's missing acceptance
 

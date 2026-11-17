@@ -52,7 +52,8 @@ Product editor with thing-model validation, firmware upload, OTA campaigns (with
 halt), API keys, serial manifest, **fleet list** and **analytics**.
 
 **Also built since:** licences and invoices, team and invitations, webhooks, two-factor
-policy, the federated-sign-in intent (ADR-005), and the **operator console** at `/admin` —
+policy, the federated-sign-in intent (ADR-005), the appearance the operator owns (ADR-006), and the
+**operator console** at `/admin` —
 vendors, health, certification queue, billing — which the plan did not foresee because it
 treats the operator as a database client.
 

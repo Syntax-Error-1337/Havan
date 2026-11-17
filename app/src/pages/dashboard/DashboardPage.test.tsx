@@ -20,7 +20,11 @@ function stubApi(handler: (url: string) => unknown) {
 
 async function renderDashboard() {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    // No `gcTime: 0`: the screen seeds the devices/scenes caches from the aggregate it just fetched,
+    // and an immediate collection can take them between the fetch resolving and the list rendering —
+    // which is how this suite flakes to "cannot find Lamp" under parallel load. Nothing here needs
+    // eager collection; the client dies with the test.
+    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
   });
 
   return await render(
