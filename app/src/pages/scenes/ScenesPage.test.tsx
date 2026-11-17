@@ -100,12 +100,12 @@ describe('scenes', () => {
     const view = await renderPage();
     await view.findByText('New scene');
 
-    await fireEvent.changeText(
-      view.getByPlaceholderText('Name, e.g. Good night'),
-      'Good night',
-    );
-    await fireEvent.press(view.getByLabelText('Device 1: Desk lamp'));
-    await fireEvent.press(view.getByLabelText('Point: switch.power'));
+    await fireEvent.changeText(view.getByPlaceholderText('Good night, Movie time…'), 'Good night');
+    // The steps are progressive: the point list only exists once a device is chosen, and its label is the
+    // point in words ("Power"), not the wire code the old editor printed.
+    await fireEvent.press(view.getByLabelText('Desk lamp'));
+    await fireEvent.press(view.getByLabelText('What should happen: Power'));
+    await fireEvent.press(view.getByLabelText('On'));
     await fireEvent.press(view.getByRole('button', { name: 'Create scene' }));
 
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
@@ -125,10 +125,7 @@ describe('scenes', () => {
     const view = await renderPage();
     await view.findByText('New scene');
 
-    await fireEvent.changeText(
-      view.getByPlaceholderText('Name, e.g. Good night'),
-      'Half a scene',
-    );
+    await fireEvent.changeText(view.getByPlaceholderText('Good night, Movie time…'), 'Half a scene');
 
     // A name and no device is not a scene.
     await fireEvent.press(view.getByRole('button', { name: 'Create scene' }));

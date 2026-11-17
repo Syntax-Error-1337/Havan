@@ -696,6 +696,40 @@ because the internal `withAlpha` could not parse the string it was given and fel
 Staleness is now expressed by dropping the halo and stepping the card's opacity back, with the accent left
 opaque for the component to fade in its own way.
 
+### A screen that asks the session a question the session has not answered
+
+`/scenes` opened with **no scenes and no devices** on a home with both — and offered a form whose device
+picker said "Nothing to choose from", whose point picker said "Pick a device first", and whose value field
+already contained `true`. Scored 3/10.
+
+The cause was one line, and it was the same line in `/settings`: both read `useSession(s => s.homeId)`, and
+that is empty until the *dashboard* picks a home. Any screen reached first therefore had no home. `useHomes`
+has the answer already, so `useCurrentHome()` returns the stored home, or the one the app would open, and
+writes that choice down — the screens that ran after the dashboard were fine by accident, which is exactly
+why nobody noticed.
+
+The editor was rebuilt around progressive disclosure, which is what the old one was missing:
+
+- **Name → choose device → what should happen → set to.** Nothing appears before the step that makes it
+  meaningful; "What should happen" does not exist until a device is chosen, and the value control does not
+  exist until a point is.
+- **Points are named in words with their units** — `Level (%)`, `Kelvin (K)`, `Power` — not `brightness.level`.
+  The wire name is a vendor's identifier.
+- **The value control matches the type**: On/Off chips for a switch, a numeric field with the unit for a level,
+  text otherwise. The old single box said "Value (true / false / number)" and asked the customer to know the
+  wire format of their own bulb.
+- **Read-only points are not offered at all.** A scene cannot set a sensor; the editor says so ("This device
+  has nothing a scene can change") rather than listing points that will fail.
+- **`Add another action` appears only when the current action is complete** — a control that offers more work
+  before the first piece exists invites a mess.
+
+**A disabled button must look disabled.** `Button` set `opacity: 0.5` on a filled accent, which on a dark
+screen is still a blue button; iOS greys the fill *and* the label. Every disabled button in the app now does.
+The greyed `Create scene` also says what is missing ("Name the scene to finish."), because a grey button with
+no reason is a puzzle.
+
+Scenes **3 → 8/10**.
+
 ### The switcher has to say which one you are in
 
 `/homes` scored **4/10** and the reason was one missing line: no row said "Current". The check and the label

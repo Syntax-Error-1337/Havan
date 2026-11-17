@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { canManage } from '../../entities/home';
+import { canManage, useCurrentHome } from '../../entities/home';
 import {
   Box,
   AppText,
@@ -42,7 +42,7 @@ export function SettingsPage() {
   const router = useRouter();
   const { brand, color } = useTheme();
 
-  const homeId = useSession((s) => s.homeId);
+  const { homeId } = useCurrentHome();
   const signOut = useSession((s) => s.signOut);
 
   const { data: me } = useMe();
