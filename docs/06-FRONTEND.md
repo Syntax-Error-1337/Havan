@@ -815,6 +815,25 @@ drawn for anyone, and the refusals were silent — the demo account *was* a memb
 which is how a screen looks broken when the server is behaving correctly. The role ships with the homes list,
 so the controls are drawn only when `canManage(role)` allows them, with the reason in the section footnote.
 
+### The device screen was a debug view with a chart
+
+`/device/:id` scored **6/10** and every deduction was the same mistake in a different place: it printed the
+platform's own vocabulary.
+
+- **`battery.level · %`** under a row already titled *Battery*, with the unit beside the value anyway. The wire
+  name is a vendor's identifier; the customer has never seen it.
+- **`quiet after 3h without a report`** described the *threshold the platform uses*, not a fact about their
+  device. It reads `Reports hourly · last reported 4h ago` now: what it promised, and when it last kept it.
+- **`284 readings · 26 bars`** counted samples stored and columns drawn — plumbing, on the screen where the
+  customer asked what the temperature had been doing. The caption is the range and the window.
+- **Battery came first**, because `device.points` arrives sorted by code and `battery.level` sorts before
+  `temperature.value`. Readings are ordered the way a person reads them now: temperature, humidity, then
+  battery, because battery is about the device rather than the room.
+- **The chart did not admit it had stopped.** A device offline for four hours still drew a confident day of
+  bars; the caption now ends `· as of 4h ago`.
+
+Device detail **6 → 8/10**.
+
 ### A feed needs a day, not a count of hours
 
 `/alerts` had three alerts and no way back — it is pushed from the bell, and the only exit was the browser's

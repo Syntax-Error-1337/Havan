@@ -252,9 +252,10 @@ describe('device detail', () => {
     const view = await renderPage();
     await view.findByText('Desk lamp');
 
-    // The chart reports what it drew, so an empty plot is never ambiguous.
-    // 12 + 9 samples across two buckets — the count is the point.
-    expect(await view.findByText(/21 readings · 2 bars/)).toBeTruthy();
+    // The chart says what the window held, in the customer's terms. It used to add "21 readings · 2 bars" —
+    // the platform's own plumbing: how many samples it stored and how many columns it drew.
+    expect(await view.findByText(/over the last day/)).toBeTruthy();
+    expect(view.queryByText(/readings ·/)).toBeNull();
     expect(calls.some((c) => c.url.includes('range=1d'))).toBe(true);
 
     await fireEvent.press(view.getByRole('button', { name: '7d' }));

@@ -22,6 +22,7 @@ import {
   expectedReportWords,
   freshness,
   quietAfterWords,
+  relative,
   silenceWords,
   useDevice,
   useDeviceUpdate,
@@ -48,6 +49,8 @@ export function DeviceDetailPage() {
   // Only shown when the product declared an expectation; a device that never promised anything has
   // nothing to be late for, and inventing a schedule for it would be a lie with a number on it.
   const expectedReport = device ? expectedReportWords(device) : null;
+  // The age of the last thing it said, which is the number a person actually wants.
+  const lastReported = device?.last_seen_at ? relative(device.last_seen_at) : null;
   const setPoint = useSetPoint(id ?? '');
   const setRoom = useSetRoom();
   const rename = useRenameDevice();
@@ -207,9 +210,16 @@ export function DeviceDetailPage() {
           {/* What the product promised, so "Silent for 4h" reads as a fact rather than a mystery: an
               hourly sensor is late at four hours, a plug that reports every ten seconds is late at one
               minute, and the customer can only judge the number if they know the promise behind it. */}
+          {/* What it promises, and when it last kept the promise. "Quiet after 3h without a report" told a
+              customer the threshold the platform uses — a policy, not a fact about their device. */}
           {expectedReport ? (
             <AppText variant="tiny" tone="muted">
-              {expectedReport} · quiet after {quietAfterWords(device)} without a report
+              {expectedReport}
+              {lastReported ? ` · last reported ${lastReported}` : ''}
+            </AppText>
+          ) : lastReported ? (
+            <AppText variant="tiny" tone="muted">
+              Last reported {lastReported}
             </AppText>
           ) : null}
           </Box>
@@ -279,7 +289,11 @@ export function DeviceDetailPage() {
           ) : null}
         </Box>
 
-        <HistoryChart deviceId={device.id} points={device.points} />
+        <HistoryChart
+          deviceId={device.id}
+          points={device.points}
+          asOf={freshness(device) === 'live' ? null : relative(device.last_seen_at)}
+        />
 
         {/*
           Controls come from the device's own data: a bool is a switch, a bounded number is a level,
@@ -289,7 +303,7 @@ export function DeviceDetailPage() {
         {/* One place decides that a silent device's controls are inert, rather than each control
             remembering to dim itself. */}
         <Box gap="md" style={{ opacity: device.online ? 1 : 0.6 }}>
-          {device.points.map((point) => (
+          {orderedPoints(device.points).map((point) => (
             <Glass key={point.code} accent={point.writable ? accent : undefined}>
               <PointControl device={device} point={point} accent={accent} />
             </Glass>
@@ -328,6 +342,22 @@ export function DeviceDetailPage() {
       </Box>
     </Screen>
   );
+}
+
+/**
+ * The points in the order a person reads them.
+ *
+ * `device.points` arrives sorted by code, so `battery.level` — a diagnostic number nobody opened this
+ * screen for — came first and the temperature came last. Battery belongs at the end: it is about the
+ * device, not about the room.
+ */
+function orderedPoints(points: DevicePoint[]): DevicePoint[] {
+  const rank = ['temperature', 'humidity', 'energy', 'power', 'switch', 'brightness', 'level', 'battery'];
+  const score = (point: DevicePoint) => {
+    const at = rank.indexOf(point.capability);
+    return at === -1 ? rank.length : at;
+  };
+  return [...points].sort((a, b) => score(a) - score(b));
 }
 
 function Control({
@@ -423,7 +453,16 @@ function formatValue(value: boolean | number | string | null): string {
 /**
  * A day of one datapoint, or an honest sentence about why there is no chart.
  */
-function HistoryChart({ deviceId, points }: { deviceId: string; points: DevicePoint[] }) {
+function HistoryChart({
+  deviceId,
+  points,
+  asOf,
+}: {
+  deviceId: string;
+  points: DevicePoint[];
+  /** When the data stops, for a device that has stopped: a chart drawn from silence has to say so. */
+  asOf?: string | null;
+}) {
   // Chart the first numeric point: a switch's history is a square wave and is
   // the least interesting thing on the screen. `isBoolean` must describe *that*
   // point — deriving it from the device turned a 40–80 brightness chart into a
@@ -502,10 +541,12 @@ function HistoryChart({ deviceId, points }: { deviceId: string; points: DevicePo
           {/* One string, not three children: a sentence assembled from nodes is also a sentence a test
               cannot match and a screen reader may split. The range is here because bars with no scale
               answer "did it move" and nothing else — the same complaint the hero's chart earned. */}
+          {/* The range over the window, and nothing else: "284 readings · 26 bars" counted the platform's
+              own plumbing — how many samples it stored and how many columns it drew — on a screen where the
+              customer asked what the temperature has been doing. */}
           <AppText variant="caption" tone="muted">
-            {`${chartRange(data?.buckets ?? [], charted)}${samples} reading${
-              samples === 1 ? '' : 's'
-            } · ${data?.buckets.length ?? 0} bars`}
+            {`${chartRange(data?.buckets ?? [], charted)} over the last ${RANGE_WORDS[range]}`}
+            {asOf ? ` · as of ${asOf}` : ''}
           </AppText>
         </>
       )}
@@ -528,6 +569,6 @@ function chartRange(
   const low = Math.min(...values);
   const high = Math.max(...values);
   // A flat line is a fact too, and "21.5–21.5 °C" states it badly.
-  if (Math.abs(high - low) < 0.05) return `steady at ${low.toFixed(1)}${unit} · `;
-  return `${low.toFixed(1)}–${high.toFixed(1)}${unit} · `;
+  if (Math.abs(high - low) < 0.05) return `steady at ${low.toFixed(1)}${unit}`;
+  return `${low.toFixed(1)}–${high.toFixed(1)}${unit}`;
 }

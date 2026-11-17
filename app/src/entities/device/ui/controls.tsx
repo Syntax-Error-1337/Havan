@@ -302,10 +302,9 @@ export function PointControl({
           <AppText variant="subhead" numberOfLines={1}>
             {titleFor(point)}
           </AppText>
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
-            {point.code}
-            {point.unit ? ` · ${point.unit}` : ''}
-          </AppText>
+          {/* No second line: the title is the name and the value carries its own unit. The row used to
+              print `battery.level · %` under a row already titled "Battery" — a debug view of a customer
+              screen, where the code is the vendor's identifier and the unit is already beside the number. */}
         </View>
 
         {kind === 'toggle' ? (
