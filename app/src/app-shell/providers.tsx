@@ -67,9 +67,10 @@ export function Providers({ children }: { children: ReactNode }) {
           Dark is the app's own identity, not a system follower.
 
           A home interface is looked at in the evening, next to a lamp it just turned on, and a white
-          screen at that moment is its own kind of glare. The light palette is still maintained and
-          still tested — Settings can switch to it — but the default is the night one, and saying so
-          here is better than defaulting to whatever a browser reports as the platform preference.
+          screen at that moment is its own kind of glare. The light palette is maintained and tested,
+          and Settings can switch to it (`entities/preferences`), but the default is the night one, and
+          saying so here is better than defaulting to whatever a browser reports as the platform
+          preference.
         */}
         <PlatformThemeProvider>
           <SessionBoot>{children}</SessionBoot>

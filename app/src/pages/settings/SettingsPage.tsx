@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -9,10 +9,12 @@ import {
   Row,
   Screen,
   ScreenHeader,
+  ChipPicker,
   Section,
   Toggle,
   useConfirm,
 } from '../../shared/ui';
+import { usePreferences, type Appearance } from '../../entities/preferences';
 import {
   useCreateRoom,
   useDashboard,
@@ -41,6 +43,8 @@ import { useInlineEdit } from '../../shared/lib/useInlineEdit';
 export function SettingsPage() {
   const router = useRouter();
   const { brand, color } = useTheme();
+  const appearance = usePreferences((s) => s.appearance);
+  const setAppearance = usePreferences((s) => s.setAppearance);
 
   const { homeId } = useCurrentHome();
   const signOut = useSession((s) => s.signOut);
@@ -220,6 +224,24 @@ export function SettingsPage() {
               Only an owner or admin can add a room to this home.
             </AppText>
           ) : null}
+        </Section>
+
+        {/* The palette has had a light half since the first theme pass and nothing in the app could
+            reach it — the comment in `providers.tsx` claimed Settings could switch modes and no such
+            control existed. This is that control. */}
+        <Section
+          title="Appearance"
+          footnote={`${brand.productName} opens in the appearance your operator chose. This is your own phone's opinion, remembered on this device.`}
+        >
+          <ChipPicker
+            options={[
+              { id: 'system', label: 'Match my phone' },
+              { id: 'light', label: 'Light' },
+              { id: 'dark', label: 'Dark' },
+            ]}
+            value={appearance}
+            onChange={(id) => void setAppearance(id as Appearance)}
+          />
         </Section>
 
         <Section title="About">

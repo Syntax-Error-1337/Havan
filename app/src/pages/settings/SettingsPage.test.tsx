@@ -6,6 +6,7 @@ import { testQueryClient } from '../../test/query';
 import { SettingsPage } from './SettingsPage';
 import { ThemeProvider } from '../../app-shell/theme';
 import { useSession } from '../../entities/session';
+import { usePreferences } from '../../entities/preferences';
 
 const home = {
   id: 'home-1',
@@ -59,6 +60,24 @@ beforeEach(() => {
     refresh: 'refresh',
     homeId: 'home-1',
     hydrated: true,
+  });
+});
+
+describe('appearance', () => {
+  it('lets the customer overrule the operator about light and dark, and remembers it', async () => {
+    // The palette has had a light half since the first theme pass and nothing could reach it: the
+    // comment in `providers.tsx` claimed Settings could switch modes, and no such control existed.
+    stubApi();
+    useSession.setState({ access: 'token', homeId: 'home-1', refresh: null });
+
+    const view = await renderPage();
+    expect(await view.findByText('Match my phone')).toBeTruthy();
+    expect(view.getByText('Dark')).toBeTruthy();
+
+    fireEvent.press(view.getByText('Light'));
+
+    // The store is the contract the provider reads, so asserting it is asserting the repaint.
+    await waitFor(() => expect(usePreferences.getState().appearance).toBe('light'));
   });
 });
 

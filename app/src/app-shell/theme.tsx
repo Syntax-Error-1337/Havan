@@ -3,6 +3,7 @@ import { useColorScheme } from 'react-native';
 
 import { applyBrand, dark, light, tokens, type Palette, type Theme } from '../shared/config/tokens';
 import { DEFAULT_THEME, cachedTheme, hydrateThemeCache, usePlatformTheme } from '../entities/theme/api';
+import { usePreferences } from '../entities/preferences';
 
 const ThemeContext = createContext<Theme>({
   color: dark,
@@ -66,6 +67,14 @@ export function ThemeProvider({
  * palette without a network, and the app supplies the network's palette without a test.
  */
 export function PlatformThemeProvider({ children }: { children: ReactNode }) {
+  // The customer's own choice, if they made one. The operator sets the default for everybody; a
+  // person who prefers light at 6 p.m. is not disagreeing with the brand, only with the clock.
+  const appearance = usePreferences((s) => s.appearance);
+  const hydratePreferences = usePreferences((s) => s.hydrate);
+  useEffect(() => {
+    void hydratePreferences();
+  }, [hydratePreferences]);
+
   // The cached answer first, so a cold start offline opens in the right brand rather than flashing
   // the built-in one and correcting itself a second later.
   const [remembered, setRemembered] = useState(cachedTheme);
@@ -80,7 +89,7 @@ export function PlatformThemeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ThemeProvider
-      mode={theme.mode}
+      mode={appearance === 'system' ? theme.mode : appearance}
       accent={theme.accent}
       accentOn={theme.accent_on}
       accentSecondary={theme.accent_secondary}

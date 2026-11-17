@@ -152,6 +152,27 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### A palette nobody could reach
+
+`providers.tsx` carried this comment:
+
+> *The light palette is still maintained and still tested — Settings can switch to it.*
+
+There was no such control. The light half of the palette had been contrast-gated, screenshot-reviewed and fixed
+(opacity, muted weight, `accentInk`) in two earlier passes, and **no customer could see it**: `ThemeProvider`
+took its mode from the operator's theme and nothing else. A comment that describes a feature that does not exist
+is worse than the missing feature, because it stops the next person looking.
+
+There is now an **Appearance** section in Settings — *Match my phone · Light · Dark* — backed by
+`entities/preferences`, a small store persisted beside the session (keychain on a phone, `localStorage` on the
+web) because it is this device's opinion, not the account's. `PlatformThemeProvider` reads it and the customer's
+choice wins over the operator's mode; `system` (the default) keeps the operator's answer. The comment now says
+what is true.
+
+Verified live: tapping **Light** repaints the whole app — cards, text, chips — writes
+`haven.appearance = light`, and survives a reload; switching back to *Match my phone* writes `system` and returns
+to the operator's dark brand.
+
 ### An empty home said "Try again"
 
 A new account that had just named its home landed on:
