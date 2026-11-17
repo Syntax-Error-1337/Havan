@@ -39,18 +39,36 @@ beforeEach(() => {
 });
 
 describe('login', () => {
+  it('lets a person see what they typed, and tells a password manager which field this is', async () => {
+    const view = await renderLogin();
+
+    const password = view.getByLabelText('Password');
+    // `current-password`, not `password`: the latter made both modes look like a new-password field, so a
+    // password manager offered to generate instead of to fill.
+    expect(password.props.autoComplete).toBe('current-password');
+    expect(password.props.secureTextEntry).toBe(true);
+
+    // Typing blind on a phone keyboard is the most common reason a sign-in fails.
+    await fireEvent.press(view.getByLabelText('Show password'));
+    const revealed = await view.findByLabelText('Hide password');
+    expect(revealed).toBeTruthy();
+    expect(view.getByLabelText('Password').props.secureTextEntry).toBe(false);
+    await fireEvent.press(view.getByLabelText('Hide password'));
+    expect(view.getByLabelText('Password').props.secureTextEntry).toBe(true);
+  });
+
   it('keeps the buttons disabled until the form is plausible', async () => {
     const calls = stubApi(() => ({ body: {} }));
     const view = await renderLogin();
 
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'not-an-email');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'not-an-email');
     await fireEvent.press(view.getByText('Sign in'));
     expect(calls).toHaveLength(0);
 
     // A 10-character floor is a product decision, not a security one: it stops
     // a typo-then-lockout loop before the server ever sees it.
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'someone@haven.dev');
-    await fireEvent.changeText(view.getByPlaceholderText(/^Password/), 'short');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'someone@haven.dev');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'short');
     await fireEvent.press(view.getByText('Sign in'));
     expect(calls).toHaveLength(0);
   });
@@ -64,8 +82,8 @@ describe('login', () => {
     });
 
     const view = await renderLogin();
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'someone@haven.dev');
-    await fireEvent.changeText(view.getByPlaceholderText(/^Password/), 'correct horse battery');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'someone@haven.dev');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'correct horse battery');
     console.log('PROBE button disabled', view.getByText('Sign in').parent?.parent?.props?.accessibilityState);
     await fireEvent.press(view.getByText('Sign in'));
 
@@ -86,8 +104,8 @@ describe('login', () => {
     }));
 
     const view = await renderLogin();
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'someone@haven.dev');
-    await fireEvent.changeText(view.getByPlaceholderText(/^Password/), 'wrong password');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'someone@haven.dev');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'wrong password');
     await fireEvent.press(view.getByText('Sign in'));
 
     expect(await view.findByText('Email or password is incorrect.')).toBeTruthy();
@@ -100,9 +118,9 @@ describe('login', () => {
     }));
 
     const view = await renderLogin();
-    await fireEvent.press(view.getByText('No account yet? Create one'));
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@haven.dev');
-    await fireEvent.changeText(view.getByPlaceholderText(/^Password/), 'correct horse battery');
+    await fireEvent.press(view.getByText('New to Haven? Create an account'));
+    await fireEvent.changeText(view.getByLabelText('Email'), 'new@haven.dev');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'correct horse battery');
     await fireEvent.press(view.getByText('Create account'));
 
     await waitFor(() => expect(useSession.getState().access).toBe('a2'));
@@ -115,8 +133,8 @@ describe('login', () => {
     }) as unknown as typeof fetch;
 
     const view = await renderLogin();
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'someone@haven.dev');
-    await fireEvent.changeText(view.getByPlaceholderText(/^Password/), 'correct horse battery');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'someone@haven.dev');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'correct horse battery');
     await fireEvent.press(view.getByText('Sign in'));
 
     expect(await view.findByText('You appear to be offline.')).toBeTruthy();

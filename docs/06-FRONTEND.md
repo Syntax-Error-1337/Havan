@@ -815,6 +815,28 @@ drawn for anyone, and the refusals were silent — the demo account *was* a memb
 which is how a screen looks broken when the server is behaving correctly. The role ships with the homes list,
 so the controls are drawn only when `canManage(role)` allows them, with the reason in the section footnote.
 
+### The first screen a customer ever sees
+
+The sign-in screen scored **5/10** as a white-label first impression, and the reasons were all "the form does
+not help the person typing into it":
+
+- **A placeholder is not a label.** `Email` and `Password` vanished on the first keystroke, leaving two unnamed
+  boxes. Both fields have a persistent label now.
+- **No way to see what you typed.** Typing a password blind on a phone keyboard is the most common reason a
+  sign-in fails, and the customer blames the app. There is a `SHOW` / `HIDE` control inside the field.
+- **`autoComplete="password"`** made both modes look like a *new-password* field, so a password manager offered
+  to generate a password instead of filling the saved one. Sign-in now says `current-password` (and
+  `new-password` in the create-account mode), with `textContentType` to match on iOS.
+- **"No account yet? Create one"** became `New to Haven? Create an account` — in the operator's product name,
+  since this screen wears their brand.
+
+Verified live at 390×844: labels and `SHOW` render, the toggle switches the field from password to text (the
+DOM input type changes from `password` to `text`), the enabled `Sign in` is a filled accent button rather than
+the grey disabled style, and the flow still signs in — the dashboard loads as `demo@haven.local`.
+
+Sign-in **5 → 7/10**. What it still lacks is a password reset (there is no such endpoint yet) and any legal or
+support link, which is a product decision rather than a coat of paint.
+
 ### The automations editor asked for a wire format
 
 `/automations` scored **7/10** and the empty state was the smaller half of it. The title said **`Automatic`**

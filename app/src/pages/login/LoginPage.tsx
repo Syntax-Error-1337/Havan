@@ -15,6 +15,7 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [reveal, setReveal] = useState(false);
 
   const signIn = useSession((s) => s.signIn);
   const login = useLogin();
@@ -77,27 +78,59 @@ export function LoginPage() {
           </Box>
 
           <Box gap="md">
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Email"
-              placeholderTextColor={color.muted}
-              autoCapitalize="none"
-              autoComplete="email"
-              keyboardType="email-address"
-              accessibilityLabel="Email"
-              style={inputStyle(color)}
-            />
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder={mode === 'signup' ? 'Password (10+ characters)' : 'Password'}
-              placeholderTextColor={color.muted}
-              secureTextEntry
-              autoComplete="password"
-              accessibilityLabel="Password"
-              style={inputStyle(color)}
-            />
+            <Box gap="xs">
+              {/* A placeholder is not a label: it disappears on the first keystroke, and by then the person
+                  is typing into a box whose name they have to remember. */}
+              <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
+                EMAIL
+              </AppText>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                placeholderTextColor={color.muted}
+                autoCapitalize="none"
+                autoComplete="email"
+                textContentType="username"
+                keyboardType="email-address"
+                accessibilityLabel="Email"
+                style={inputStyle(color)}
+              />
+            </Box>
+
+            <Box gap="xs">
+              <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
+                PASSWORD
+              </AppText>
+              <View style={{ justifyContent: 'center' }}>
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder={mode === 'signup' ? 'At least 10 characters' : 'Your password'}
+                  placeholderTextColor={color.muted}
+                  // `current-password` is what tells a password manager to offer the saved one; `password`
+                  // made both modes look like a new-password field.
+                  secureTextEntry={!reveal}
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  textContentType={mode === 'signup' ? 'newPassword' : 'password'}
+                  accessibilityLabel="Password"
+                  style={inputStyle(color)}
+                />
+                {/* Typing a password blind on a phone keyboard is the most common reason a sign-in fails
+                    and the customer blames the app. */}
+                <Pressable
+                  onPress={() => setReveal((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel={reveal ? 'Hide password' : 'Show password'}
+                  hitSlop={10}
+                  style={{ position: 'absolute', right: 14 }}
+                >
+                  <AppText variant="tiny" tone="muted">
+                    {reveal ? 'HIDE' : 'SHOW'}
+                  </AppText>
+                </Pressable>
+              </View>
+            </Box>
           </Box>
 
           {error ? (
@@ -124,7 +157,7 @@ export function LoginPage() {
           >
             <AppText tone="muted" style={{ textAlign: 'center' }}>
               {mode === 'signin'
-                ? 'No account yet? Create one'
+                ? `New to ${brand.productName}? Create an account`
                 : 'Already have an account? Sign in'}
             </AppText>
           </Pressable>
