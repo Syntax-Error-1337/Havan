@@ -47,14 +47,33 @@ beforeEach(() => {
 });
 
 describe('alerts', () => {
-  it('shows an unread alert with how long ago it fired', async () => {
-    stubApi(() => [alert()]);
+  it('files an alert under its day, and says when in that day', async () => {
+    // "5 min ago" under a heading that already says which day is the same fact twice in two scales. The
+    // heading answers "when", so the row answers "what time".
+    const fired = alert();
+    stubApi(() => [fired]);
     const view = await renderPage();
 
     expect(await view.findByText('Lamp on')).toBeTruthy();
     expect(view.getByText('The desk lamp is on again')).toBeTruthy();
-    expect(view.getByText('5 min ago')).toBeTruthy();
+    expect(view.getByText('TODAY')).toBeTruthy();
+    expect(
+      view.getByText(
+        new Date(fired.created_at as string).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+        }),
+      ),
+    ).toBeTruthy();
     expect(view.getByText('1 unread')).toBeTruthy();
+  });
+
+  it('says how a screen reader should read an unread alert', async () => {
+    stubApi(() => [alert()]);
+    const view = await renderPage();
+
+    // The dot and the dimmer card are the only visual signal, and neither is audible.
+    expect(await view.findByLabelText('Lamp on, unread')).toBeTruthy();
   });
 
   it('marks an alert read when it is tapped, and not before', async () => {

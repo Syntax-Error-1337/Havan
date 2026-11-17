@@ -69,13 +69,53 @@ export function useMarkAllRead() {
   });
 }
 
-/** "just now", "12 min ago", "3 h ago", then a date. */
+/**
+ * "just now", "12m ago", "3h ago", then what a person actually says: "Yesterday, 4:05 PM", "Tue, 9 AM",
+ * and only after a week a date.
+ *
+ * The old version printed `3 h ago` (a space that made every row one character wider than it needed) and
+ * then fell off a cliff to `11/16/2026` — a format that is ambiguous across locales and unreadable at a
+ * glance in a list you are scanning.
+ */
 export function ago(iso: string, now = Date.now()): string {
-  const then = new Date(iso).getTime();
-  const secs = Math.max(0, Math.round((now - then) / 1000));
+  const then = new Date(iso);
+  const secs = Math.max(0, Math.round((now - then.getTime()) / 1000));
 
   if (secs < 60) return 'just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`;
-  if (secs < 86_400) return `${Math.floor(secs / 3600)} h ago`;
-  return new Date(iso).toLocaleDateString();
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86_400) return `${Math.floor(secs / 3600)}h ago`;
+
+  const time = then.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const days = Math.floor(secs / 86_400);
+  if (days === 1) return `Yesterday, ${time}`;
+  if (days < 7) return `${then.toLocaleDateString([], { weekday: 'short' })}, ${time}`;
+  return then.toLocaleDateString([], { day: 'numeric', month: 'short' });
+}
+
+/**
+ * The time of day, for a row that already sits under a day heading.
+ *
+ * A grouped feed that repeats "10h ago" under "YESTERDAY" is telling the same fact twice in two scales —
+ * the person can see which day it was, so what they need is when in that day.
+ */
+export function clockTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * The heading a feed groups under: `Today`, `Yesterday`, then the date.
+ *
+ * A flat list of eleven alerts from four days is a list you scroll without reading. Grouping costs one
+ * line of code and turns it into a day-by-day record you can navigate.
+ */
+export function dayBucket(iso: string, now = Date.now()): string {
+  const then = new Date(iso);
+  const day = 86_400_000;
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+  const at = then.getTime();
+  if (at >= startOfToday) return 'Today';
+  if (at >= startOfToday - day) return 'Yesterday';
+  return then.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
 }

@@ -696,6 +696,26 @@ because the internal `withAlpha` could not parse the string it was given and fel
 Staleness is now expressed by dropping the halo and stepping the card's opacity back, with the accent left
 opaque for the component to fade in its own way.
 
+### A feed needs a day, not a count of hours
+
+`/alerts` had three alerts and no way back — it is pushed from the bell, and the only exit was the browser's
+own gesture. It also said `10 h ago` under no heading at all, so eight rows from four days read as one
+undifferentiated blur, and a read row and an unread row differed by a three-pixel dot.
+
+Now: a header with the back chevron `ScreenHeader` already knew how to draw, alerts grouped under `TODAY` /
+`YESTERDAY` / a date, and **the row inside a group shows the time of day** — `2:21 PM`. A heading that says
+which day plus a row that says "10h ago" is one fact in two scales; once the group answers *when*, the row
+answers *what time*. Read rows step back to 72 % instead of relying on the dot alone, and the card carries an
+accessible name — `Lamp on, unread, opens Room Sensor` — because neither the dot nor the dimming is audible.
+
+The third alert read `Lease check` / `the doorbell rang` with a warning triangle: a seeded row whose title and
+body came from different stories. It reads `Doorbell rang` / `Someone pressed the doorbell in the hallway.`
+now, with the security glyph. **Demo data is copy**: a screenshot of the product is a screenshot of whatever
+the seed put there, and a mismatched title is indistinguishable from a bug.
+
+The per-row action line names the row's primary action — `Open Room Sensor` where there is a device,
+`Mark as read` where there is not — and tapping anywhere does both. One line, one promise.
+
 ### The first screen is not allowed to be a dead end
 
 `/add-device` in a browser rendered a heading — "Add a device" — and, under it, `No radio here / This build
