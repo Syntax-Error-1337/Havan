@@ -32,10 +32,11 @@ type Row = (
     bool,
     serde_json::Value,
     Option<time::OffsetDateTime>,
+    Option<time::OffsetDateTime>,
 );
 
 fn map(row: Row) -> Result<Automation, AppError> {
-    let (id, home_id, name, enabled, definition, next_run_at) = row;
+    let (id, home_id, name, enabled, definition, next_run_at, run_requested_at) = row;
     let definition: AutomationDef = serde_json::from_value(definition)
         .map_err(|e| AppError::Internal(format!("stored automation is invalid: {e}")))?;
     Ok(Automation {
@@ -45,10 +46,11 @@ fn map(row: Row) -> Result<Automation, AppError> {
         enabled,
         definition,
         next_run_at,
+        run_requested_at,
     })
 }
 
-const COLUMNS: &str = "id, home_id, name, enabled, definition, next_run_at";
+const COLUMNS: &str = "id, home_id, name, enabled, definition, next_run_at, run_requested_at";
 
 impl AutomationRepo for PgAutomation {
     async fn create(
@@ -84,6 +86,7 @@ impl AutomationRepo for PgAutomation {
             enabled: true,
             definition: def.clone(),
             next_run_at,
+            run_requested_at: None,
         })
     }
 
@@ -219,6 +222,38 @@ impl AutomationRepo for PgAutomation {
     /// The lease is a single UPDATE: whichever worker's statement wins the row
     /// owns it until `lease_until`. Two workers polling at the same instant
     /// cannot both fire the same automation.
+    async fn clear_run_request(&self, automation_id: Uuid) -> Result<(), AppError> {
+        let mut tx = self.tx().await?;
+        sqlx::query("UPDATE automations SET run_requested_at = NULL WHERE id = $1")
+            .bind(automation_id)
+            .execute(&mut *tx)
+            .await
+            .map(|_| ())
+            .map_err(db)?;
+        tx.commit().await.map_err(db)
+    }
+
+    async fn run_now(&self, automation_id: Uuid) -> Result<bool, AppError> {
+        let mut tx = self.tx().await?;
+        // Same predicate the leasing query uses: enabled, and not currently held by a worker. A rule
+        // somebody is already running is not queued twice. The stamp is what lets the worker log this
+        // as a `manual` run instead of borrowing the rule's trigger name.
+        let result = sqlx::query(
+            "UPDATE automations
+                SET next_run_at = now(),
+                    run_requested_at = now()
+              WHERE id = $1
+                AND enabled
+                AND (lease_until IS NULL OR lease_until < now())",
+        )
+        .bind(automation_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(result.rows_affected() > 0)
+    }
+
     async fn lease_due(&self, owner: &str, ttl_secs: i64) -> Result<Vec<Automation>, AppError> {
         let mut tx = self.tx().await?;
 

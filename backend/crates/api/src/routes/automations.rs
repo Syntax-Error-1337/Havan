@@ -35,6 +35,53 @@ async fn webhook(
     Ok(StatusCode::ACCEPTED)
 }
 
+/// `POST /automations/{id}/run` — "test this rule now".
+///
+/// The portal has always been able to create a rule and watch a log of runs it never triggered; the
+/// only way to see one work was to wait for its trigger. This arms the rule the same way the scheduler
+/// does, so the worker executes it on its next tick — one execution path, one log, one behaviour. The
+/// answer is `202` for the same reason the webhook is: it is queued, not finished.
+///
+/// A rule that is switched off is refused rather than silently ignored: "nothing happened" is the worst
+/// possible answer to pressing a button.
+async fn run_now(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(automation_id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    let home_id = state
+        .automations
+        .home_of(automation_id)
+        .await
+        .map_err(ApiError)?
+        .ok_or_else(|| ApiError(kernel::AppError::not_found("automation")))?;
+
+    // Membership first, and management after it: running a rule changes the house.
+    let home = state
+        .homes
+        .require(home_id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+    if !home.role.can_manage() {
+        return Err(ApiError(kernel::AppError::forbidden(
+            "only an admin can run a rule by hand",
+        )));
+    }
+
+    if !state
+        .automations
+        .run_now(automation_id)
+        .await
+        .map_err(ApiError)?
+    {
+        return Err(ApiError(kernel::AppError::validation(
+            "that rule is switched off, or is running right now — turn it on and try again",
+        )));
+    }
+
+    Ok(StatusCode::ACCEPTED)
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/homes/{id}/automations", get(list).post(create))
@@ -44,6 +91,7 @@ pub fn router() -> Router<AppState> {
         // the rule is *armed*, not run — the worker picks it up on its next tick,
         // which keeps every execution in one place instead of two.
         .route("/automations/{automation_id}/hook", post(webhook))
+        .route("/automations/{automation_id}/run", post(run_now))
 }
 
 #[derive(Deserialize)]

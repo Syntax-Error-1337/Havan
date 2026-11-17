@@ -129,10 +129,14 @@ themselves is two places for a white label to become unreadable.
 | GET/POST | `/homes/{id}/scenes` | named action bundles |
 | POST | `/scenes/{id}/activate` | |
 
-**Not built yet:** `POST /automations/{id}/run` (run now). The scheduler can
-already run any rule whose `next_run_at` is due, so this is a small endpoint —
-it is held back because a manual run would be recorded as a `schedule` run, and
-a mislabelled audit trail is worse than no button.
+`POST /automations/{id}/run` runs a rule by hand and answers `202`: the rule is
+made due the same way the scheduler makes it due, so the worker executes it through
+one code path and the run lands in the same history. It was held back for a year
+because a hand-fired schedule would have been logged as a `schedule` run — a
+mislabelled audit trail being worse than no button — so `run_now` also stamps
+`run_requested_at`, the worker logs that run as `manual` and clears the stamp
+(migration `0042`). A rule that is switched off, or already leased by a worker,
+answers `422` with the reason rather than doing nothing.
 
 ### Firmware (customer)
 

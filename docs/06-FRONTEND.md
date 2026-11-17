@@ -152,6 +152,34 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### "Run now" — the button that needed a column
+
+`docs/05-API.md` carried this note for a year:
+
+> *Not built yet: `POST /automations/{id}/run` … it is held back because a manual run would be recorded as a
+> `schedule` run, and a mislabelled audit trail is worse than no button.*
+
+That reason was correct, and it is now solved rather than avoided. The endpoint arms the rule exactly the way the
+scheduler does — `next_run_at = now()`, no live lease — so the worker executes it through **one code path**, and
+the run lands in the same history the customer already reads. The missing piece was the label, so migration `0042`
+adds `run_requested_at`: `run_now` stamps it, the worker logs that run as `manual` and clears it.
+
+The app shows **Run now** on each rule, next to *History*. It is disabled for a switched-off rule, and the server
+answers `422` with the reason rather than doing nothing — *"that rule is switched off, or is running right now"* —
+because silence is the worst possible response to a button somebody just pressed.
+
+Verified end to end against the running stack, with a **schedule**-triggered rule (the case that would have been
+mislabelled):
+
+| Step | Result |
+|---|---|
+| `POST /automations/{id}/run` | **202** |
+| run recorded (worker, ~2 s later) | `trigger_kind: manual`, `status: completed` |
+| `POST /run` on a disabled rule | **422** with the reason |
+
+Two new tests hold the database properties: `run_now` makes the row due **and** stamps it, `clear_run_request`
+removes exactly one stamp, and a disabled rule returns `false` instead of being silently ignored.
+
 ### The home's clock, and the shortcut under it
 
 Settings showed `Time zone — UTC` as a **read-only row**. Every home created before the first-run screen asked for

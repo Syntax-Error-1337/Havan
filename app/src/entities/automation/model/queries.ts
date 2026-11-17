@@ -53,6 +53,33 @@ export function useAutomationRuns(automationId: string | null) {
   });
 }
 
+/**
+ * Run a rule once, now.
+ *
+ * The rule is armed the same way the scheduler arms it, so the worker executes it on its next tick and
+ * the run lands in the same history — including a `skipped` verdict when the conditions do not hold,
+ * which is the answer somebody testing a rule actually wants. The history is refetched on a short delay
+ * because the run happens in another process.
+ */
+export function useRunAutomation() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/automations/${id}/run`, { method: 'POST' }),
+    onSuccess: (_data, id) => {
+      // The worker's tick is measured in seconds; two refetches cover it without polling forever.
+      void qc.invalidateQueries({ queryKey: qk.automations('') });
+      setTimeout(() => {
+        void qc.invalidateQueries({ queryKey: ['automation', id, 'runs'] });
+      }, 1500);
+      setTimeout(() => {
+        void qc.invalidateQueries({ queryKey: ['automation', id, 'runs'] });
+      }, 4000);
+    },
+  });
+}
+
 export function useToggleAutomation(homeId: string | undefined) {
   const qc = useQueryClient();
 

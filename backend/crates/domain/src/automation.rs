@@ -434,6 +434,10 @@ pub struct Automation {
     pub definition: AutomationDef,
     #[serde(with = "time::serde::rfc3339::option")]
     pub next_run_at: Option<time::OffsetDateTime>,
+    /// Somebody pressed *Run now*. Cleared by the worker once the run is recorded, so the audit trail can
+    /// say `manual` about a hand-fired rule instead of borrowing its trigger's name.
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub run_requested_at: Option<time::OffsetDateTime>,
 }
 
 pub trait AutomationRepo {
@@ -515,6 +519,20 @@ pub trait AutomationRepo {
         log: &RunLog,
         status: &str,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Make the rule due *now*, so the worker picks it up on its next tick.
+    ///
+    /// Deliberately the same door the scheduler uses (`next_run_at <= now()` and no live lease) rather
+    /// than a second execution path: a manual run that behaved differently from a scheduled one would
+    /// be a test of something other than the rule. `false` means the row was skipped — off, or already
+    /// leased by a worker that is running it right now.
+    fn run_now(&self, automation_id: Uuid) -> impl Future<Output = Result<bool, AppError>> + Send;
+
+    /// The manual run has been recorded; stop calling it one.
+    fn clear_run_request(
+        &self,
+        automation_id: Uuid,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
 }
 
 pub struct AutomationService<R> {
@@ -585,6 +603,15 @@ impl<R: AutomationRepo + Send + Sync> AutomationService<R> {
 
     pub async fn runs(&self, id: Uuid, limit: i64) -> Result<Vec<RunRecord>, AppError> {
         self.repo.runs(id, limit).await
+    }
+
+    /// Run a rule once, now.
+    ///
+    /// The rule is made due and the worker executes it within a tick, so the run lands in the same log
+    /// and with the same behaviour as a scheduled one — including the `skipped` verdict when the
+    /// conditions do not hold, which is exactly what a customer testing a rule needs to see.
+    pub async fn run_now(&self, id: Uuid) -> Result<bool, AppError> {
+        self.repo.run_now(id).await
     }
 
     pub async fn home_of(&self, id: Uuid) -> Result<Option<Uuid>, AppError> {
@@ -1011,6 +1038,14 @@ mod tests {
         ) -> Result<(), AppError> {
             unimplemented!()
         }
+        async fn run_now(&self, _: Uuid) -> Result<bool, AppError> {
+            Ok(true)
+        }
+
+        async fn clear_run_request(&self, _: Uuid) -> Result<(), AppError> {
+            Ok(())
+        }
+
         async fn record_run(&self, _: Uuid, _: &str, _: &RunLog, _: &str) -> Result<(), AppError> {
             unimplemented!()
         }

@@ -4,6 +4,7 @@ export {
   useAutomations,
   useCreateAutomation,
   useDeleteAutomation,
+  useRunAutomation,
   useToggleAutomation,
   type Action,
   type Automation,

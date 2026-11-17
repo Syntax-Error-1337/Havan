@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTheme } from '../../app-shell/theme';
 import { Pressable, ScrollView, Switch, TextInput } from 'react-native';
 
 import {
@@ -20,6 +21,7 @@ import {
   useAutomations,
   useCreateAutomation,
   useDeleteAutomation,
+  useRunAutomation,
   useToggleAutomation,
   type Automation,
 } from '../../entities/automation';
@@ -37,6 +39,8 @@ export function AutomationsPage() {
 
   const { data: rules, isLoading } = useAutomations(homeId);
   const toggle = useToggleAutomation(homeId);
+  const run = useRunAutomation();
+  const { color } = useTheme();
   const remove = useDeleteAutomation(homeId);
 
   const [open, setOpen] = useState<string | null>(null);
@@ -115,6 +119,23 @@ export function AutomationsPage() {
             </Box>
 
             <Box row gap="md">
+              {/* The only way to see a rule work used to be waiting for its trigger. This runs it now,
+                  through the scheduler's own door, and the history below shows what it did — including
+                  "skipped" and why, which is the answer a person testing a rule needs. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityHint="Runs this rule once, through the same path the schedule uses"
+                disabled={!rule.enabled || run.isPending}
+                onPress={() => run.mutate(rule.id)}
+                testID={`run-${rule.id}`}
+              >
+                <AppText
+                  variant="caption"
+                  style={{ color: rule.enabled ? color.accentInk : color.muted }}
+                >
+                  {run.isPending ? 'Running…' : 'Run now'}
+                </AppText>
+              </Pressable>
               <Pressable onPress={() => setOpen(open === rule.id ? null : rule.id)}>
                 <AppText variant="caption" tone="accent">
                   {open === rule.id ? 'Hide history' : 'History'}

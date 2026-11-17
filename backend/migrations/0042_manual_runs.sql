@@ -1,0 +1,11 @@
+-- A manual run is a manual run.
+--
+-- `POST /automations/{id}/run` was held back for a year because arming a rule the way the scheduler
+-- does meant the worker could only log it as whatever its trigger happened to be: a hand-fired rule with
+-- a schedule would appear in the audit trail as a scheduled run, and a trail that cannot tell a test from
+-- a real firing is worse than no button.
+--
+-- So the request is recorded on the row. `run_now` stamps it, the worker reads it, the run is logged as
+-- `manual`, and the worker clears it. NULL means "nobody asked by hand" — which is the common case and
+-- costs nothing.
+ALTER TABLE automations ADD COLUMN IF NOT EXISTS run_requested_at timestamptz;

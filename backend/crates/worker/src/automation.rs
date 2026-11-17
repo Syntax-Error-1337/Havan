@@ -114,13 +114,23 @@ impl Runner {
                 },
             );
 
-            let kind = automation.definition.trigger.kind();
+            // A hand-fired rule is logged as `manual`, not as whatever its trigger happens to be: an
+            // audit trail that cannot tell a test from a real firing is worse than no button at all.
+            let manual = automation.run_requested_at.is_some();
+            let kind = if manual {
+                "manual"
+            } else {
+                automation.definition.trigger.kind()
+            };
             if let Err(e) = self
                 .repo
                 .record_run(automation.id, kind, &log, status)
                 .await
             {
                 tracing::warn!(automation = %automation.id, error = ?e, "could not record run");
+            }
+            if manual && let Err(e) = self.repo.clear_run_request(automation.id).await {
+                tracing::warn!(automation = %automation.id, error = ?e, "could not clear the manual flag");
             }
 
             let next = match automation.definition.trigger {
