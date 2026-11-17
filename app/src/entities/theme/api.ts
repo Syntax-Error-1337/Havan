@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as SecureStore from 'expo-secure-store';
 
 import { request } from '../../shared/api/client';
+import { dark } from '../../shared/config/tokens';
 
 /**
  * The platform theme: colours and branding the operator sets, not constants we ship.
@@ -30,10 +31,12 @@ export type PlatformTheme = {
 export const DEFAULT_THEME: PlatformTheme = {
   product_name: 'Haven',
   logo_text: 'HV',
-  accent: '#0A84FF',
-  accent_secondary: '#8B5CF6',
+  // The palette's own values, not a second copy of them: a default that drifts from the design
+  // tokens is how an app ends up wearing two brands — the one before the fetch and the one after.
+  accent: dark.accent,
+  accent_secondary: dark.accentAlt,
   mode: 'dark',
-  accent_on: '#000000',
+  accent_on: dark.onAccent,
   updated_at: null,
   updated_by: null,
 };

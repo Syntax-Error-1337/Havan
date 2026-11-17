@@ -84,7 +84,13 @@ export function ScenesPage() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ padding: tokens.space.lg, gap: tokens.space.md }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: tokens.space.lg,
+          gap: tokens.space.md,
+          paddingBottom: tokens.layout.tabBarClearance,
+        }}
+      >
         <Box gap="xs">
           <AppText variant="display">Scenes</AppText>
           <AppText variant="caption" tone="muted">

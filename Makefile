@@ -74,6 +74,10 @@ reset: ## stop the stack and delete its volumes
 contrast: ## every text pair in the app palette meets its WCAG threshold
 	@cd app && node scripts/check-contrast.mjs
 
+.PHONY: tokens
+tokens: ## no colour value in the app lives outside shared/config/tokens.ts
+	@cd app && node scripts/check-tokens.mjs
+
 .PHONY: testdb
 testdb: ## create, migrate and grant the test database
 	@docker exec haven-db psql -U haven -d postgres -tc \
@@ -132,6 +136,7 @@ check: testdb ## fmt + clippy + tests + no secrets + routes match handlers + rea
 	bash scripts/no-secrets.sh
 	python3 scripts/route-arity.py --self-test
 	$(MAKE) contrast
+	$(MAKE) tokens
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	$(CARGO_TEST) test --workspace
 

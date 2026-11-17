@@ -76,7 +76,13 @@ export function HomesPage() {
         </AppText>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: tokens.space.lg, gap: tokens.space.md }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: tokens.space.lg,
+          gap: tokens.space.md,
+          paddingBottom: tokens.layout.tabBarClearance,
+        }}
+      >
         {isPending ? (
           <AppText variant="caption" tone="muted">
             Loading your homes…

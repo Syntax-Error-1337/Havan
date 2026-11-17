@@ -28,23 +28,23 @@ export function MeshBackground() {
       <Svg width="100%" height="100%" viewBox="0 0 400 900" preserveAspectRatio="xMidYMid slice">
         <Defs>
           <LinearGradient id="base" x1="0" y1="0" x2="0.4" y2="1">
-            <Stop offset="0" stopColor={dark ? '#0A1024' : '#EEF2FB'} />
-            <Stop offset="0.55" stopColor={dark ? '#080B18' : '#E7ECF8'} />
-            <Stop offset="1" stopColor={dark ? '#04060E' : '#DDE4F3'} />
+            <Stop offset="0" stopColor={color.bgTop} />
+            <Stop offset="0.55" stopColor={color.bgMid} />
+            <Stop offset="1" stopColor={color.bgBottom} />
           </LinearGradient>
 
           {/* Teal high left: the cool light a room gets from a window. */}
           <RadialGradient id="teal" cx="0.5" cy="0.5" r="0.5">
             <Stop offset="0" stopColor={warm} stopOpacity={dark ? 0.5 : 0.45} />
             <Stop offset="0.55" stopColor={warm} stopOpacity={dark ? 0.14 : 0.14} />
-            <Stop offset="1" stopColor="#0E7490" stopOpacity="0" />
+            <Stop offset="1" stopColor={color.washEnd} stopOpacity="0" />
           </RadialGradient>
 
           {/* Violet right: the accent family, low and wide so it never bands. */}
           <RadialGradient id="violet" cx="0.5" cy="0.5" r="0.5">
             <Stop offset="0" stopColor={cool} stopOpacity={dark ? 0.46 : 0.38} />
             <Stop offset="0.6" stopColor={cool} stopOpacity={dark ? 0.13 : 0.1} />
-            <Stop offset="1" stopColor="#6D28D9" stopOpacity="0" />
+            <Stop offset="1" stopColor={color.washEnd} stopOpacity="0" />
           </RadialGradient>
 
           {/* Indigo at the foot: keeps the tab bar from sitting on pure black. */}

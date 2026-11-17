@@ -135,7 +135,7 @@ export function Toggle({
       accessibilityLabel={label}
       trackColor={{ true: color.accent, false: color.elevated }}
       // iOS leaves the thumb white on both tracks in dark mode.
-      thumbColor="#FFFFFF"
+      thumbColor={color.thumb}
       ios_backgroundColor={color.elevated}
     />
   );

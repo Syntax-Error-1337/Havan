@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { useTheme } from '../../app-shell/theme';
-import { tokens } from '../../shared/config/tokens';
+import { tokens, withAlpha } from '../../shared/config/tokens';
 
 /**
  * A translucent surface with an optional accent halo.
@@ -93,12 +93,6 @@ export function Glass({
   );
 }
 
-/** `#RRGGBB` + alpha, so one accent can tint a border, a halo and a chart fill. */
-export function withAlpha(hex: string, alpha: number): string {
-  const clean = hex.replace('#', '');
-  if (clean.length !== 6) return hex;
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+// Re-exported, not reimplemented: `tokens.ts` owns every colour value and the one function that
+// builds `rgba()` from one. Call sites import it from here because that reads naturally beside Glass.
+export { withAlpha } from '../config/tokens';

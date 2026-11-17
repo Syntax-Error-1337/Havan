@@ -26,7 +26,7 @@ export function Button({
   const bg =
     variant === 'primary' ? color.accent : variant === 'danger' ? color.danger : 'transparent';
   const fg =
-    variant === 'primary' ? color.onAccent : variant === 'danger' ? '#FFFFFF' : color.accent;
+    variant === 'primary' ? color.onAccent : variant === 'danger' ? color.dangerOn : color.accent;
 
   return (
     <Pressable

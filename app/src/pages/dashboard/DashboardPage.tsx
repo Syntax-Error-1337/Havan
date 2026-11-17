@@ -27,7 +27,6 @@ import { HomeHeader, StatRail } from '../../widgets/home/HomeHeader';
 import { HeroCard, pickHero } from '../../widgets/home/HeroCard';
 
 /** The tab bar floats over the list, so the list has to end above it. */
-const TAB_BAR_CLEARANCE = 148;
 
 /**
  * One row of the list.
@@ -163,7 +162,7 @@ export function DashboardPage() {
       <FlatList
         data={rows}
         keyExtractor={(row) => row.key}
-        contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE + tokens.space.xl }}
+        contentContainerStyle={{ paddingBottom: tokens.layout.tabBarClearance + tokens.space.xl }}
         showsVerticalScrollIndicator={false}
         // Pull to refresh: the live socket keeps values current, but a person who has just plugged
         // something in wants to ask again by hand, and a screen with no gesture for that feels stuck.

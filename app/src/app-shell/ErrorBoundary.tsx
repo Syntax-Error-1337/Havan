@@ -3,7 +3,7 @@ import { View } from 'react-native';
 
 import { AppText } from '../shared/ui/Box';
 import { Button } from '../shared/ui/Button';
-import { tokens } from '../shared/config/tokens';
+import { dark, tokens } from '../shared/config/tokens';
 
 /**
  * The last line of defence.
@@ -42,13 +42,13 @@ export class ErrorBoundary extends Component<
           padding: tokens.space.xl,
           gap: tokens.space.md,
           justifyContent: 'center',
-          backgroundColor: '#000000',
+          backgroundColor: dark.bg,
         }}
       >
-        <AppText variant="title" weight="600" style={{ color: '#FFFFFF' }}>
+        <AppText variant="title" weight="600" style={{ color: dark.text }}>
           Something went wrong
         </AppText>
-        <AppText style={{ color: 'rgba(235,235,245,0.6)' }}>{error.message}</AppText>
+        <AppText style={{ color: dark.muted }}>{error.message}</AppText>
         <Button label="Try again" onPress={() => this.setState({ error: null })} />
       </View>
     );

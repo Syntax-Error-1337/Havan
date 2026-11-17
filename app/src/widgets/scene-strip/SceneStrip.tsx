@@ -3,7 +3,7 @@ import { Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { Box, AppText } from '../../shared/ui';
-import { tokens } from '../../app-shell/theme';
+import { useTheme, tokens } from '../../app-shell/theme';
 import { outcome, useActivateScene, useScenes, type Scene } from '../../entities/scene';
 
 /**
@@ -26,6 +26,7 @@ export function SceneStrip({
   pending?: boolean;
 }) {
   const router = useRouter();
+  const { color } = useTheme();
   // Only fetch when nobody else is feeding us: `provided` means the data is here,
   // `waiting` means it is on its way.
   const query = useScenes(homeId, provided === undefined && !waiting);
@@ -53,7 +54,7 @@ export function SceneStrip({
             borderRadius: 14,
             borderWidth: 1,
             borderStyle: 'dashed',
-            borderColor: 'rgba(255,255,255,0.16)',
+            borderColor: color.border,
             alignSelf: 'flex-start',
           }}
         >

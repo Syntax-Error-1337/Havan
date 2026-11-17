@@ -39,6 +39,18 @@ export type Palette = {
   glow: string;
   /** The operator's second colour: charts, secondary highlights, the second washes of the mesh. */
   accentAlt: string;
+  /** The middle stop of the canvas gradient — without it the mesh falls off in a visible band. */
+  bgMid: string;
+  /** Where a wash fades to nothing. A wash that ends on its accent colour leaves a hard edge. */
+  washEnd: string;
+  /** The floating tab bar's surface: translucent in dark, near-solid in light. */
+  chrome: string;
+  /** Anything that casts: the tab bar, the raised centre action. Not a colour, a shadow. */
+  shadow: string;
+  /** A switch's knob. Needs to read on the track in both appearances. */
+  thumb: string;
+  /** A label on a filled danger button — white reads as an action, black as a warning. */
+  dangerOn: string;
 };
 
 /** iOS light appearance. */
@@ -55,7 +67,7 @@ export const light: Palette = {
   // secondaryLabel: black at 60%.
   // secondaryLabel at 72%, not Apple's 60%: at 60% it measures 3.3:1 on the grouped background,
   // which is below the 4.5:1 floor the contrast gate enforces. Slightly darker, still secondary.
-  muted: 'rgba(60,60,67,0.76)',
+  muted: 'rgba(60,60,67,0.82)',
   // The system blue is 4.02:1 against white text — a button label nobody could pass AA with. This is
   // the same hue two steps deeper, 5.8:1.
   accent: '#0062CC',
@@ -71,6 +83,12 @@ export const light: Palette = {
   glass: 'rgba(255,255,255,0.78)',
   glow: 'rgba(0,122,255,0.14)',
   accentAlt: '#8B5CF6',
+  bgMid: '#EDF1FA',
+  washEnd: '#93A7C9',
+  chrome: 'rgba(255,255,255,0.94)',
+  shadow: 'rgba(15,23,42,0.18)',
+  thumb: '#FFFFFF',
+  dangerOn: '#FFFFFF',
 };
 
 /** iOS dark appearance. Not a dimmed light theme: different values by design. */
@@ -95,6 +113,12 @@ export const dark: Palette = {
   glass: 'rgba(255,255,255,0.06)',
   glow: 'rgba(10,132,255,0.22)',
   accentAlt: '#8B5CF6',
+  bgMid: '#080B18',
+  washEnd: '#0E7490',
+  chrome: 'rgba(11,18,32,0.82)',
+  shadow: '#000000',
+  thumb: '#FFFFFF',
+  dangerOn: '#FFFFFF',
 };
 
 export const tokens = {
@@ -122,6 +146,14 @@ export const tokens = {
   motion: { fast: 140, base: 220, slow: 380 },
   /** A finger, not a mouse: 44 pt is the smallest reliable target. */
   touch: { min: 44 },
+  /**
+   * Room for the floating tab bar.
+   *
+   * It is absolute, over the content, so every scrollable screen has to end above it — and a screen
+   * that guesses its own padding is the one where the last row hides under the bar. The bar is 68 pt
+   * tall plus its gap and the home indicator; 148 pt clears all three.
+   */
+  layout: { tabBarHeight: 68, tabBarClearance: 148 },
 } as const;
 
 /**
@@ -208,11 +240,17 @@ export function applyBrand(
     accent,
     onAccent: brand.accentOn ?? base.onAccent,
     accentAlt: brand.accentSecondary ?? base.accentAlt,
-    glow: withAlphaLocal(accent, base.glow.includes('0.22') ? 0.22 : 0.14),
+    glow: withAlpha(accent, base.glow.includes('0.22') ? 0.22 : 0.14),
   };
 }
 
-function withAlphaLocal(hex: string, alpha: number): string {
+/**
+ * `#RRGGBB` + alpha, so one accent can tint a border, a halo and a chart fill.
+ *
+ * Lives here because this is the only file allowed to hold colour values: a helper that builds one
+ * belongs to the same owner, and two copies of it would eventually disagree about a short hex.
+ */
+export function withAlpha(hex: string, alpha: number): string {
   const clean = hex.replace('#', '');
   if (clean.length !== 6) return hex;
   const r = parseInt(clean.slice(0, 2), 16);
@@ -220,3 +258,20 @@ function withAlphaLocal(hex: string, alpha: number): string {
   const b = parseInt(clean.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
+
+/**
+ * What kind of thing interrupted you, in a colour.
+ *
+ * Alerts are the one list where a glyph alone is not enough: "the doorbell saw someone" and "the
+ * firmware failed" arrive in the same place, and the colour is what separates them before the title
+ * is read. These are deliberately not palette accents — a security notice must not change colour
+ * because an operator picked a different brand.
+ */
+export const signalAccent = {
+  automation: '#8B5CF6',
+  ota: '#0EA5E9',
+  security: '#F472B6',
+  alert: '#FB923C',
+} as const;
+
+export type SignalKind = keyof typeof signalAccent;

@@ -50,7 +50,12 @@ export function SettingsPage() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingTop: tokens.space.lg, paddingBottom: 64 }}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: tokens.space.lg,
+          paddingBottom: tokens.layout.tabBarClearance,
+        }}
+      >
         <Box px="lg" style={{ paddingBottom: tokens.space.md }}>
           <AppText variant="display" weight="700">
             Settings

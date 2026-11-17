@@ -139,7 +139,7 @@ function Slider({
             width: 18,
             height: 18,
             borderRadius: 9,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: color.thumb,
             borderWidth: 2,
             borderColor: accent,
           }}
@@ -263,7 +263,7 @@ export function PillSwitch({
           width: 28,
           height: 28,
           borderRadius: 14,
-          backgroundColor: '#FFFFFF',
+          backgroundColor: color.thumb,
           alignSelf: on ? 'flex-end' : 'flex-start',
           ...StyleSheet.flatten([{ transform: [{ translateX: 0 }] }]),
         }}
@@ -287,6 +287,7 @@ export function PointControl({
   point: DevicePoint;
   accent: string;
 }) {
+  const { color } = useTheme();
   const setPoint = useSetPoint(device.id);
   const kind = controlFor(point);
   const disabled = !device.online || setPoint.isPending;
@@ -371,7 +372,7 @@ export function PointControl({
       ) : null}
 
       {setPoint.isError ? (
-        <AppText variant="caption" style={{ color: '#FF6B6B' }}>
+        <AppText variant="caption" style={{ color: color.danger }}>
           {commandNotice(setPoint.error)}
         </AppText>
       ) : null}

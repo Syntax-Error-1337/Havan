@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 
 import { Box, AppText, Button, Glass, Icon, Screen } from '../../shared/ui';
 import { withAlpha } from '../../shared/ui/Glass';
+import { signalAccent } from '../../shared/config/tokens';
 import { useTheme, tokens } from '../../app-shell/theme';
 import {
   ago,
@@ -28,7 +29,13 @@ export function AlertsPage() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ padding: tokens.space.lg, gap: tokens.space.md }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: tokens.space.lg,
+          gap: tokens.space.md,
+          paddingBottom: tokens.layout.tabBarClearance,
+        }}
+      >
         <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <Box gap="xs">
             <AppText variant="display">Alerts</AppText>
@@ -141,8 +148,8 @@ function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
 
 /** What kind of thing interrupted you, said in a colour and a glyph rather than in a word. */
 const KIND: Record<string, { icon: 'sparkle' | 'lightning' | 'lock' | 'alert'; accent: string }> = {
-  automation: { icon: 'sparkle', accent: '#8B5CF6' },
-  ota: { icon: 'lightning', accent: '#0EA5E9' },
-  security: { icon: 'lock', accent: '#F472B6' },
-  alert: { icon: 'alert', accent: '#FB923C' },
+  automation: { icon: 'sparkle', accent: signalAccent.automation },
+  ota: { icon: 'lightning', accent: signalAccent.ota },
+  security: { icon: 'lock', accent: signalAccent.security },
+  alert: { icon: 'alert', accent: signalAccent.alert },
 };

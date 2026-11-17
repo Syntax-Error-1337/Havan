@@ -374,6 +374,28 @@ than from taste:
   accents gained a daylight set (`categoryAccentLight`) because cyan at 1.6:1 on a
   white card is not an icon.
 
+### Colour is a token, or it is a bug
+
+`src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and
+`make tokens` (`app/scripts/check-tokens.mjs`) fails the gate on any hex or `rgba()`/`hsl()` literal
+elsewhere in `src`. Tests and comments are exempt — a comment may discuss a colour without declaring
+one.
+
+The gate exists because the operator owns the brand at runtime. A screen that hardcodes
+`rgba(255,255,255,0.16)` for a dashed border overrides them, and the light appearance is the one that
+finds out: that border was invisible on a light canvas, in the scene strip and in the alerts list,
+until this gate was added and the values moved into the palette. `withAlpha()` lives in the same file
+for the same reason — one implementation of "hex plus alpha", not two that drift.
+
+Two consequences worth stating:
+
+- **Chrome geometry is a token too** (`tokens.layout.tabBarClearance`). The floating tab bar is
+  absolute over the content, so every scrollable screen has to end above it; four screens had guessed
+  their own padding and one had none, which is why the last device row sat under the bar.
+- **Light is verified, not assumed.** The operator can choose the appearance, so it was rendered at
+  390 × 844 and reviewed: opaque chrome with a hairline and a shadow, muted text at 5.88:1 on the
+  canvas, and the last device row clearing the bar.
+
 ### More than one home, and more than one page
 
 Tapping the home's name opens `/homes`: every home the account can open, with its device and member

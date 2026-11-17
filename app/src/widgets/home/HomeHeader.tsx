@@ -113,7 +113,7 @@ export function StatRail({
       icon: 'bulb',
       label: 'Lights',
       value: `${summary.lightsOn} on`,
-      accent: tint('light', '#8B5CF6'),
+      accent: accentFor('light', color.accent),
     });
   }
   // "Inside" only appears when the hero is not already showing that same reading: two places on one
@@ -123,7 +123,7 @@ export function StatRail({
       icon: 'climate',
       label: 'Inside',
       value: `${summary.temperature.value}${summary.temperature.unit || '°'}`,
-      accent: tint('climate', '#FB923C'),
+      accent: accentFor('climate', color.accent),
     });
   }
   if (summary.humidity) {
@@ -131,7 +131,7 @@ export function StatRail({
       icon: 'drop',
       label: 'Humidity',
       value: `${summary.humidity.value}${summary.humidity.unit || '%'}`,
-      accent: tint('sensor', '#22D3EE'),
+      accent: accentFor('sensor', color.accent),
     });
   }
   if (rooms > 0) {
@@ -142,7 +142,7 @@ export function StatRail({
       icon: 'lock',
       label: 'Unlocked',
       value: String(summary.unlocked),
-      accent: tint('lock', '#F472B6'),
+      accent: accentFor('lock', color.accent),
     });
   }
 

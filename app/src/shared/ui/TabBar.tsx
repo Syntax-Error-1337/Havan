@@ -1,4 +1,4 @@
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -42,11 +42,13 @@ export function TabBar({
         a half-visible room header as a layout bug rather than as something behind glass. */}
     <LinearGradient
       pointerEvents="none"
-      colors={
-        dark
-          ? ['rgba(4,6,14,0)', 'rgba(4,6,14,0.55)', 'rgba(4,6,14,0.96)']
-          : ['rgba(238,242,251,0)', 'rgba(238,242,251,0.6)', 'rgba(238,242,251,0.96)']
-      }
+      // Derived from the canvas, not from a literal: the scrim has to match whatever the mesh behind
+      // it is doing, in whichever appearance the operator chose.
+      colors={[
+        withAlpha(color.bgBottom, 0),
+        withAlpha(color.bgBottom, 0.55),
+        withAlpha(color.bgBottom, 0.96),
+      ]}
       locations={[0, 0.45, 1]}
       style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 156 }}
     />
@@ -62,12 +64,12 @@ export function TabBar({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: dark ? withAlpha('#0B1220', 0.82) : 'rgba(255,255,255,0.86)',
-        borderWidth: 1,
-        borderColor: withAlpha(color.text, 0.08),
+        backgroundColor: color.chrome,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: color.border,
         // The one shadow in the app: the bar has to separate from the content scrolling under it,
         // and a border alone disappears over a bright card.
-        shadowColor: '#000',
+        shadowColor: color.shadow,
         shadowOpacity: dark ? 0.45 : 0.12,
         shadowRadius: 18,
         shadowOffset: { width: 0, height: 8 },

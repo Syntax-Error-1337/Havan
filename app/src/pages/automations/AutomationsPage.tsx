@@ -35,7 +35,13 @@ export function AutomationsPage() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ padding: tokens.space.lg, gap: tokens.space.md }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: tokens.space.lg,
+          gap: tokens.space.md,
+          paddingBottom: tokens.layout.tabBarClearance,
+        }}
+      >
         <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <Box gap="xs">
             <AppText variant="display">Automatic</AppText>
