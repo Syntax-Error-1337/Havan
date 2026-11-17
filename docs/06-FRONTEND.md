@@ -152,6 +152,30 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### A fleet you cannot look anything up in
+
+The vendor's fleet screen showed 1,909 devices, 200 at a time, with one filter: a `State` dropdown. The first
+thing support does with a fleet is **find one device** — a serial a customer reads off the label — and there was
+no way to do that. The choices on offer were paging, or pressing *Load all 1,909* and using the browser's find.
+
+Search is server-side, because paging is: `q` is a substring of the serial or the name, trimmed, capped at 64
+characters, with `%` and `_` escaped so that a typed wildcard is a character rather than the whole fleet. Without
+an index, `ILIKE '%term%'` is a sequential scan of every device on the platform — fine at 1,909 and unusable at
+the millions this platform claims — so migration `0041` adds `pg_trgm` (PostgreSQL contrib, already permitted by
+ADR-002) and GIN indexes on `devices.serial` and `devices.name`.
+
+Verified against the running API and then in the browser:
+
+| Typed | API | Screen |
+|---|---|---|
+| `HUGE-01200` | 1 row | `1 of 1,909 devices matching “HUGE-01200” shown`, one table row |
+| `lamp 12` | 5 rows (by name) | — |
+| `%` | **0 rows** (escaped, not a wildcard) | — |
+| `zzzz` | 0 rows | *No device matches “zzzz”* + *Clear the filters* |
+
+The empty state distinguishes "nothing matches this search" from "this vendor has no devices", which is the same
+mistake the dashboard made in the other direction.
+
 ### An intermittent gate is a gate nobody trusts
 
 `make check` went red on `-p api --test webhooks` three times in one afternoon, on two different tests

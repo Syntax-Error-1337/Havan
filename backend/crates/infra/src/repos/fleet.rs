@@ -86,6 +86,11 @@ impl FleetRepo for PgFleet {
                        OR ($3 = 'unbound' AND d.home_id IS NULL))
                   AND ($4::uuid IS NULL
                        OR (d.created_at, d.id) < (SELECT created_at, id FROM devices WHERE id = $4))
+                  -- A pasted serial, or a remembered name. `ILIKE` with a trigram index (migration
+                  -- 0041) keeps this a lookup rather than a scan of every device on the platform.
+                  AND ($6::text IS NULL
+                       OR d.serial ILIKE '%' || $6 || '%'
+                       OR d.name ILIKE '%' || $6 || '%')
                 ORDER BY d.created_at DESC, d.id DESC
                 LIMIT $5"#,
         )
@@ -94,6 +99,7 @@ impl FleetRepo for PgFleet {
         .bind(filter.state.as_deref())
         .bind(cursor)
         .bind(limit)
+        .bind(filter.query())
         .fetch_all(&mut *tx)
         .await
         .map_err(db)?;

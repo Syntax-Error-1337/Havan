@@ -47,6 +47,11 @@ pub struct FleetPage {
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct FleetFilter {
     pub product_key: Option<String>,
+    /// What a support engineer pastes in: part of a serial, or part of a device name.
+    ///
+    /// `Option<String>` rather than a bool, because the search box is empty most of the time and
+    /// `"%%"` is not a filter.
+    pub q: Option<String>,
     /// `online`, `offline`, `bound`, `unbound`.
     pub state: Option<String>,
     pub cursor: Option<String>,
@@ -56,6 +61,25 @@ pub struct FleetFilter {
 impl FleetFilter {
     pub fn limit(&self) -> i64 {
         self.limit.unwrap_or(50).clamp(1, 200)
+    }
+
+    /// The search term, or `None` when there is nothing to search for.
+    ///
+    /// Trimmed, capped at 64 characters (a serial is shorter, and an unbounded pattern is a way to make
+    /// the database do work for free), and with `%` and `_` escaped so that typing one does not silently
+    /// turn into a wildcard.
+    pub fn query(&self) -> Option<String> {
+        let raw = self.q.as_deref()?.trim();
+        if raw.is_empty() {
+            return None;
+        }
+        let capped: String = raw.chars().take(64).collect();
+        Some(
+            capped
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_"),
+        )
     }
 }
 

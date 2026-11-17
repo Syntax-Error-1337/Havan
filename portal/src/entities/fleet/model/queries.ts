@@ -32,6 +32,8 @@ export const FLEET_PAGE_SIZE = 200;
 export type FleetFilter = {
   product_key?: string;
   state?: 'online' | 'offline' | 'bound' | 'unbound';
+  /** Part of a serial or a device name — what support pastes from a customer's photo of the label. */
+  q?: string;
 };
 
 function query(filter: FleetFilter, cursor?: string | null): string {
@@ -39,6 +41,7 @@ function query(filter: FleetFilter, cursor?: string | null): string {
   params.set('limit', String(FLEET_PAGE_SIZE));
   if (filter.product_key) params.set('product_key', filter.product_key);
   if (filter.state) params.set('state', filter.state);
+  if (filter.q?.trim()) params.set('q', filter.q.trim());
   if (cursor) params.set('cursor', cursor);
   const qs = params.toString();
   return qs ? `?${qs}` : '';

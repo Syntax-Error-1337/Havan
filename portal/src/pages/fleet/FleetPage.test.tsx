@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -65,11 +65,29 @@ describe('fleet', () => {
     expect(headers).toEqual(['Serial', 'Product', 'Name', 'Status', 'Firmware', 'Last seen']);
   });
 
-  it('says so when the fleet is empty, instead of showing an empty table', async () => {
+  it('tells an empty fleet apart from a search that found nothing', async () => {
+    // Two different facts, two different sentences. "No devices match" on a vendor with 1,909 devices is
+    // the same lie the dashboard told: it reads as "your fleet is gone".
     stubFetch(() => ({ devices: [], next_cursor: null }));
     renderPage();
 
-    expect(await screen.findByText(/No devices match/i)).toBeTruthy();
+    expect(await screen.findByText(/No devices yet/i)).toBeTruthy();
+    expect(screen.queryByText(/No device matches/i)).toBeNull();
+  });
+
+  it('names what was searched for, and offers the way back', async () => {
+    const urls = stubFetch(() => ({ devices: [], next_cursor: null }));
+    renderPage();
+
+    const box = await screen.findByLabelText('Search serial or name');
+    fireEvent.change(box, { target: { value: 'HUGE-999' } });
+
+    expect(await screen.findByText(/No device matches “HUGE-999”/i)).toBeTruthy();
+    // The term reaches the server, after the debounce rather than on every keystroke.
+    await waitFor(() => expect(urls.some((u) => u.includes('q=HUGE-999'))).toBe(true));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear the filters' }));
+    await waitFor(() => expect((screen.getByLabelText('Search serial or name') as HTMLInputElement).value).toBe(''));
   });
 
   it('asks the server for the state it was given', async () => {

@@ -303,7 +303,7 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/vendor/devices?product_key=&state=&cursor=&limit=` | fleet page; `state` = online/offline/bound/unbound |
+| GET | `/vendor/devices?product_key=&state=&q=&cursor=&limit=` | fleet page; `state` = online/offline/bound/unbound; `q` = substring of serial or name, trimmed, capped at 64 chars, `%`/`_` escaped (trigram index, migration 0041) |
 | GET | `/vendor/analytics` | totals, online, bound, new 7/30 d, by product, by firmware |
 | GET | `/vendor/audit?limit=&cursor=` | the vendor's append-only trail, newest first |
 | GET/POST | `/vendor/products` | |

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useFleet, useFleetStats, type FleetFilter } from '../../entities/fleet';
 import { TableFrame } from '../../shared/ui/TableFrame';
@@ -12,6 +12,16 @@ import { TableFrame } from '../../shared/ui/TableFrame';
  */
 export function FleetPage() {
   const [filter, setFilter] = useState<FleetFilter>({});
+  // The box is local and the filter is debounced: every keystroke is not a request, and a pasted serial
+  // is one.
+  const [typed, setTyped] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const q = typed.trim();
+      setFilter((current) => (current.q === (q || undefined) ? current : { ...current, q: q || undefined }));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [typed]);
   const [loadingAll, setLoadingAll] = useState(false);
   const { data, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
     useFleet(filter);
@@ -54,7 +64,20 @@ export function FleetPage() {
     <div>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
         <h1>Fleet</h1>
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          {/* The first thing anyone does with a fleet is find one device: a serial from a customer's
+              photo, or a name they remember. Without this, a vendor with 1 909 devices paged through a
+              table to do it, and a vendor with a million could not do it at all. */}
+          <input
+            className="input"
+            type="search"
+            aria-label="Search serial or name"
+            placeholder="Serial or name"
+            data-testid="fleet-search"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            style={{ minWidth: 220 }}
+          />
           <span className="field-label">State</span>
           <select
             aria-label="Filter by state"
@@ -76,7 +99,8 @@ export function FleetPage() {
           two hundred rows away, which on a phone is the same as not having them. */}
       <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
         <span className="muted">
-          {devices.length.toLocaleString()} of {total.toLocaleString()} device{total === 1 ? '' : 's'} shown
+          {devices.length.toLocaleString()} of {total.toLocaleString()} device{total === 1 ? '' : 's'}
+          {filter.q ? ` matching “${filter.q}”` : ''} shown
         </span>
         {/* One set of controls, and it lives here rather than under the table: at 1 900 devices the bottom
             of the page is two hundred rows away, which on a phone is the same as not having the buttons. */}
@@ -104,10 +128,28 @@ export function FleetPage() {
 
       {devices.length === 0 ? (
         <div className="card">
-          <p className="muted">
-            No devices match. Devices appear here as soon as a customer pairs one, or
-            as soon as manufacturing claims a serial.
-          </p>
+          {filter.q || filter.state ? (
+            <>
+              <p className="muted">
+                No device matches{filter.q ? ` “${filter.q}”` : ''}
+                {filter.state ? ` in the ${filter.state} state` : ''}.
+              </p>
+              <button
+                className="btn btn--quiet"
+                onClick={() => {
+                  setTyped('');
+                  setFilter({});
+                }}
+              >
+                Clear the filters
+              </button>
+            </>
+          ) : (
+            <p className="muted">
+              No devices yet. Devices appear here as soon as a customer pairs one, or
+              as soon as manufacturing claims a serial.
+            </p>
+          )}
         </div>
       ) : (
         <TableFrame label="Fleet devices">
