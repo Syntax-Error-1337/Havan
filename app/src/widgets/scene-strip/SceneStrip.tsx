@@ -39,9 +39,25 @@ export function SceneStrip({
   if (isPending) return null;
   if (!scenes || scenes.length === 0) {
     return (
-      <Box style={{ paddingHorizontal: tokens.space.lg }}>
-        <Pressable onPress={() => router.push('/scenes')} accessibilityRole="button">
-          <AppText variant="caption" tone="accent">
+      <Box px="lg">
+        <Pressable
+          onPress={() => router.push('/scenes')}
+          accessibilityRole="button"
+          accessibilityLabel="Add a scene"
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingHorizontal: 14,
+            paddingVertical: 11,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderStyle: 'dashed',
+            borderColor: 'rgba(255,255,255,0.16)',
+            alignSelf: 'flex-start',
+          }}
+        >
+          <AppText variant="caption" tone="muted">
             + Add a scene
           </AppText>
         </Pressable>

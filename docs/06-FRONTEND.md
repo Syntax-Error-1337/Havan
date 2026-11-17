@@ -330,6 +330,20 @@ than from taste:
   broken. The same accent tints the icon halo, the border, the control and the chart
   fill, which is what makes a vendor's product look designed without the vendor
   designing anything.
+- **The canvas is light, not a colour** — `MeshBackground` draws three radial washes
+  (teal high left, violet right, indigo at the foot) over a near-black base. A single
+  vertical gradient reads as a coloured rectangle; three overlapping washes read as a
+  room lit from three sides, which is what makes the translucent cards look like glass.
+  The bloom positions are fixed, so a repaint never looks like the mood moved.
+- **One hero, then the grid** — the home screen leads with the reading that matters
+  (first online device with a numeric point, preferring temperature), shown big with
+  its last 24 hours under it. Equal tiles make a person read every tile to find the
+  number they opened the app for. The range printed under the chart includes the live
+  reading, because a card whose maximum is below the number above it is a card nobody
+  trusts twice.
+- **Chrome floats** — `TabBar` sits above the content with a scrim fade, not docked,
+  so the card language above it stays one surface. The centre action is raised: adding
+  a device is what a person opens the app to do on day one.
 - **Layout** — 4 pt grid, 16 pt margins, and a **44 pt minimum hit target**, which
   is the smallest a finger hits reliably.
 - **Structure** — `Section` + `Row` is still the shape for settings (grouped list,
@@ -347,6 +361,17 @@ than from taste:
 - **State** — a control that cannot act is disabled and visibly so: an offline
   device's switch is dimmed, because a live-looking switch promises a command the
   platform cannot deliver.
+
+### Demo content
+
+`scripts/seed-demo.sql` fills the demo account's home with the products the vendor
+catalogue already carries (bulbs, a plug, a climate sensor), three rooms, and a day of
+temperature telemetry so the hero has a shape to draw. It is idempotent and it upserts
+the point *values*, because the demo's values are the point of the demo.
+
+It is static data: the presence sweep marks anything that stops reporting offline after
+90 seconds, which is correct for a device and useless for a screenshot. Re-run the seed
+for a fresh frame, or attach a real/simulated device for a live one.
 
 ### Expo MCP
 

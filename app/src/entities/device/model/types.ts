@@ -42,5 +42,18 @@ export function primaryPoint(device: Device): DevicePoint | undefined {
     const p = device.points.find((x) => x.code === code);
     if (p) return p;
   }
-  return device.points.find((p) => p.writable);
+  // A sensor has nothing writable and no switch: its reading *is* its primary point, and without
+  // this fallback a thermometer tile renders an em dash where the temperature should be.
+  return (
+    device.points.find((p) => p.writable) ??
+    // Battery first is alphabetical, not meaningful: a sensor tile that leads with 87 % is answering
+    // a question nobody asked. Prefer the measurement, then anything.
+    // Then by what a person checks first. Alphabetical order put `humidity` before `temperature`,
+    // so a climate sensor led with the reading nobody opened the app for.
+    ['temperature', 'humidity', 'energy', 'power']
+      .map((capability) => device.points.find((p) => p.capability === capability))
+      .find((p) => p !== undefined) ??
+    device.points.find((p) => p.capability !== 'battery' && p.value !== null && p.value !== undefined) ??
+    device.points.find((p) => p.value !== null && p.value !== undefined)
+  );
 }

@@ -109,9 +109,16 @@ export function DeviceTile({
         onChange={toggle}
       />
     ) : (
-      <AppText variant="title" weight="700" style={{ color: accent }} numberOfLines={1}>
-        {readout}
-      </AppText>
+      <View style={{ flex: 1 }}>
+        <AppText variant="title" weight="700" style={{ color: device.online ? accent : color.muted }} numberOfLines={1}>
+          {readout}
+        </AppText>
+        {point?.capability ? (
+          <AppText variant="tiny" tone="muted" numberOfLines={1}>
+            {point.capability.replace(/[._]+/g, ' ')}
+          </AppText>
+        ) : null}
+      </View>
     );
 
   return (
@@ -123,40 +130,36 @@ export function DeviceTile({
       testID={`device-tile-${device.serial}`}
       accessibilityLabel={`${device.name}, ${device.online ? 'online' : 'offline'}`}
     >
-      {wide ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.space.md }}>
+      {/* One structure at both widths. Two layouts meant the status badge sat in a different place
+          depending on how many neighbours a room had, which reads as a bug rather than a layout. */}
+      <View style={{ gap: tokens.space.md, flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
           {icon}
-          <View style={{ flex: 1, gap: 2 }}>
-            <AppText variant="subhead" weight="600" numberOfLines={1}>
-              {device.name}
-            </AppText>
-            {status}
-          </View>
+          <View style={{ marginLeft: 'auto' }}>{status}</View>
+        </View>
+
+        <View style={{ gap: 2 }}>
+          <AppText variant="subhead" weight="600" numberOfLines={1}>
+            {device.name}
+          </AppText>
+          {/* What it is doing beats where it is: the room is the section heading already. */}
+          <AppText variant="tiny" tone="muted" numberOfLines={1}>
+            {stateLine(device, point)}
+          </AppText>
+        </View>
+
+        <View
+          style={{
+            marginTop: 'auto',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: tokens.space.sm,
+          }}
+        >
           {control}
         </View>
-      ) : (
-        <View style={{ gap: tokens.space.md, flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-            {icon}
-            <View style={{ marginLeft: 'auto' }}>{status}</View>
-          </View>
-
-          <View style={{ gap: 2 }}>
-            <AppText variant="subhead" weight="600" numberOfLines={1}>
-              {device.name}
-            </AppText>
-            {device.room_name ? (
-              <AppText variant="tiny" tone="muted" numberOfLines={1}>
-                {device.room_name}
-              </AppText>
-            ) : null}
-          </View>
-
-          <View style={{ marginTop: 'auto', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            {control}
-          </View>
-        </View>
-      )}
+      </View>
 
       {setPoint.isError ? (
         <AppText variant="tiny" numberOfLines={2} style={{ marginTop: 6, color: color.danger }}>
@@ -165,4 +168,29 @@ export function DeviceTile({
       ) : null}
     </Glass>
   );
+}
+
+/** One line that says what the device is doing, in the words a person would use. */
+function stateLine(device: Device, point: ReturnType<typeof primaryPoint>): string {
+  if (!device.online) {
+    const minutes = device.last_seen_at
+      ? Math.round((Date.now() - new Date(device.last_seen_at).getTime()) / 60000)
+      : null;
+    // "Offline" alone does not say whether it dropped a minute ago or a week ago, and that
+    // difference is what a person acts on.
+    // The pill already says "Offline"; this line only has to say how long.
+    if (minutes === null || Number.isNaN(minutes)) return 'Not heard from';
+    if (minutes < 2) return 'Heard just now';
+    if (minutes < 60) return `Silent for ${minutes}m`;
+    if (minutes < 1440) return `Silent for ${Math.round(minutes / 60)}h`;
+    return `Silent for ${Math.round(minutes / 1440)}d`;
+  }
+  if (!point) return device.category;
+  const value = point.value;
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (typeof value === 'number') {
+    const label = point.slot?.includes('level') ? 'On' : 'Reading';
+    return `${label} · ${value}${point.unit ?? ''}`;
+  }
+  return point.capability;
 }

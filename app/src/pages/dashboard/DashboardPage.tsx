@@ -1,29 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { Box, Button, Screen, AppText, Section } from '../../shared/ui';
+import { Box, Button, Screen, AppText, TabBar } from '../../shared/ui';
 import { DeviceTile } from '../../entities/device';
+import { summarise } from '../../entities/device/model/summary';
 import { useCreateHome, useCreateRoom, useDashboard, useHomes } from '../../entities/home';
 import { qk } from '../../shared/api/keys';
-import { useSession } from '../../entities/session';
+import { useMe, useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
 import { useTheme } from '../../app-shell/theme';
 import { groupByRoom } from './sections';
 import { SceneStrip } from '../../widgets/scene-strip/SceneStrip';
+import { HomeHeader, StatRail } from '../../widgets/home/HomeHeader';
+import { HeroCard, pickHero } from '../../widgets/home/HeroCard';
+
+/** The tab bar floats over the list, so the list has to end above it. */
+const TAB_BAR_CLEARANCE = 148;
 
 /**
  * Home screen.
  *
  * One request paints it: `/homes/{id}/dashboard` returns the home, its rooms, its
  * devices with their points, its scenes and the unread count. The payload is then
- * written into the caches the widgets already read, so `DeviceCard` and `SceneStrip`
+ * written into the caches the widgets already read, so `DeviceTile` and `SceneStrip`
  * keep working without a second round trip — and the socket keeps patching them.
  *
- * Four honest states: no home yet, loading, empty, list. Errors are the empty state
- * with a different sentence — a user cannot act on a stack trace.
+ * The order on screen is the order of the questions a person asks walking in: what
+ * time is it and whose home is this, what is the house doing (the rail), what is the
+ * one reading that matters (the hero), and only then the rooms.
  */
 export function DashboardPage() {
   const router = useRouter();
@@ -32,6 +39,7 @@ export function DashboardPage() {
 
   const homeId = useSession((s) => s.homeId);
   const setHome = useSession((s) => s.setHome);
+  const { data: me } = useMe();
   const { data: homes, isPending: homesPending } = useHomes(Boolean(homeId));
   const createHome = useCreateHome();
 
@@ -63,6 +71,8 @@ export function DashboardPage() {
   const [roomName, setRoomName] = useState('');
 
   const sections = useMemo(() => groupByRoom(devices, rooms), [devices, rooms]);
+  const summary = useMemo(() => summarise(devices), [devices]);
+  const hero = useMemo(() => pickHero(devices), [devices]);
 
   // A disabled query reports `isPending` forever, so the gate is "no home yet", not
   // "the homes list has not arrived" — with a stored home we never ask for it.
@@ -101,196 +111,184 @@ export function DashboardPage() {
   // The dashboard already carries the home; the list is only a fallback for the
   // moment before it lands.
   const homeName = dashboard?.home.name ?? homes?.find((h) => h.id === homeId)?.name ?? 'Home';
+  const person = me?.display_name || me?.email || 'You';
+  const clock = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const onlineText = `${summary.online} of ${summary.devices} online`;
 
   return (
     <Screen>
-      <Box px="lg" py="md" gap="md">
-        <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Box gap="xs" style={{ flex: 1 }}>
-            <AppText variant="title" weight="700">
-              {homeName}
-            </AppText>
-            <AppText variant="caption" tone="muted">
-              {devices.length} device{devices.length === 1 ? '' : 's'} ·{' '}
-              {devices.filter((d) => d.online).length} online
-            </AppText>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE + tokens.space.xl }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Box px="lg" py="md" gap="lg">
+          <HomeHeader name={homeName} person={person} subtitle={onlineText} clock={clock} />
+
+          <StatRail
+            summary={summary}
+            rooms={sections.filter((s) => s.title !== 'Unassigned').length}
+            showTemperature={Boolean(
+              hero?.points.some((p) => p.capability === 'temperature' && typeof p.value === 'number'),
+            )}
+          />
+
+          {hero ? <HeroCard device={hero} /> : null}
+
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Chip label={unread > 0 ? `Alerts · ${unread}` : 'Alerts'} onPress={() => router.push('/alerts')} urgent={unread > 0} />
+            <Chip label={addingRoom ? 'Cancel' : 'New room'} onPress={() => setAddingRoom((v) => !v)} selected={addingRoom} />
+            <Chip label="Automations" onPress={() => router.push('/automations')} />
+          </View>
+
+          {addingRoom ? (
+            <Box row gap="sm" style={{ alignItems: 'center' }}>
+              <TextInput
+                placeholder="Room name"
+                placeholderTextColor={color.muted}
+                value={roomName}
+                onChangeText={setRoomName}
+                autoFocus
+                style={{
+                  flex: 1,
+                  backgroundColor: color.glass,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: color.border,
+                  borderRadius: tokens.radius.md,
+                  padding: tokens.space.md,
+                  color: color.text,
+                }}
+              />
+              <Button
+                label={createRoom.isPending ? 'Saving…' : 'Create'}
+                disabled={roomName.trim().length === 0 || createRoom.isPending}
+                onPress={() =>
+                  createRoom.mutate(
+                    { name: roomName.trim() },
+                    {
+                      onSuccess: () => {
+                        setRoomName('');
+                        setAddingRoom(false);
+                      },
+                    },
+                  )
+                }
+              />
+            </Box>
+          ) : null}
+        </Box>
+
+        {homeId ? (
+          <Box style={{ marginTop: tokens.space.lg }}>
+            <SceneStrip homeId={homeId} scenes={dashboard?.scenes} pending={!dashboard} />
           </Box>
+        ) : null}
 
-          {/* The one primary action, in reach of a thumb and never clipped: the rest of the
-              navigation lives in the chip row below, which scrolls. */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add a device"
-            onPress={() => router.push('/add-device')}
-            style={({ pressed }) => ({
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: color.accent,
-              opacity: pressed ? 0.85 : 1,
-            })}
-          >
-            <AppText variant="title" weight="700" style={{ color: color.onAccent, lineHeight: 26 }}>
-              +
+        {isPending ? (
+          <Box p="lg" gap="md">
+            {[0, 1, 2].map((i) => (
+              <Box
+                key={i}
+                style={{ height: 96, borderRadius: tokens.radius.lg, backgroundColor: color.glass }}
+              />
+            ))}
+          </Box>
+        ) : devices.length === 0 ? (
+          <Box p="xl" gap="md" center>
+            <AppText variant="title" weight="600">
+              No devices yet
             </AppText>
-          </Pressable>
-        </Box>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {[
-            { label: unread > 0 ? `Alerts · ${unread}` : 'Alerts', to: '/alerts' as const, on: false, urgent: unread > 0 },
-            { label: 'Rooms', on: addingRoom, onPress: () => setAddingRoom((v) => !v) },
-            { label: 'Automations', to: '/automations' as const, on: false },
-            { label: 'Settings', to: '/settings' as const, on: false },
-          ].map((chip) =>
-            chip.to ? (
-              <Pressable
-                key={chip.label}
-                accessibilityRole="button"
-                onPress={() => router.push(chip.to as never)}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
-                  borderRadius: 999,
-                  backgroundColor: chip.on ? color.accent : color.glass,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: chip.on ? color.accent : (chip as { urgent?: boolean }).urgent ? color.accent : color.border,
-                }}
-              >
-                <AppText
-                  variant="caption"
-                  style={{
-                    color: chip.on ? color.onAccent : (chip as { urgent?: boolean }).urgent ? color.accent : color.muted,
-                  }}
-                >
-                  {chip.label}
-                </AppText>
-              </Pressable>
-            ) : (
-              <Pressable
-                key={chip.label}
-                accessibilityRole="button"
-                accessibilityState={{ selected: chip.on }}
-                onPress={chip.onPress}
-                style={{
-                  paddingHorizontal: 14,
-                  paddingVertical: 9,
-                  borderRadius: 999,
-                  backgroundColor: chip.on ? color.accent : color.glass,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: chip.on ? color.accent : color.border,
-                }}
-              >
-                <AppText variant="caption" tone={chip.on ? 'text' : 'muted'}>
-                  {chip.label}
-                </AppText>
-              </Pressable>
-            ),
-          )}
-        </ScrollView>
-      </Box>
-
-      {homeId ? (
-        <SceneStrip homeId={homeId} scenes={dashboard?.scenes} pending={!dashboard} />
-      ) : null}
-
-      {addingRoom ? (
-        <Box row gap="sm" px="lg" style={{ alignItems: 'center' }}>
-          <TextInput
-            placeholder="Room name"
-            placeholderTextColor={color.muted}
-            value={roomName}
-            onChangeText={setRoomName}
-            autoFocus
-            style={{
-              flex: 1,
-              backgroundColor: color.surface,
-              borderWidth: 1,
-              borderColor: color.border,
-              borderRadius: tokens.radius.md,
-              padding: tokens.space.md,
-              color: color.text,
-            }}
-          />
-          <Button
-            label={createRoom.isPending ? 'Saving…' : 'Create'}
-            disabled={roomName.trim().length === 0 || createRoom.isPending}
-            onPress={() =>
-              createRoom.mutate(
-                { name: roomName.trim() },
-                {
-                  onSuccess: () => {
-                    setRoomName('');
-                    setAddingRoom(false);
-                  },
-                },
-              )
-            }
-          />
-        </Box>
-      ) : null}
-
-      {isPending ? (
-        <Box p="lg" gap="md">
-          {[0, 1, 2].map((i) => (
-            <Box
-              key={i}
-              style={{ height: 96, borderRadius: tokens.radius.lg, backgroundColor: color.surface }}
-            />
-          ))}
-        </Box>
-      ) : devices.length === 0 ? (
-        <Box p="xl" gap="md" center style={{ flex: 1 }}>
-          <AppText variant="title" weight="600">
-            No devices yet
-          </AppText>
-          <AppText tone="muted" style={{ textAlign: 'center' }}>
-            Tap Add and we will look for devices nearby.
-          </AppText>
-          <Pressable onPress={() => refetch()} accessibilityRole="button">
-            <AppText variant="body" tone="accent">
-              Try again
+            <AppText tone="muted" style={{ textAlign: 'center' }}>
+              Tap Add and we will look for devices nearby.
             </AppText>
-          </Pressable>
-        </Box>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{ paddingTop: tokens.space.sm, paddingBottom: tokens.space.xxl }}
-        >
-          {sections.map((section) => (
+            <Pressable onPress={() => refetch()} accessibilityRole="button">
+              <AppText variant="body" tone="accent">
+                Try again
+              </AppText>
+            </Pressable>
+          </Box>
+        ) : (
+          sections.map((section) => (
             /* A room is a heading over a grid, not a card around one: nesting a tile inside the
                grouped-section card is what made the first version look like a card in a card. */
             <Box key={section.title} style={{ marginBottom: tokens.space.xl }}>
-              <AppText
-                variant="caption"
-                tone="muted"
+              <View
                 style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                   paddingHorizontal: tokens.space.lg,
                   paddingBottom: tokens.space.sm,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.6,
                 }}
               >
-                {section.title}
-              </AppText>
-              {/* Two columns: a tile is a summary, and a list of summaries wants to be seen at once. */}
+                <AppText variant="subhead" weight="600">
+                  {section.title}
+                </AppText>
+                <AppText variant="tiny" tone="muted">
+                  {section.data.filter((d) => d.online).length}/{section.data.length} online
+                </AppText>
+              </View>
+
               <Box px="lg" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space.md }}>
-              {section.data.map((device) => (
-                <Box key={device.id} style={{ width: section.data.length === 1 ? '100%' : '47%' }}>
-                  <DeviceTile
-                    device={device}
-                    onPress={() => router.push(`/device/${device.id}`)}
-                    wide={section.data.length === 1}
-                  />
-                </Box>
-              ))}
+                {section.data.map((device) => (
+                  <Box key={device.id} style={{ width: section.data.length === 1 ? '100%' : '47%' }}>
+                    <DeviceTile
+                      device={device}
+                      onPress={() => router.push(`/device/${device.id}`)}
+                      wide={section.data.length === 1}
+                    />
+                  </Box>
+                ))}
               </Box>
             </Box>
-          ))}
-        </ScrollView>
-      )}
+          ))
+        )}
+      </ScrollView>
+
+      <TabBar
+        active="home"
+        onSelect={(key) => {
+          if (key === 'automations') router.push('/automations');
+          if (key === 'add') router.push('/add-device');
+          if (key === 'settings') router.push('/settings');
+        }}
+      />
     </Screen>
+  );
+}
+
+/** One pill. Three of them, not five: a rail of chips is navigation, not a settings panel. */
+function Chip({
+  label,
+  onPress,
+  selected = false,
+  urgent = false,
+}: {
+  label: string;
+  onPress: () => void;
+  selected?: boolean;
+  urgent?: boolean;
+}) {
+  const { color } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={{
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        borderRadius: 999,
+        backgroundColor: selected ? color.accent : color.glass,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: selected ? color.accent : urgent ? color.accent : color.border,
+      }}
+    >
+      <AppText
+        variant="caption"
+        style={{ color: selected ? color.onAccent : urgent ? color.accent : color.muted }}
+      >
+        {label}
+      </AppText>
+    </Pressable>
   );
 }

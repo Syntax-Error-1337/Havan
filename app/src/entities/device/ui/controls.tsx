@@ -254,8 +254,8 @@ export function PillSwitch({
         justifyContent: 'center',
         // An offline device cannot act, so its control must not wear the "on" colour: a vivid
         // switch that does nothing when pressed is the worse of the two lies.
-        backgroundColor: disabled ? withAlpha(color.text, 0.12) : on ? accent : withAlpha(color.text, 0.14),
-        opacity: disabled ? 0.6 : 1,
+        backgroundColor: disabled ? withAlpha(color.text, 0.1) : on ? accent : withAlpha(color.text, 0.14),
+        opacity: disabled ? 0.38 : 1,
       }}
     >
       <View
