@@ -174,14 +174,19 @@ export function DashboardPage() {
   // moment before it lands.
   const homeName = dashboard?.home.name ?? homes?.find((h) => h.id === homeId)?.name ?? 'Home';
   const person = me?.display_name || me?.email || 'You';
-  const clock = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   // The count is the home's, not the page's: "171 of 200 online" on a 420-device home is a lie the
   // page size told.
   const totalDevices = dashboard?.devices_total ?? devices.length;
-  const onlineText =
-    totalDevices === devices.length
-      ? `${summary.online} of ${totalDevices} online`
-      : `${summary.online} of ${totalDevices} online · showing ${devices.length}`;
+  // Presence moved into the header pill, so the line under the title describes the *house* rather than
+  // repeating the count — and says when the list is a page of it, because a grid that stops at 200 of 1,200
+  // with no word about it looks like the other 1,000 were deleted.
+  const roomCount = (dashboard?.rooms ?? []).length;
+  const subtitleText =
+    devices.length === totalDevices
+      ? `${totalDevices} ${totalDevices === 1 ? 'device' : 'devices'} · ${roomCount} ${
+          roomCount === 1 ? 'room' : 'rooms'
+        }`
+      : `${totalDevices} devices · showing ${devices.length}`;
 
   return (
     <Screen>
@@ -207,8 +212,10 @@ export function DashboardPage() {
               <HomeHeader
                 name={homeName}
                 person={person}
-                subtitle={onlineText}
-                clock={clock}
+                subtitle={subtitleText}
+                online={summary.online}
+                total={totalDevices}
+                silent={summary.silent}
                 onOpenHomes={() => router.push('/homes')}
               />
 
@@ -254,8 +261,8 @@ export function DashboardPage() {
                       />
                       <AppText variant="tiny" tone="muted">
                         {summary.silent === 1
-                          ? '1 device is not reporting — showing what it last sent'
-                          : `${summary.silent} devices are not reporting — showing what they last sent`}
+                          ? 'This device is not reporting — showing what it last sent'
+                          : 'Some devices are not reporting — showing what they last sent'}
                       </AppText>
                     </Box>
                   ) : null}
@@ -270,7 +277,9 @@ export function DashboardPage() {
                     )}
                   />
 
-                  {hero ? <HeroCard device={hero} /> : null}
+                  {hero ? (
+                    <HeroCard device={hero} onOpen={() => router.push(`/device/${hero.id}`)} />
+                  ) : null}
                 </>
               )}
 

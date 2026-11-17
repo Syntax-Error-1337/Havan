@@ -141,8 +141,27 @@ export function AreaChart({
                 strokeLinecap="round"
               />
             ) : null}
-            <Circle cx={nowX ?? plot} cy={y(now)} r="4.5" fill={accent} />
-            <Circle cx={nowX ?? plot} cy={y(now)} r="9" fill={accent} fillOpacity="0.2" />
+            {/* A dotted drop to the axis, not just a floating dot: it says "the last reading was here" and
+                makes the empty stretch to the right read as time that passed without data, rather than as a
+                line that gave up halfway. */}
+            <Path
+              d={`M${(nowX ?? plot).toFixed(1)},${y(now).toFixed(1)} L${(nowX ?? plot).toFixed(1)},${height}`}
+              stroke={gapColor ?? accent}
+              strokeWidth="1"
+              strokeDasharray="1 4"
+              fill="none"
+              strokeOpacity="0.7"
+            />
+            <Circle cx={nowX ?? plot} cy={y(now)} r="4" fill={accent} />
+            <Circle
+              cx={nowX ?? plot}
+              cy={y(now)}
+              r="8.5"
+              fill="none"
+              stroke={accent}
+              strokeWidth="1.4"
+              strokeOpacity="0.55"
+            />
           </>
         )}
       </Svg>

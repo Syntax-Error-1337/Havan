@@ -18,13 +18,19 @@ export function HomeHeader({
   name,
   person,
   subtitle,
-  clock,
+  online,
+  total,
+  silent,
   onOpenHomes,
 }: {
   name: string;
   person: string;
   subtitle: string;
-  clock: string;
+  /** Devices the home can hear from, and how many it has. The pill is the answer to "is my house up?" */
+  online: number;
+  total: number;
+  /** Devices not reporting: the pill turns amber and says so, instead of printing a green number it doubts. */
+  silent: number;
   /** Opens the home switcher. An account with one home still needs the way to add a second. */
   onOpenHomes?: () => void;
 }) {
@@ -73,11 +79,36 @@ export function HomeHeader({
           </View>
         </Pressable>
 
-        <Glass padded={false} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
+        {/* This pill was a clock with a lightning bolt beside it: a redundant time (the OS draws one in the
+            status bar) under a glyph that means power, in warning orange, on a healthy house. It is now the
+            one question the header can answer that the clock could not — is anything not reporting? */}
+        <Glass
+          padded={false}
+          style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+          testID="presence-pill"
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Icon name="energy" size={14} color={color.warning} />
+            <View
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 4,
+                backgroundColor:
+                  silent === 0
+                    ? color.success
+                    : online === 0
+                      ? color.danger
+                      : color.warning,
+              }}
+            />
+            {/* The number lives here and the *explanation* lives in the banner below, so the same count is
+                not printed twice in two different vocabularies ("1/6 online" / "5 not reporting"). */}
             <AppText variant="caption" weight="600">
-              {clock}
+              {total === 0
+                ? 'no devices'
+                : silent === 0
+                  ? `${online} of ${total} online`
+                  : `${silent} offline`}
             </AppText>
           </View>
         </Glass>
@@ -137,9 +168,8 @@ export function StatRail({
       accent: accentFor('sensor', color.accent),
     });
   }
-  if (rooms > 0) {
-    chips.push({ icon: 'home', label: 'Rooms', value: String(rooms), accent: color.accentAlt });
-  }
+  // No "Rooms" chip: the header already says "6 devices · 3 rooms", and a rail that repeats the subtitle
+  // in a card is the cheapest way to look busy. `rooms` is still counted by the caller for that line.
   if (summary.unlocked > 0) {
     chips.push({
       icon: 'lock',

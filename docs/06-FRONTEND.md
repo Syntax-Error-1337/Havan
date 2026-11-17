@@ -653,6 +653,34 @@ disagree, and "one bucket behind now" is a bucket being filled rather than missi
 Vision reviews traced the card **6.5 → 7 → 7.5 → 9 / 10** across those four versions; the last one still called
 the *screen* 7.5–8, so the card is no longer the weak part.
 
+### The header answers a question the clock could not
+
+The top-right pill was a clock with a lightning bolt beside it, in warning orange: a redundant time (the OS
+draws one in the status bar) under a glyph that means *power*, coloured like a fault, on a healthy house.
+
+It is now the presence pill — `5 offline` on an amber dot, `1 of 200 online` in green when the house is
+whole, `no devices` on an empty home — and it is the only place the number appears. The line under the title
+took over the job the pill left behind: `6 devices · 3 rooms`, or `1,200 devices · showing 200` when the grid
+is a page of a bigger home. The banner below says *why* (`Some devices are not reporting — showing what they
+last sent`) and deliberately no longer repeats the count, because a number in two vocabularies reads as two
+problems.
+
+The rail lost its `Rooms` card for the same reason: the subtitle already says how many rooms there are, and a
+rail that repeats the line above it is the cheapest way to look busy.
+
+The hero card became a door. It was a large card that navigated nowhere and offered no chevron, so the most
+prominent thing on the screen was the one thing that did not respond to a tap; it now opens the device it
+describes and says so. When its reading is stale the chart fades to 58 % of the category accent and the
+number to 74 % white — enough contrast to read a 44-point figure, not enough to mistake it for live.
+
+### Measure at the viewport the customer has
+
+Half a day of "the floating tab bar covers the hero card" turned out to be a lie told by the screenshot rig:
+`Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2 })` gives a **413 px**
+CSS viewport, because the height is in device pixels. At a real 844 px the hero card ends at 510 and the tab
+bar starts at 760 — 250 px of clearance, exactly as designed. Any layout claim from a screenshot is worth
+nothing until `innerHeight` agrees with the device you are pretending to be.
+
 ### A reading has its own clock
 
 `last_seen_at` answers *is the device reachable*. It does not answer *how old is this number*, and for two

@@ -109,8 +109,10 @@ describe('dashboard', () => {
     const view = await renderDashboard();
     await view.findByText('Lamp');
 
-    // Both halves matter: the count is the home's, and the footer says how much is behind it.
-    expect(view.getByText(/431 online/)).toBeTruthy();
+    // Both halves matter: the count is the home's, and the footer says how much is behind it. The count
+    // moved into the header pill, and the line under the title says the home is being shown a page at a time.
+    expect(view.getByText(/1 of 431 online/)).toBeTruthy();
+    expect(view.getByText(/431 devices · showing 1/)).toBeTruthy();
     expect(view.getByText(/Load 430 more/)).toBeTruthy();
     expect(view.getByText(/showing 1 of 431/)).toBeTruthy();
   });

@@ -24,7 +24,7 @@ import {
  * setting nobody has filled in. When a home has no such device the card simply does not render;
  * inventing a figure would be worse than the empty space.
  */
-export function HeroCard({ device }: { device: Device }) {
+export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => void }) {
   const { color, dark } = useTheme();
   const accent = accentFor(device.category, color.accent, dark);
   const glow = glowFor(device.category, color.glow);
@@ -100,6 +100,9 @@ export function HeroCard({ device }: { device: Device }) {
   return (
     <Glass
       accent={accent}
+      onPress={onOpen}
+      accessibilityLabel={`${device.name} — open`}
+      testID="hero-card"
       glow={state === 'live' ? glow : undefined}
       // Three levels, not two: a device nobody has heard from for four hours should not look as alive
       // as one that reported a minute ago, and should not look as dead as one that is gone.
@@ -117,7 +120,11 @@ export function HeroCard({ device }: { device: Device }) {
               backgroundColor: withAlpha(accent, dark ? 0.24 : 0.14),
             }}
           >
-            <Icon name={iconForCapability(point?.capability)} size={17} color={accent} />
+            <Icon
+              name={iconForCapability(point?.capability)}
+              size={17}
+              color={state === 'live' ? accent : withAlpha(accent, 0.55)}
+            />
           </View>
           <View style={{ flex: 1 }}>
             <AppText variant="caption" weight="600" numberOfLines={1}>
@@ -126,7 +133,7 @@ export function HeroCard({ device }: { device: Device }) {
             {/* The line describes the *reading*, not the connection. "online" next to a chart that stopped
                 eleven hours ago is true and reads as a contradiction: the device is reachable and the number
                 is old. When the series has a gap, the gap is the fact worth printing. */}
-            <AppText variant="tiny" tone="muted" numberOfLines={1}>
+            <AppText variant="tiny" tone="muted" numberOfLines={1} style={{ flexShrink: 1 }}>
               {device.room_name ?? 'No room'} ·{' '}
               {liveIsSeparate
                 ? `${silentHours} h since the last reading`
@@ -135,6 +142,7 @@ export function HeroCard({ device }: { device: Device }) {
                   : (silenceWords(device) ?? `last reported ${relative(device.last_seen_at)}`)}
             </AppText>
           </View>
+          {onOpen ? <Icon name="chevron-right" size={16} color={color.muted} /> : null}
 
           {isSwitchable ? (
             <AppText
@@ -163,11 +171,9 @@ export function HeroCard({ device }: { device: Device }) {
               // the screen, so it must not be the one that lies; but 55%-opacity grey reads as "disabled",
               // not "old". 72% white still clears 3:1 at this size and keeps the number legible.
               color:
-                value === null || liveIsSeparate
-                  ? withAlpha(color.muted, 0.9)
-                  : state !== 'live'
-                    ? color.muted
-                    : color.text,
+                value === null || liveIsSeparate || state !== 'live'
+                  ? withAlpha(color.text, 0.74)
+                  : color.text,
             }}
           >
             {value === null ? '—' : value}
@@ -190,7 +196,7 @@ export function HeroCard({ device }: { device: Device }) {
               buckets={chartBuckets}
               // A chart drawn in full-strength accent says "this is happening now". When the device has
               // gone quiet, the line keeps its shape and loses its authority.
-              accent={state === 'live' ? accent : withAlpha(accent, 0.4)}
+              accent={state === 'live' && !liveIsSeparate ? accent : withAlpha(accent, 0.58)}
               now={liveIsSeparate ? value : null}
               // The marker sits where the reading was taken, from the point's own clock.
               nowAt={point?.updated_at ? Date.parse(point.updated_at) : undefined}
@@ -221,11 +227,12 @@ export function HeroCard({ device }: { device: Device }) {
           <AppText variant="tiny" tone="muted">
             {rangeText}
           </AppText>
-          {/* What the dotted segment means, in words. A delta over a window with an eleven-hour hole in it
-              is a number nobody can reconcile with the chart — the gap is the fact worth printing. */}
-          <AppText variant="tiny" style={{ color: accent }}>
+          {/* The gap is already named twice — in the subtitle and on the value's `last reading` tag — so the
+              footer does the job it alone can do: which way the day went. When there is a gap the arrow would
+              describe a window with a hole in it, so it is omitted rather than explained again. */}
+          <AppText variant="tiny" style={{ color: state === 'live' ? accent : color.muted }}>
             {liveIsSeparate
-              ? `${silentHours} h without a reading`
+              ? ''
               : direction === null
                 ? 'steady'
                 : `${direction} ${Math.abs(delta ?? 0).toFixed(1)} ${point?.unit ?? ''}`.trim()}
