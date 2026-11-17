@@ -6,6 +6,7 @@ import { withAlpha } from '../../shared/ui/Glass';
 import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
   freshness,
+  relative,
   gapHours,
   silenceWords,
   useHistory,
@@ -256,18 +257,7 @@ export function pickHero(devices: Device[]): Device | null {
   );
 }
 
-/** "4h ago", from an ISO stamp. A silent device's age is the most useful thing about it. */
-export function relative(iso: string | null | undefined): string {
-  if (!iso) return 'never';
-  const ms = Date.now() - new Date(iso).getTime();
-  if (Number.isNaN(ms) || ms < 0) return 'just now';
-  const minutes = Math.round(ms / 60000);
-  if (minutes < 2) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
+export { relative } from '../../entities/device/model/silence';
 
 /** `color_temp` -> "Colour temperature": the wire name is not the label. */
 function humanise(capability: string | undefined): string {

@@ -32,17 +32,62 @@ export function silenceThresholdMs(device: { report_interval_secs?: number | nul
   return Math.max(SILENT_AFTER_MS, declared * 3 * 1000);
 }
 
+/**
+ * "4h ago", from an ISO stamp. A silent device's age is the most useful thing about it, and every screen
+ * that prints it should print it the same way — this lived in the hero card until the tile needed it, and
+ * an entity importing from a widget is a dependency pointing the wrong way up the layers.
+ */
+export function relative(iso: string | null | undefined): string {
+  if (!iso) return 'never';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return 'just now';
+  const minutes = Math.round(ms / 60000);
+  if (minutes < 2) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
 export type Freshness = 'live' | 'stale' | 'offline';
 
-type Seen = { online: boolean; last_seen_at?: string | null; report_interval_secs?: number | null };
+type Seen = {
+  online: boolean;
+  last_seen_at?: string | null;
+  report_interval_secs?: number | null;
+  /** Points, when the caller has them: a sensor's reading can be older than the connection. */
+  points?: { writable?: boolean; value?: unknown; updated_at?: string | null }[];
+};
+
+/**
+ * The age of the oldest thing a screen is about to show as current, in milliseconds.
+ *
+ * `last_seen_at` is the device's heartbeat, and a sensor can hold a healthy connection while its reading
+ * is half a day old — that is exactly the case that made a tile say "Updated 12h ago" beside a green dot
+ * and an online count. Writable points are exempt: a bulb that has been off for three days is *off*, and
+ * its age says nothing about whether the platform can reach it.
+ */
+export function readingAgeMs(device: Seen, now: number = Date.now()): number | null {
+  const seen = device.last_seen_at ? new Date(device.last_seen_at).getTime() : NaN;
+  let age = Number.isNaN(seen) ? null : now - seen;
+
+  for (const point of device.points ?? []) {
+    if (point.writable) continue;
+    if (point.value === null || point.value === undefined) continue;
+    const at = point.updated_at ? new Date(point.updated_at).getTime() : NaN;
+    if (Number.isNaN(at)) continue;
+    const pointAge = now - at;
+    if (age === null || pointAge > age) age = pointAge;
+  }
+  return age;
+}
 
 /** `offline` (the platform says so), `stale` (online but silent), or `live`. */
 export function freshness(device: Seen, now: number = Date.now()): Freshness {
   if (!device.online) return 'offline';
-  if (!device.last_seen_at) return 'live';
-  const seen = new Date(device.last_seen_at).getTime();
-  if (Number.isNaN(seen)) return 'live';
-  return now - seen > silenceThresholdMs(device) ? 'stale' : 'live';
+  const age = readingAgeMs(device, now);
+  if (age === null) return 'live';
+  return age > silenceThresholdMs(device) ? 'stale' : 'live';
 }
 
 /**
@@ -85,11 +130,10 @@ export function quietAfterWords(device: { report_interval_secs?: number | null }
  * a line that always says something is a line people stop reading.
  */
 export function silenceWords(device: Seen, now: number = Date.now()): string | null {
-  if (!device.last_seen_at) return null;
-  const seen = new Date(device.last_seen_at).getTime();
-  if (Number.isNaN(seen)) return null;
+  const age = readingAgeMs(device, now);
+  if (age === null) return null;
 
-  const minutes = Math.round((now - seen) / 60_000);
+  const minutes = Math.round(age / 60_000);
   if (minutes < 2) return null;
   if (minutes < 60) return `Silent for ${minutes}m`;
   if (minutes < 1440) return `Silent for ${Math.round(minutes / 60)}h`;

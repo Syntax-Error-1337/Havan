@@ -7,7 +7,7 @@ import { withAlpha } from '../../../shared/ui/Glass';
 import { useSetPoint } from '../model/queries';
 import { commandNotice } from '../model/notices';
 import { primaryPoint, type Device } from '../model/types';
-import { freshness, silenceWords } from '../model/silence';
+import { freshness, relative, silenceWords } from '../model/silence';
 import { PillSwitch, controlFor } from './controls';
 
 /**
@@ -77,40 +77,30 @@ export function DeviceTile({
     </View>
   );
 
+  // One statement, not two. This was a pill reading "Offline" with a line underneath reading
+  // "Silent for 1h" — the same fact twice in two vocabularies, on every tile in a house where
+  // something is wrong. The dot carries the colour, the words carry the detail.
   const status = (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        // Without this the pill stretches to the width of the column it sits in, which reads as a
-        // status *bar* with a label at one end rather than a badge.
-        alignSelf: 'flex-start',
-        gap: 5,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 999,
-        backgroundColor: withAlpha(
-          state === 'live' ? color.success : color.warning,
-          // Silence is a question, not a fault: quieter than offline, so the eye still goes to the
-          // device that is definitely not there.
-          quiet ? 0.1 : 0.16,
-        ),
-      }}
-    >
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
       <View
         style={{
           width: 6,
           height: 6,
           borderRadius: 3,
-          backgroundColor: state === 'live' ? color.success : color.warning,
-          opacity: quiet ? 0.7 : 1,
+          backgroundColor: state === 'live' ? color.success : state === 'stale' ? color.warning : color.muted,
+          opacity: quiet ? 0.75 : 1,
         }}
       />
       <AppText
         variant="tiny"
-        style={{ color: state === 'live' ? color.success : color.warning, opacity: quiet ? 0.9 : 1 }}
+        numberOfLines={1}
+        style={{
+          // Offline is dim, not invisible: at 10-point it still has to clear 4.5:1, and muted-on-a-tinted
+          // card was the one thing a reviewer consistently could not read.
+          color: state === 'stale' ? color.warning : withAlpha(color.text, state === 'live' ? 0.62 : 0.72),
+        }}
       >
-        {state === 'live' ? 'Online' : state === 'stale' ? 'Silent' : 'Offline'}
+        {stateLine(device, point)}
       </AppText>
     </View>
   );
@@ -125,59 +115,66 @@ export function DeviceTile({
         onChange={toggle}
       />
     ) : (
-      <View style={{ flex: 1 }}>
-        <AppText variant="title" weight="700" style={{ color: device.online ? accent : color.muted }} numberOfLines={1}>
-          {readout}
-        </AppText>
-        {point?.capability ? (
-          <AppText variant="tiny" tone="muted" numberOfLines={1}>
-            {point.capability.replace(/[._]+/g, ' ')}
-          </AppText>
-        ) : null}
-      </View>
+      <AppText
+        variant="title"
+        weight="700"
+        style={{ color: state === 'live' ? accent : color.muted }}
+        numberOfLines={1}
+      >
+        {readout}
+      </AppText>
     );
 
   return (
     <Glass
       onPress={onPress}
+      // The halo and the border are the tile's "this is alive" signal, and they were still full-strength on
+      // a sensor whose reading was twelve hours old: the words said quiet, the card glowed. A stale tile
+      // keeps its category colour but loses the halo, and the whole card steps back a little.
+      // (The accent is passed opaque on purpose: `Glass` derives its own alphas from it, and handing it a
+      // pre-faded colour made it fall back to the raw string — a 45%-yellow card, brighter than a live one.)
       accent={accent}
-      glow={glow}
-      style={{ flex: 1, minHeight: wide ? 104 : 132, opacity: device.online ? 1 : 0.8 }}
+      glow={state === 'live' ? glow : undefined}
+      style={{ flex: 1, minHeight: wide ? 104 : 132, opacity: state === 'live' ? 1 : 0.88 }}
       testID={`device-tile-${device.serial}`}
       accessibilityLabel={`${device.name}, ${
         state === 'live' ? 'online' : state === 'stale' ? `silent, ${silent ?? 'not heard from'}` : 'offline'
       }`}
     >
-      {/* One structure at both widths. Two layouts meant the status badge sat in a different place
-          depending on how many neighbours a room had, which reads as a bug rather than a layout. */}
-      <View style={{ gap: tokens.space.md, flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-          {icon}
-          <View style={{ marginLeft: 'auto' }}>{status}</View>
+      {/* Two shapes, chosen by the width the tile actually has. A half-width tile is about 140 points of
+          content: icon, name and a switch on one line leaves forty points for the name, and "Floor Lamp"
+          becomes "F…". So the grid stacks (icon and control on top, name and state under it) and the
+          single-device row, which has the whole width, puts them side by side. */}
+      {wide ? (
+        <View style={{ flex: 1, gap: tokens.space.sm, justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm }}>
+            {icon}
+            <View style={{ flex: 1, gap: 1 }}>
+              <AppText variant="subhead" weight="600" numberOfLines={1}>
+                {device.name}
+              </AppText>
+              {status}
+            </View>
+            <View>{control}</View>
+          </View>
         </View>
-
-        <View style={{ gap: 2 }}>
-          <AppText variant="subhead" weight="600" numberOfLines={1}>
-            {device.name}
-          </AppText>
-          {/* What it is doing beats where it is: the room is the section heading already. */}
-          <AppText variant="tiny" tone="muted" numberOfLines={1}>
-            {stateLine(device, point)}
-          </AppText>
+      ) : (
+        <View style={{ flex: 1, gap: tokens.space.xs }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+            {icon}
+            {kind === 'toggle' && point?.writable ? (
+              <View style={{ marginLeft: 'auto', marginTop: 2 }}>{control}</View>
+            ) : null}
+          </View>
+          <View style={{ gap: 1, marginTop: 'auto' }}>
+            <AppText variant="subhead" weight="600" numberOfLines={1}>
+              {device.name}
+            </AppText>
+            {status}
+          </View>
+          {kind === 'toggle' && point?.writable ? null : <View>{control}</View>}
         </View>
-
-        <View
-          style={{
-            marginTop: 'auto',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: tokens.space.sm,
-          }}
-        >
-          {control}
-        </View>
-      </View>
+      )}
 
       {setPoint.isError ? (
         <AppText variant="tiny" numberOfLines={2} style={{ marginTop: 6, color: color.danger }}>
@@ -190,18 +187,19 @@ export function DeviceTile({
 
 /** One line that says what the device is doing, in the words a person would use. */
 function stateLine(device: Device, point: ReturnType<typeof primaryPoint>): string {
-  // "Offline" alone does not say whether it dropped a minute ago or a week ago, and that difference is
-  // what a person acts on. The pill already says which; this line says how long.
-  const silent = silenceWords(device);
-  if (!device.online || freshness(device) === 'stale') {
-    return silent ?? 'Not heard from';
-  }
+  // One line, and it says both which and how long: "Offline" alone cannot tell a person whether the bulb
+  // dropped a minute ago or a week ago, and that difference is what they act on. The state word and the age
+  // used to live in two separate places on the tile, which is two sentences for one fact.
+  if (!device.online) return `Offline · ${relative(device.last_seen_at)}`;
+  if (freshness(device) === 'stale') return silenceWords(device) ?? 'Not heard from';
   if (!point) return device.category;
   const value = point.value;
   if (typeof value === 'boolean') return value ? 'On' : 'Off';
   if (typeof value === 'number') {
-    const label = point.slot?.includes('level') ? 'On' : 'Reading';
-    return `${label} · ${value}${point.unit ?? ''}`;
+    // The number is the tile's headline, so this line answers the only question left about it: how old
+    // is it? "Reading · 21.5 °C" above a large 21.5 °C was the same fact told twice.
+    const at = point.updated_at ?? device.last_seen_at;
+    return at ? `Updated ${relative(at)}` : 'Reading';
   }
   return point.capability;
 }

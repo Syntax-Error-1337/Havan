@@ -104,3 +104,47 @@ describe('silenceWords', () => {
     expect(silenceWords({ online: false }, NOW)).toBeNull();
   });
 });
+
+/**
+ * The heartbeat is not the reading. A sensor can hold a perfectly good connection and report on an
+ * interval, so a device whose socket is live can be carrying a twelve-hour-old number — and that is what a
+ * green dot beside "Updated 12h ago" was: two facts from two different clocks, both drawn as "now".
+ */
+describe('a reading older than the connection', () => {
+  const NOW = Date.parse('2026-11-17T22:00:00Z');
+  const minutesAgo = (m: number): string => new Date(NOW - m * 60_000).toISOString();
+
+  const sensor = {
+    online: true,
+    last_seen_at: minutesAgo(1),
+    report_interval_secs: 300,
+    points: [
+      { writable: false, value: 21.5, updated_at: minutesAgo(12 * 60) },
+      { writable: false, value: 87, updated_at: minutesAgo(30) },
+    ],
+  };
+
+  it('counts the device stale when its oldest reading is old', () => {
+    expect(freshness(sensor, NOW)).toBe('stale');
+    expect(silenceWords(sensor, NOW)).toBe('Silent for 12h');
+  });
+
+  it('stays live while every reading is inside the window', () => {
+    const fresh = [{ writable: false, value: 87, updated_at: minutesAgo(5) }];
+    expect(freshness({ ...sensor, points: fresh }, NOW)).toBe('live');
+  });
+
+  it('ignores a writable point: a bulb that has been off for days is off, not silent', () => {
+    const bulb = {
+      online: true,
+      last_seen_at: minutesAgo(1),
+      points: [{ writable: true, value: false, updated_at: minutesAgo(72 * 60) }],
+    };
+    expect(freshness(bulb, NOW)).toBe('live');
+  });
+
+  it('falls back to the heartbeat when no point carries a time', () => {
+    const old = { online: true, last_seen_at: minutesAgo(240), points: [{ writable: false, value: 3 }] };
+    expect(freshness(old, NOW)).toBe('stale');
+  });
+});

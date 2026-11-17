@@ -1,4 +1,4 @@
-import type { Device } from '../../entities/device';
+import { freshness, type Device } from '../../entities/device';
 import type { DeviceSection } from './sections';
 
 /**
@@ -20,7 +20,9 @@ export function buildRows(sections: DeviceSection[]): DashboardRow[] {
       kind: 'room',
       key: `room:${section.key}`,
       title: section.title,
-      online: section.data.filter((device) => device.online).length,
+      // The same rule the tiles and the header use. A room header claiming "1/2 online" above a tile
+      // whose dot is amber is two answers to one question, and the customer believes neither.
+      online: section.data.filter((device) => freshness(device) === 'live').length,
       total: section.data.length,
     });
 

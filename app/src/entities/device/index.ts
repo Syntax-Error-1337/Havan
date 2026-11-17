@@ -17,6 +17,7 @@ export {
   silenceThresholdMs,
   silenceWords,
   SILENT_AFTER_MS,
+  relative,
   type Freshness,
 } from './model/silence';
 export {

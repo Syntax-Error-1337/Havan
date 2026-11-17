@@ -673,6 +673,37 @@ prominent thing on the screen was the one thing that did not respond to a tap; i
 describes and says so. When its reading is stale the chart fades to 58 % of the category accent and the
 number to 74 % white — enough contrast to read a 44-point figure, not enough to mistake it for live.
 
+### One fact per tile
+
+A tile used to carry a pill (`Offline`), a line under the name (`Silent for 1h`) and, for a sensor, a value
+plus a caption naming its capability. Three sentences for one device, and on a home where something was wrong
+every tile repeated the same two words in two vocabularies.
+
+Now a tile says one thing about state: `Offline · 1h ago`, `Silent for 4h`, `Updated just now`, `On`, `Off`.
+The coloured dot keeps the colour that the pill used to carry, the words carry the age, and the value appears
+once — as the headline for a sensor, as the switch for a bulb. The same rule applies at every level:
+`rows.ts` counts a room's online devices with `freshness()`, not with the server's `online` flag, because a
+room header saying `1/2 online` above a tile with an amber dot is two answers to one question.
+
+**A tile had to be told, twice, how wide it is.** The horizontal row (icon, name, control) is right for a
+single-device section and wrong for a half-width tile: at 390 points a two-column tile has about 140 points
+of content, so icon + name + switch left forty for the name and `Floor Lamp` became `F…`. Grid tiles stack
+(icon and control on top, name and state underneath); the wide row keeps them side by side.
+
+**`Glass` derives its alphas from an opaque accent.** Passing `withAlpha(accent, 0.45)` to mean "a quieter
+stale tile" produced `rgba(34, 211, 238, 0.45)` as the card's *background* — brighter than a live tile,
+because the internal `withAlpha` could not parse the string it was given and fell back to the value itself.
+Staleness is now expressed by dropping the halo and stepping the card's opacity back, with the accent left
+opaque for the component to fade in its own way.
+
+### The heartbeat is not the reading
+
+A sensor with a healthy socket and a twelve-hour-old temperature satisfied every check: `online` was true,
+`last_seen_at` was a second old, and the tile showed a green dot beside `Updated 12h ago`, counted as online
+in the room header. `freshness()` now compares the **oldest non-writable point** against the same silence
+threshold, so `readingAgeMs()` decides one answer for the dot, the words, the room count and the header pill.
+Writable points are exempt: a bulb that has been off for three days is off, not silent.
+
 ### Measure at the viewport the customer has
 
 Half a day of "the floating tab bar covers the hero card" turned out to be a lie told by the screenshot rig:

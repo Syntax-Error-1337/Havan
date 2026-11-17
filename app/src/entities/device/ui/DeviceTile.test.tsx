@@ -53,29 +53,31 @@ async function renderTile(device: Device) {
 }
 
 describe('a device that stopped reporting', () => {
-  it('is Online when it reported a minute ago', async () => {
+  it('says when the reading was taken, not that the device is online', async () => {
+    // "Online" is a fact about the socket. What a person needs from a sensor tile is the number and its
+    // age, so the one line under the name answers the second question.
     const view = await renderTile({ ...base, online: true, last_seen_at: minutesAgo(1) });
 
-    expect(view.getByText('Online')).toBeTruthy();
+    expect(view.getByText('Updated just now')).toBeTruthy();
     expect(view.queryByText('Silent')).toBeNull();
   });
 
-  it('is Silent, not Online, when the platform believes it is up but has heard nothing for hours', async () => {
+  it('says how long, once, when the platform believes it is up and nothing has arrived for hours', async () => {
     const view = await renderTile({ ...base, online: true, last_seen_at: minutesAgo(240) });
 
-    expect(view.getByText('Silent')).toBeTruthy();
-    expect(view.queryByText('Online')).toBeNull();
-    // The reading is still shown — it is the last thing the device said — but the line under it says
-    // how old it is, so nobody reads 21.5 °C as this minute's temperature.
+    // The reading is still shown — it is the last thing the device said — and one line says how old it is,
+    // so nobody reads 21.5 °C as this minute's temperature. There is no second "Silent" badge: the old
+    // shape printed the same fact twice, in two vocabularies, on every tile in a house with a fault.
     expect(view.getByText('Silent for 4h')).toBeTruthy();
+    expect(view.queryByText('Silent')).toBeNull();
     expect(view.getByText('21.5 °C')).toBeTruthy();
   });
 
-  it('is Offline when the platform says so, and says how long it has been', async () => {
+  it('is Offline and says how long, in one line', async () => {
     const view = await renderTile({ ...base, online: false, last_seen_at: minutesAgo(90) });
 
-    expect(view.getByText('Offline')).toBeTruthy();
-    expect(view.getByText('Silent for 2h')).toBeTruthy();
+    expect(view.getByText('Offline · 2h ago')).toBeTruthy();
+    expect(view.queryByText('Silent for 2h')).toBeNull();
   });
 
   it('tells a screen reader which of the three it is', async () => {
