@@ -53,3 +53,40 @@ export function heights(buckets: Bucket[], isBoolean: boolean): (number | null)[
     bucket.n === 0 ? null : Math.min(1, Math.max(0, (bucket.v - min) / span)),
   );
 }
+
+/**
+ * Which point the device screen charts.
+ *
+ * It used to be "the first numeric one", which on a sensor is `battery.level` — so the screen drew a
+ * battery percentage falling by one over a week and called it the device's history, while the
+ * temperature it exists to measure had no chart at all. Preference, not order: the reading a person
+ * opened the screen for, then the ones they can act on.
+ *
+ * Battery stays last on purpose: it is the interesting series exactly once, when it is nearly empty.
+ */
+export const CHART_PREFERENCE = [
+  'temperature',
+  'humidity',
+  'energy',
+  'power',
+  'brightness',
+  'battery',
+] as const;
+
+/** The window in words, for the sentence that explains an empty chart. */
+export const RANGE_WORDS: Record<Range, string> = {
+  '1h': 'hour',
+  '1d': 'day',
+  '7d': 'week',
+  '30d': '30 days',
+};
+
+export function chartPoint<T extends { capability?: string; value?: unknown }>(
+  points: T[],
+): T | undefined {
+  for (const capability of CHART_PREFERENCE) {
+    const match = points.find((p) => p.capability === capability);
+    if (match) return match;
+  }
+  return points.find((p) => typeof p.value === 'number') ?? points[0];
+}

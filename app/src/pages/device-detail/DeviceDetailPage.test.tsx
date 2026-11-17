@@ -144,9 +144,9 @@ describe('device detail', () => {
     const view = await renderPage();
     await view.findByText('Desk lamp');
 
-    expect(
-      await view.findByText(/No readings yet\. History starts after the device reports/),
-    ).toBeTruthy();
+    // Not "no readings yet" in the abstract: the last value is the one fact available, and the window
+    // makes "nothing here" a statement about a period rather than about the device.
+    expect(await view.findByText(/No readings in the last day — the latest is/)).toBeTruthy();
   });
 
   it('refuses to control an offline device', async () => {

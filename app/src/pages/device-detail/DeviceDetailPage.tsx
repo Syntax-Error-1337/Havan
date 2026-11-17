@@ -6,6 +6,9 @@ import { PointControl } from '../../entities/device';
 import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
   RANGES,
+  RANGE_WORDS,
+  chartPoint,
+  titleFor,
   describeUpdate,
   expectedReportWords,
   freshness,
@@ -297,7 +300,7 @@ function HistoryChart({ deviceId, points }: { deviceId: string; points: DevicePo
   // An older server that does not send `history` keeps the old behaviour: show
   // the chart. Only an explicit `off` hides it.
   const stored = points.filter((p) => p.history !== 'off');
-  const charted = stored.find((p) => typeof p.value === 'number') ?? stored[0];
+  const charted = chartPoint(stored);
   const code = charted?.code;
   const isBoolean = typeof charted?.value === 'boolean';
   // The range the chart is showing. Four options, because a phone chart with a
@@ -321,7 +324,7 @@ function HistoryChart({ deviceId, points }: { deviceId: string; points: DevicePo
     <Box gap="xs">
       <Box row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <AppText variant="caption" tone="muted">
-          {code}
+          {charted ? titleFor(charted) : code}
         </AppText>
         <Box row gap="xs">
           {RANGES.map((option) => (
@@ -350,19 +353,47 @@ function HistoryChart({ deviceId, points }: { deviceId: string; points: DevicePo
           History is unavailable right now.
         </AppText>
       ) : samples === 0 ? (
+        // An empty chart is a dead end. The last value is the one fact we do have, and naming the
+        // window makes "nothing here" a statement about a period rather than about the device.
         <AppText variant="caption" tone="muted">
-          No readings yet. History starts after the device reports for a while.
+          {charted && charted.value !== null && charted.value !== undefined
+            ? `No readings in the last ${RANGE_WORDS[range]} — the latest is ${charted.value}${
+                charted.unit ? ` ${charted.unit}` : ''
+              }.`
+            : `No readings in the last ${RANGE_WORDS[range]} yet.`}
         </AppText>
       ) : (
         <>
           <Sparkline buckets={data?.buckets ?? []} isBoolean={isBoolean} />
-          {/* One string, not three children: a sentence assembled from nodes is
-              also a sentence a test cannot match and a screen reader may split. */}
+          {/* One string, not three children: a sentence assembled from nodes is also a sentence a test
+              cannot match and a screen reader may split. The range is here because bars with no scale
+              answer "did it move" and nothing else — the same complaint the hero's chart earned. */}
           <AppText variant="caption" tone="muted">
-            {`${samples} reading${samples === 1 ? '' : 's'} · ${data?.buckets.length ?? 0} bars`}
+            {`${chartRange(data?.buckets ?? [], charted)}${samples} reading${
+              samples === 1 ? '' : 's'
+            } · ${data?.buckets.length ?? 0} bars`}
           </AppText>
         </>
       )}
     </Box>
   );
+}
+
+/** `21.3–21.9 °C · ` when there is a spread worth stating, otherwise nothing. */
+function chartRange(
+  buckets: { v: number | null }[],
+  point?: { value?: unknown; unit?: string | null },
+): string {
+  const values = buckets.map((b) => b.v).filter((v): v is number => typeof v === 'number');
+  // The live reading is part of the window. Leaving it out let the label contradict the number above
+  // it — a maximum of 21.1 under a current 21.5 °C — which is the sort of thing a customer spots first.
+  if (typeof point?.value === 'number') values.push(point.value);
+  if (values.length < 2) return '';
+
+  const unit = point?.unit ? ` ${point.unit}` : '';
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  // A flat line is a fact too, and "21.5–21.5 °C" states it badly.
+  if (Math.abs(high - low) < 0.05) return `steady at ${low.toFixed(1)}${unit} · `;
+  return `${low.toFixed(1)}–${high.toFixed(1)}${unit} · `;
 }

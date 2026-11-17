@@ -491,6 +491,18 @@ the schedule behind it, so the device header carries one line when the product d
 *"Reports hourly · quiet after 3h without a report"*. Both numbers come from the same threshold
 function, so the explanation cannot drift from the behaviour.
 
+**The chart was drawing the battery.** The device screen charted "the first numeric point", which on a
+sensor is `battery.level` — so the one screen a customer opens to see the temperature showed a battery
+percentage and an empty box. `chartPoint` now prefers the reading the screen exists for
+(`temperature → humidity → energy → power → brightness → battery`), the heading uses the same rule as the
+control cards, and the caption carries the scale the bars were missing: **"16.6–21.5 °C · 545 readings ·
+49 bars"**, with the live reading folded into the range so the label cannot contradict the number above
+it. An empty window now says *"No readings in the last day — the latest is 21.5 °C."* instead of a
+sentence about nothing.
+
+Verified live on the room sensor: it went from `battery.level` / "No readings yet" to **Temperature**,
+**545 readings, 49 bars**, **16.6–21.5 °C**.
+
 Same screen, a smaller wart removed: the control headings preferred the point's `slot`, and a humidity
 sensor's slot is `value` — so humidity and temperature appeared as two cards both headed **"Value"**.
 `titleFor` now prefers the capability unless it only names the kind of device (`switch`, `sensor`,
