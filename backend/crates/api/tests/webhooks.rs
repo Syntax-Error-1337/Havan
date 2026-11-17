@@ -12,6 +12,15 @@ use uuid::Uuid;
 /// first version of these tests failed intermittently for exactly that reason.
 static DELIVERY: OnceCell<Mutex<()>> = OnceCell::const_new();
 
+/// How many rows to ask `due()` for.
+///
+/// `due()` is the global queue: it claims any vendor's rows, oldest first, up to a limit. The test
+/// database accumulates undelivered rows from every suite that ever ran (550 at the time of writing),
+/// so `due(500)` could return the queue's backlog and stop *before* the two rows this test just
+/// inserted — an assertion about a shared queue rather than about delivery. Asking for everything is
+/// the only limit that makes the assertion mean what it says.
+const ALL_DUE: i64 = 10_000;
+
 async fn one_delivery_at_a_time() -> MutexGuard<'static, ()> {
     DELIVERY
         .get_or_init(|| async { Mutex::new(()) })
@@ -156,7 +165,7 @@ async fn the_outbox_delivers_once_then_stops_being_due() {
     // `due` is the global queue and this database is shared by the suite, so a small limit means the
     // assertion depends on how many rows other tests left behind — which is how this failed once
     // twelve undelivered rows existed. Ask for enough that the test is about its own row.
-    let due = hooks.due(500).await.expect("due");
+    let due = hooks.due(ALL_DUE).await.expect("due");
     let mine = due.iter().find(|d| d.id == id).expect("our row");
     assert_eq!(mine.secret, secret);
     assert_eq!(mine.event, "licence.activated");
@@ -218,7 +227,7 @@ async fn an_event_reaches_every_endpoint_that_asked_for_it() {
         rows.push(id);
     }
 
-    let due = hooks.due(500).await.expect("due");
+    let due = hooks.due(ALL_DUE).await.expect("due");
     let mine: Vec<_> = due.iter().filter(|d| rows.contains(&d.id)).collect();
     assert_eq!(
         mine.len(),
@@ -255,7 +264,7 @@ async fn an_event_reaches_every_endpoint_that_asked_for_it() {
         .await
         .expect("clear the lease");
 
-    let after = hooks.due(500).await.expect("due again");
+    let after = hooks.due(ALL_DUE).await.expect("due again");
     let still_owed: Vec<_> = after.iter().filter(|d| d.id == other).collect();
     assert_eq!(
         still_owed.len(),
@@ -302,7 +311,7 @@ async fn concurrent_workers_do_not_claim_the_same_delivery() {
         seeded.push(id);
     }
 
-    let (a, b) = tokio::join!(hooks.due(500), hooks.due(500));
+    let (a, b) = tokio::join!(hooks.due(ALL_DUE), hooks.due(ALL_DUE));
     let a = a.expect("first claim");
     let b = b.expect("second claim");
 
@@ -326,7 +335,7 @@ async fn concurrent_workers_do_not_claim_the_same_delivery() {
     }
 
     // Leased: a third claim finds nothing of ours until the lease expires.
-    let c = hooks.due(500).await.expect("third claim");
+    let c = hooks.due(ALL_DUE).await.expect("third claim");
     let mine_c: Vec<Uuid> = c
         .iter()
         .map(|d| d.id)

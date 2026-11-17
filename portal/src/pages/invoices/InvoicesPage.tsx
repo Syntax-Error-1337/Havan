@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { formatMoney } from '../../entities/licence';
-import { currentPeriod, useInvoice } from '../../entities/invoice';
+import { currentPeriod, useInvoice, type InvoiceLine } from '../../entities/invoice';
 import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
@@ -11,6 +11,22 @@ import { TableFrame } from '../../shared/ui/TableFrame';
  * late belongs to the month it activated in; an **issued** invoice does not, because it is a
  * document somebody may already have paid.
  */
+/**
+ * What the rows add up to, by price.
+ *
+ * An invoice for a mixed month used to render 169 rows and one total, so a vendor scrolling the
+ * document saw a column of `0.00 USD` — the devices activated against a free grant — and had no way to
+ * tell a free activation from a device that failed to bill. Grouping by price answers both: the money
+ * reconciles, and every zero is explained as a zero.
+ */
+export function priceGroups(lines: InvoiceLine[]): { price: number; count: number }[] {
+  const byPrice = new Map<number, number>();
+  for (const line of lines) byPrice.set(line.unit_price_cents, (byPrice.get(line.unit_price_cents) ?? 0) + 1);
+  return [...byPrice.entries()]
+    .map(([price, count]) => ({ price, count }))
+    .sort((a, b) => b.price - a.price);
+}
+
 export function InvoicesPage() {
   const [period, setPeriod] = useState(currentPeriod());
   const { data: invoice, isPending, error } = useInvoice(period);
@@ -64,6 +80,18 @@ export function InvoicesPage() {
             </div>
           </div>
 
+          {/* The rows add up on screen, not only in the total. */}
+          <p className="muted" data-testid="invoice-reconciliation">
+            {priceGroups(invoice.lines)
+              .map(({ price, count }) =>
+                price === 0
+                  ? `${count} ${count === 1 ? 'device' : 'devices'} at no charge`
+                  : `${count} ${count === 1 ? 'device' : 'devices'} at ${formatMoney(price, invoice.currency)} = ${formatMoney(count * price, invoice.currency)}`,
+              )
+              .join(' · ')}
+            {invoice.lines.length > 0 ? ` · total ${formatMoney(invoice.amount_cents, invoice.currency)}` : ''}
+          </p>
+
           <TableFrame label={`Activations in ${invoice.period}`}>
             <table className="table">
               <thead>
@@ -88,7 +116,11 @@ export function InvoicesPage() {
                       })}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {formatMoney(line.unit_price_cents, invoice.currency)}
+                      {/* A zero is a fact; "0.00 USD" reads as a pricing bug. These devices were
+                          activated against a grant that carries no per-device price. */}
+                      {line.unit_price_cents === 0
+                        ? 'No charge'
+                        : formatMoney(line.unit_price_cents, invoice.currency)}
                     </td>
                   </tr>
                 ))}
@@ -100,6 +132,18 @@ export function InvoicesPage() {
                   </tr>
                 ) : null}
               </tbody>
+              {invoice.lines.length > 0 ? (
+                <tfoot>
+                  <tr>
+                    <th colSpan={3} style={{ textAlign: 'right' }}>
+                      Total · {invoice.quantity} {invoice.quantity === 1 ? 'device' : 'devices'}
+                    </th>
+                    <th style={{ textAlign: 'right' }}>
+                      {formatMoney(invoice.amount_cents, invoice.currency)}
+                    </th>
+                  </tr>
+                </tfoot>
+              ) : null}
             </table>
           </TableFrame>
         </>

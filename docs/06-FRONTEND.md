@@ -152,6 +152,45 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### An intermittent gate is a gate nobody trusts
+
+`make check` went red on `-p api --test webhooks` three times in one afternoon, on two different tests
+(`the_outbox_delivers_once_then_stops_being_due`, then `an_event_reaches_every_endpoint_that_asked_for_it`), and
+passed when run alone. The suite already had a mutex and a comment explaining that `due()` is a global queue —
+so the race had been found once and only half-fixed.
+
+The half that was missing was arithmetic, not locking: **`due()` claims any vendor's rows, oldest first, up to a
+limit**, and the test database accumulates undelivered rows from every suite that has ever run against it —
+552 undelivered, 143 due, measured. `due(500)` therefore returned the backlog and stopped *before* the two rows
+the test had just inserted, so the assertion failed with `left: 0, right: 2` on a queue that was working
+correctly.
+
+The fix is one constant: the delivery tests ask for `ALL_DUE = 10_000`. An assertion about delivery has to ask
+for everything, or it is an assertion about the queue's backlog. Three consecutive runs at four threads: 6/6.
+
+The general lesson is the one this project keeps re-learning: a test that shares a database has to say what it
+owns. The mutex serialises *this* file; it cannot know that a limit of 500 was quietly cutting the file's own
+rows out of its own assertion.
+
+### An invoice a vendor could not check
+
+`/invoices` rendered 169 rows and one total. On the seeded month the first ten rows read **0.00 USD** — the
+devices activated against a free grant — so the document opened on a column of zeroes and closed on `44.82 USD`,
+with nothing between them. A vendor reading that has no way to tell a free activation from a device that failed
+to bill, and no way to check our arithmetic without exporting and summing 169 cells.
+
+The data was right the whole time (`18 × 2.49 = 44.82`, the rest at `0`); the *screen* never said so. Three
+changes, all in the document rather than in the query:
+
+- **A reconciliation line above the table**, computed from the rows themselves:
+  *18 devices at 2.49 USD = 44.82 USD · 151 devices at no charge · total 44.82 USD.*
+- **`No charge` instead of `0.00 USD`** on a line whose price is zero. A zero that is a decision and a zero that
+  is a failure look identical in a money column, and only one of them is the vendor's problem.
+- **A footer row** with the quantity and the total, so the table closes on the same number as the header.
+
+Verified in the browser: the strip reads `18 devices at 2.49 USD = 44.82 USD · 151 devices at no charge · total
+44.82 USD`, the footer says `Total · 169 devices 44.82 USD`, and the first cell now says `No charge`.
+
 ## Portal (React)
 
 ### A login form that asked for a primary key
