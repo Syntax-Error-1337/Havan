@@ -184,6 +184,8 @@ export function DeviceDetailPage() {
               accessibilityRole="button"
               accessibilityLabel={`Rename ${device.name}`}
               accessibilityHint="Opens an editor for the device's name"
+              // The name is a real control (it opens the editor); a 28-point line of type needs a target.
+              style={{ minHeight: tokens.touch.min, justifyContent: 'center' }}
             >
               <AppText variant="title" weight="700">
                 {device.name}
@@ -307,6 +309,7 @@ export function DeviceDetailPage() {
                   onPress={() => setRoom.mutate({ deviceId: device.id, roomId: room.id })}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
+                  style={{ minHeight: tokens.touch.min, justifyContent: 'center' }}
                 >
                   <Box
                     px="md"
@@ -346,7 +349,7 @@ export function DeviceDetailPage() {
               accessibilityHint="The device leaves this home and must be paired again to come back"
               testID="remove-device"
               disabled={remove.isPending}
-              style={{ alignSelf: 'center', paddingVertical: tokens.space.sm }}
+              style={{ alignSelf: 'center', paddingVertical: tokens.space.sm, minHeight: tokens.touch.min, justifyContent: 'center' }}
             >
               <AppText variant="caption" tone="danger">
                 {remove.isPending ? 'Removing…' : 'Remove this device'}
@@ -519,17 +522,23 @@ function HistoryChart({
 
   return (
     <Box gap="xs">
-      <Box row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* `flexWrap`: at 200% zoom "Temperature" and four 44-point chips do not share a 195-point row, and a
+          row that refuses to wrap pushes the last chip 82 points off the screen. */}
+      <Box row style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <AppText variant="caption" tone="muted">
           {charted ? titleFor(charted) : code}
         </AppText>
-        <Box row gap="xs">
+        {/* Four 44-point chips and their gaps need 200 points; a 195-point row has 179. Wrapping the chips
+            themselves is the difference between the last one being reachable and being 9 points off screen. */}
+        <Box row gap="xs" style={{ flexWrap: 'wrap', flexShrink: 1, maxWidth: '100%' }}>
           {RANGES.map((option) => (
             <Pressable
               key={option}
               onPress={() => setRange(option)}
               accessibilityRole="button"
               accessibilityState={{ selected: range === option }}
+              // `1h` is two characters and 30 points wide; the target is the minimum, not the glyph.
+              style={{ minHeight: tokens.touch.min, minWidth: tokens.touch.min, justifyContent: 'center' }}
             >
               <Box px="sm" py="xs" radius="pill" bg={range === option ? 'accent' : 'surface'}>
                 <AppText variant="caption" tone={range === option ? 'text' : 'muted'}>

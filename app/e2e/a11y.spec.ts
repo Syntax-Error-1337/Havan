@@ -122,22 +122,24 @@ async function audit(page: Page, screen: string): Promise<Finding[]> {
   ];
 }
 
+const SCREENS: [string, string][] = [
+  ['/', 'dashboard'],
+  ['/settings', 'settings'],
+  ['/automations', 'automations'],
+  ['/scenes', 'scenes'],
+  ['/alerts', 'alerts'],
+  ['/homes', 'homes'],
+  ['/privacy', 'privacy'],
+  ['/add-device', 'add-device'],
+  ['/device/01a1fb00-0000-7000-8000-000000000002', 'device detail'],
+];
+
 test('every screen names its controls, labels its fields and sizes its targets', async ({ page }) => {
   test.slow();
   await signIn(page);
 
-  const screens: [string, string][] = [
-    ['/', 'dashboard'],
-    ['/settings', 'settings'],
-    ['/automations', 'automations'],
-    ['/scenes', 'scenes'],
-    ['/alerts', 'alerts'],
-    ['/homes', 'homes'],
-    ['/privacy', 'privacy'],
-  ];
-
   const findings: Finding[] = [];
-  for (const [path, name] of screens) {
+  for (const [path, name] of SCREENS) {
     await page.goto(path);
     await page.waitForLoadState('networkidle');
     findings.push(...(await audit(page, name)));
@@ -149,4 +151,85 @@ test('every screen names its controls, labels its fields and sizes its targets',
     findings.map((f) => `${f.screen}: ${f.what} — ${f.detail}`).join('\n'),
     'accessibility findings',
   ).toBe('');
+});
+
+/**
+ * The light palette is a different set of colours, and a contrast gate that only ever runs against dark is a
+ * gate with half a product behind it. The same three rules, with the customer's own appearance set.
+ */
+test('the same rules hold in the appearance the customer chose', async ({ page }) => {
+  test.slow();
+  await signIn(page);
+
+  // Set the preference the way the app does, then reload so the provider reads it fresh.
+  await page.evaluate(async () => {
+    const existing = Number(localStorage.getItem('haven.appearance.rev') ?? '0');
+    localStorage.setItem('haven.appearance', 'light');
+    localStorage.setItem('haven.appearance.rev', String(existing + 1));
+  });
+  await page.reload();
+  await expect(page.getByText('DASHBOARD')).toBeVisible();
+
+  const findings: Finding[] = [];
+  for (const [path, name] of SCREENS) {
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    findings.push(...(await audit(page, `light ${name}`)));
+  }
+
+  // Put the default back for whatever runs next.
+  await page.evaluate(() => localStorage.setItem('haven.appearance', 'system'));
+
+  expect(
+    findings.map((f) => `${f.screen}: ${f.what} — ${f.detail}`).join('\n'),
+    'accessibility findings in light mode',
+  ).toBe('');
+});
+
+/**
+ * 200% text zoom, which iOS and Android both allow and which the web build gets for free from browser zoom.
+ *
+ * A 390-point phone at 200% sees 195 points of layout. That is emulated by halving the viewport rather than
+ * multiplying the fonts: the property under test is "does anything fall off the side of the screen", and a
+ * narrower viewport asks it exactly.
+ */
+test('nothing falls off the side of the screen at 200% zoom', async ({ page }) => {
+  test.slow();
+  await signIn(page);
+  await page.setViewportSize({ width: 195, height: 422 });
+
+  const findings: string[] = [];
+  for (const [path, name] of SCREENS) {
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, `${name} scrolls sideways at 200% zoom`).toBeLessThanOrEqual(1);
+    // A control pushed past the right edge is unreachable even when the page does not scroll: the app is a
+    // fixed-width canvas, so anything wider than it is simply gone.
+    const offscreen = await page.evaluate(() => {
+      // A control inside a horizontal ScrollView is *meant* to be past the edge — the row scrolls to it.
+      // Only a control that is past the edge with nothing to scroll counts as unreachable.
+      const scrolls = (el: Element) => {
+        for (let node = el.parentElement; node; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if ((style.overflowX === 'auto' || style.overflowX === 'scroll') && node.scrollWidth > node.clientWidth) {
+            return true;
+          }
+        }
+        return false;
+      };
+      const controls = Array.from(document.querySelectorAll('[role="button"], button, input'));
+      return controls
+        .filter((el) => {
+          const box = el.getBoundingClientRect();
+          if (box.width === 0 || box.right <= window.innerWidth + 2) return false;
+          return !scrolls(el);
+        })
+        .map((el) => (el.getAttribute('aria-label') || (el as HTMLElement).innerText || '?').slice(0, 30));
+    });
+    findings.push(...offscreen.map((label) => `${name}: "${label}" is past the right edge`));
+  }
+  expect(findings.join('\n'), 'controls off screen at 200% zoom').toBe('');
 });

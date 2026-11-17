@@ -211,7 +211,7 @@ export function PhoneHandoff() {
         accessibilityRole="button"
         accessibilityLabel="Back to your home"
         onPress={() => router.replace('/')}
-        style={{ alignItems: 'center', paddingVertical: 10 }}
+        style={{ alignItems: 'center', justifyContent: 'center', minHeight: tokens.touch.min }}
       >
         <AppText weight="600" tone="muted">
           Back to your home

@@ -39,6 +39,10 @@ export function ScreenHeader({
         gap: tokens.space.sm,
         paddingHorizontal: tokens.space.lg,
         paddingVertical: tokens.space.md,
+        // At 200% zoom a 390-point phone is a 195-point phone, and "← Alerts ......... Mark all read" does
+        // not fit on one line. Wrapping drops the action onto its own row instead of pushing it 71 points
+        // past the right edge, where it is simply unreachable.
+        flexWrap: 'wrap',
       }}
     >
       {/* A 44 × 44 frame around a 20-point glyph, rather than a hit slop around a 20-point box: the slop
@@ -54,7 +58,7 @@ export function ScreenHeader({
           <Icon name="chevron-right" size={20} color={color.muted} />
         </View>
       </Pressable>
-      <AppText variant="title" weight="700">
+      <AppText variant="title" weight="700" numberOfLines={1} style={{ flexShrink: 1 }}>
         {title}
       </AppText>
       {right ? <View style={{ marginLeft: 'auto' }}>{right}</View> : null}

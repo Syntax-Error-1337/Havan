@@ -60,10 +60,13 @@ test('a rule can be run by hand, and the run is recorded as a manual one', async
 
   const homes = await (await page.request.get(`${api}/v1/homes`, { headers: auth })).json();
   const homeId: string = homes[0].id;
+  // A unique name, because the house already has rules of its own ("hook", "dusk") and `.first()` is not a
+  // way to talk about the one this test made.
+  const name = `E2E run-now ${Date.now()}`;
   const created = await page.request.post(`${api}/v1/homes/${homeId}/automations`, {
     headers: auth,
     data: {
-      name: 'E2E run-now',
+      name,
       // A schedule, on purpose: a hand run of a scheduled rule is the case that used to be logged as
       // "schedule" and was the reason this endpoint was held back for a year.
       definition: {
@@ -78,11 +81,14 @@ test('a rule can be run by hand, and the run is recorded as a manual one', async
 
   try {
     await page.goto('/automations');
-    await page.getByText('Run now').first().click();
+
+    // Scoped to the row this test created, and to its own two controls.
+    const row = page.getByText(name).locator('xpath=ancestor::div[.//text()[contains(., "Run now")]][1]');
+    await row.getByText('Run now').click();
+    await row.getByText('History').click();
 
     // The run happens in the worker, so the history is what proves it — and the label is the point:
     // "manual", not "schedule".
-    await page.getByText('History').first().click();
     await expect(page.getByText(/manual/i).first()).toBeVisible({ timeout: 25_000 });
   } finally {
     await page.request.delete(`${api}/v1/automations/${ruleId}`, { headers: auth });

@@ -152,6 +152,40 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The half of accessibility that is not a target size
+
+The audit from the previous pass covered seven screens in dark mode at 100% text size. Three of those words are
+doing a lot of work: **seven**, **dark**, **100%**. This pass closed all three.
+
+- **Twelve screens**, adding `/add-device` and the device detail — which is where the audit found its next
+  batch: the **rename** affordance (246 × 28), the history **range chips** (30 × 26 — `1h` is two characters),
+  the **room pills** (36 tall), and *Remove this device* (34). Eleven violations on a screen that had been
+  reviewed twice by eye.
+- **Light mode**, with the customer's own preference set. The palette is a different set of colours and a
+  contrast gate that only ever runs dark is a gate with half a product behind it. No findings — the token work
+  from two passes ago holds.
+- **200% zoom** — the property most accessibility advice forgets. iOS and Android both allow it, and it turns a
+  390-point phone into a 195-point one. The audit asks two questions: does the page scroll sideways, and is any
+  control past the right edge with nothing to scroll to it.
+
+200% found **four real layout bugs**, none of which exist at 100%:
+
+| Screen | Symptom | Cause |
+|---|---|---|
+| `/alerts` | *Mark all read* 71 px off screen | a header row that could not wrap |
+| device detail | range chips 82 px off | label + four chips cannot share 195 pt |
+| dashboard | the search field itself pushed past the edge | a flex item defaults to its **content** width |
+| `/automations` | *Create your first rule* off screen | a button that is as wide as its label |
+
+The fixes are the same shape each time — `flexWrap`, `flexShrink: 1`, `minWidth: 0`, `maxWidth: '100%'` — and the
+button one belongs in `Button` itself: a label that does not fit should wrap, not escape.
+
+The rule also learned something: a control inside a horizontal `ScrollView` is *meant* to be past the edge. Only
+a control past the edge **with nothing to scroll** is unreachable, and the check now walks the ancestors for a
+scrollable one before complaining.
+
+Three tests, all green: the target/label/name sweep across twelve screens, the same in light, and the zoom check.
+
 ### Accessibility, measured
 
 The design system had a contrast gate, a token gate and a screenshot review. What it never had was a check on

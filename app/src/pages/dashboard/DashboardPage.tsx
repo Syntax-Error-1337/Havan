@@ -436,7 +436,9 @@ export function DashboardPage() {
                   value={query}
                   onChangeText={setQuery}
                   autoCorrect={false}
-                  style={{ flex: 1, paddingVertical: 11, color: color.text, fontSize: 15 }}
+                  // `minWidth: 0`: a flex item defaults to its content width, so at 200% zoom the field
+                  // held its width and pushed itself past the edge of the screen.
+                  style={{ flex: 1, minWidth: 0, paddingVertical: 11, color: color.text, fontSize: 15 }}
                 />
                 {filtering ? (
                   <Pressable

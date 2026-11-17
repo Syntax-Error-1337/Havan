@@ -60,6 +60,11 @@ export function Button({
           flexDirection: 'row',
           gap: tokens.space.sm,
           opacity: isDisabled && variant === 'ghost' ? 0.55 : 1,
+          // A button is as wide as its label — until the label does not fit. Without these two the label
+          // took the button past the edge of a 195-point screen ("Create your first rule" at 200% zoom),
+          // where it is not reachable at all. The label wraps instead.
+          flexShrink: 1,
+          maxWidth: '100%',
         },
         full && { alignSelf: 'stretch' },
         style as object,
@@ -67,7 +72,7 @@ export function Button({
       {...rest}
     >
       {loading ? <ActivityIndicator color={fg} /> : null}
-      <AppText weight="600" style={{ color: fg }}>
+      <AppText weight="600" style={{ color: fg, flexShrink: 1, textAlign: 'center' }}>
         {label}
       </AppText>
     </Pressable>

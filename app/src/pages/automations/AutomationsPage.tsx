@@ -55,7 +55,9 @@ export function AutomationsPage() {
           paddingBottom: tokens.layout.tabBarClearance,
         }}
       >
-        <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        {/* At 200% zoom a 195-point row cannot hold a display-size title and a button side by side; wrapping
+            puts the button underneath instead of past the right edge. */}
+        <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
           <Box gap="xs">
             <AppText variant="display">Automations</AppText>
             <AppText variant="caption" tone="muted">
