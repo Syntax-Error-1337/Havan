@@ -696,6 +696,25 @@ because the internal `withAlpha` could not parse the string it was given and fel
 Staleness is now expressed by dropping the halo and stepping the card's opacity back, with the accent left
 opaque for the component to fade in its own way.
 
+### The switcher has to say which one you are in
+
+`/homes` scored **4/10** and the reason was one missing line: no row said "Current". The check and the label
+were in the code — the session's `homeId` is empty until the dashboard picks a home, so on a fresh sign-in
+every row failed `home.id === current` and the screen that exists to tell you where you are told you nothing.
+It falls back to the home the app would open (the first one) until a choice is stored.
+
+Three smaller corrections in the same pass:
+
+- **`2 people · admin` read as three counts.** "admin" is a fact about *you*, not about the home, and it sat
+  in a line of numbers. The role moved to a chip beside the name — and the chip is drawn only when the
+  account holds *different* roles in different homes, because a word repeated on every row is decoration.
+- **Every home wore the same house glyph.** The rows now use the home's initial in an accent circle, the way
+  the dashboard already marks the person. Three identical houses is a list you read; W / B / P is a list you
+  scan.
+- **`1200 devices`** became `1,200 devices` — `toLocaleString`, not string concatenation.
+
+Homes **4 → 9/10**.
+
 ### A count is a fact about the home, not about the page you fetched
 
 Settings said `Devices 0` on a home with six devices. The row printed `dashboard.devices.length` — one page

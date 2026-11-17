@@ -23,7 +23,14 @@ jest.mock('expo-secure-store', () => ({
 }));
 
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn() }),
+  // `canGoBack` is not optional: every screen with a `ScreenHeader` asks it before deciding between
+  // `back()` and `replace('/')`, and a mock without it throws the moment someone presses back.
+  useRouter: () => ({
+    push: jest.fn(),
+    back: jest.fn(),
+    replace: jest.fn(),
+    canGoBack: () => false,
+  }),
   useLocalSearchParams: () => ({ id: 'device-1' }),
   Stack: ({ children }: { children?: unknown }) => children ?? null,
 }));

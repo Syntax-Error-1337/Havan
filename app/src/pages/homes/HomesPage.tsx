@@ -6,6 +6,7 @@ import { AppText, Button, Glass, Icon, Screen, ScreenHeader } from '../../shared
 import { useCreateHome, useHomes } from '../../entities/home';
 import { useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
+import { withAlpha } from '../../shared/config/tokens';
 
 /**
  * Every home this account can open.
@@ -22,10 +23,17 @@ import { useTheme, tokens } from '../../app-shell/theme';
 export function HomesPage() {
   const router = useRouter();
   const { color } = useTheme();
-  const current = useSession((s) => s.homeId);
+  const stored = useSession((s) => s.homeId);
   const setHome = useSession((s) => s.setHome);
 
   const { data: homes, isPending, isError, error } = useHomes();
+  // The session holds the chosen home, and it is still empty until the dashboard picks one — so a person
+  // who opens the switcher first sees three rows and no "Current" on any of them, which is exactly what the
+  // screen is for. Until a choice is stored, the home the app would open is the first one.
+  const current = stored ?? homes?.[0]?.id ?? null;
+  // A chip that says the same word on every row is decoration. The role is shown only when the account
+  // holds different roles in different homes — otherwise it is a fact about every row at once.
+  const rolesDiffer = new Set((homes ?? []).map((h) => h.role)).size > 1;
   const createHome = useCreateHome();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -82,14 +90,48 @@ export function HomesPage() {
                 testID={`home-row-${home.id}`}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.space.md }}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <AppText variant="subhead" weight="600" numberOfLines={1}>
-                      {home.name}
+                  {/* The home's initial, not one house glyph for every row: three identical houses are a
+                      list you read, and the dashboard already uses an initial for the person. */}
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: withAlpha(color.accent, active ? 0.24 : 0.12),
+                    }}
+                  >
+                    <AppText variant="caption" weight="700" style={{ color: color.accent }}>
+                      {(home.name.trim()[0] ?? 'H').toUpperCase()}
                     </AppText>
-                    <AppText variant="tiny" tone="muted">
-                      {home.device_count} device{home.device_count === 1 ? '' : 's'} ·{' '}
-                      {home.member_count} {home.member_count === 1 ? 'person' : 'people'} ·{' '}
-                      {home.role}
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <AppText variant="subhead" weight="600" numberOfLines={1} style={{ flexShrink: 1 }}>
+                        {home.name}
+                      </AppText>
+                      {/* The role is a property of the row, so it sits with the name; the right-hand slot is
+                          reserved for one thing — which home you are in. Mixing "Admin" and "Current" in the
+                          same position made them look like the same kind of fact. */}
+                      {rolesDiffer ? (
+                        <View
+                          style={{
+                            paddingHorizontal: 6,
+                            paddingVertical: 1,
+                            borderRadius: 6,
+                            backgroundColor: color.glass,
+                          }}
+                        >
+                          <AppText variant="tiny" tone="muted" style={{ textTransform: 'capitalize' }}>
+                            {home.role}
+                          </AppText>
+                        </View>
+                      ) : null}
+                    </View>
+                    <AppText variant="tiny" tone="muted" numberOfLines={1}>
+                      {home.device_count.toLocaleString()} device{home.device_count === 1 ? '' : 's'} ·{' '}
+                      {home.member_count} {home.member_count === 1 ? 'member' : 'members'}
                     </AppText>
                   </View>
                   {active ? (
