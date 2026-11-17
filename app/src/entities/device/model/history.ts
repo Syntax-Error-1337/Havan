@@ -55,29 +55,6 @@ export function useHistory(deviceId: string | undefined, code: string | undefine
 }
 
 /**
- * Turn buckets into 0–1 heights for drawing.
- *
- * Two rules that keep the chart honest:
- *
- * - the scale includes **zero** for booleans, so "off" is a flat line at the
- *   bottom rather than a bar that looks half-on;
- * - a bucket with no samples is a gap, not a zero. Drawing silence as zero is
- *   how a chart lies about a device that was offline.
- */
-export function heights(buckets: Bucket[], isBoolean: boolean): (number | null)[] {
-  if (buckets.length === 0) return [];
-
-  const values = buckets.map((b) => b.v);
-  const max = isBoolean ? 1 : Math.max(...values);
-  const min = isBoolean ? 0 : Math.min(0, ...values);
-  const span = max - min || 1;
-
-  return buckets.map((bucket) =>
-    bucket.n === 0 ? null : Math.min(1, Math.max(0, (bucket.v - min) / span)),
-  );
-}
-
-/**
  * Which point the device screen charts.
  *
  * It used to be "the first numeric one", which on a sensor is `battery.level` — so the screen drew a

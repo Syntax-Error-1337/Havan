@@ -4,7 +4,7 @@ import { Providers } from '../src/app-shell/providers';
 import { ErrorBoundary } from '../src/app-shell/ErrorBoundary';
 import { useSession } from '../src/entities/session';
 import { LoginPage } from '../src/pages/login/LoginPage';
-import { tokens } from '../src/shared/config/tokens';
+import { useTheme } from '../src/app-shell/theme';
 
 /**
  * The composition root. Routes stay dumb: they import one page and render it.
@@ -24,6 +24,10 @@ export default function RootLayout() {
 
 function Gate() {
   const access = useSession((s) => s.access);
+  // The screen's own background, from the *runtime* theme: this used to be the static `tokens` import,
+  // which is the default palette rather than the operator's — so a light canvas painted itself behind
+  // every card, and flipping the theme without a reload left the old colour in the gaps.
+  const { color } = useTheme();
 
   if (!access) return <LoginPage />;
 
@@ -31,7 +35,7 @@ function Gate() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: tokens.color.bg },
+        contentStyle: { backgroundColor: color.bg },
         animation: 'slide_from_right',
       }}
     />

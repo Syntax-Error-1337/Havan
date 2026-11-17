@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, TextInput } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Box,
@@ -7,7 +7,7 @@ import {
   AppText,
   Glass,
   Icon,
-  Sparkline,
+  AreaChart,
   iconForCategory,
   useConfirm,
 } from '../../shared/ui';
@@ -251,10 +251,54 @@ export function DeviceDetailPage() {
           </Glass>
         ) : null}
 
+        <HistoryChart
+          deviceId={device.id}
+          accent={accent}
+          gapColor={color.muted}
+          points={device.points}
+          asOf={freshness(device) === 'live' ? null : relative(device.last_seen_at)}
+        />
+
+        {/*
+          Controls come from the device's own data: a bool is a switch, a bounded number is a level,
+          a temperature is a stepper, and a sensor is a reading. That is what makes an unfamiliar
+          product usable on the day its vendor ships it.
+        */}
+        {/* One place decides that a silent device's controls are inert, rather than each control
+            remembering to dim itself. */}
+        {/* `opacity: 0.6` over the controls was the same defect found on the dashboard: it dims the labels
+            with the switches, and "Offline" in 60 % grey is the one sentence the customer needs to read.
+            The controls say they are inert themselves (a disabled fill, a greyed label); this only stops
+            them being tappable. */}
+        <Box gap="md" pointerEvents={device.online ? 'auto' : 'none'}>
+          {orderedPoints(device.points).map((point) => (
+            <Glass key={point.code} accent={point.writable ? accent : undefined}>
+              <PointControl device={device} point={point} accent={accent} />
+            </Glass>
+          ))}
+        </Box>
+
+        {setPoint.error ? (
+          <AppText tone="danger" variant="caption">
+            {setPoint.error.message}
+          </AppText>
+        ) : null}
+
+        {/* Configuration last. This used to sit between the offline banner and the readings, so the
+            first thing under "this device has stopped reporting" was a list of rooms — a setting nobody
+            opened the screen to change, in front of the numbers they did. */}
         <Box gap="xs">
-          <AppText variant="caption" tone="muted">Room</AppText>
-          <Box row gap="sm" style={{ flexWrap: 'wrap' }}>
-            {[{ id: null as string | null, name: 'No room' }, ...(rooms ?? [])].map((room) => {
+          <AppText variant="caption" tone="muted">
+            In which room
+          </AppText>
+          {/* One scrolling row rather than a wrapping one: five rooms wrapped to two lines with "Kitchen"
+              alone underneath, which reads as a mistake rather than a list you can swipe. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: tokens.space.sm, paddingVertical: 2 }}
+          >
+            {[{ id: null as string | null, name: 'Unassigned' }, ...(rooms ?? [])].map((room) => {
               const active = (device.room_id ?? null) === room.id;
               return (
                 <Pressable
@@ -269,19 +313,21 @@ export function DeviceDetailPage() {
                     py="sm"
                     radius="pill"
                     style={{
-                      backgroundColor: active ? color.accent : color.glass,
+                      // `glass` + muted text made every room you did *not* pick look disabled — the same
+                      // defect the scene editor's chips had. An unselected option is still a live target.
+                      backgroundColor: active ? color.accent : color.surface,
                       borderWidth: StyleSheet.hairlineWidth,
                       borderColor: active ? color.accent : color.border,
                     }}
                   >
-                    <AppText variant="caption" style={{ color: active ? color.onAccent : color.muted }}>
+                    <AppText variant="caption" style={{ color: active ? color.onAccent : color.text }}>
                       {room.name}
                     </AppText>
                   </Box>
                 </Pressable>
               );
             })}
-          </Box>
+          </ScrollView>
           {setRoom.error ? (
             <AppText variant="caption" tone="danger">
               {setRoom.error.message}
@@ -289,32 +335,6 @@ export function DeviceDetailPage() {
           ) : null}
         </Box>
 
-        <HistoryChart
-          deviceId={device.id}
-          points={device.points}
-          asOf={freshness(device) === 'live' ? null : relative(device.last_seen_at)}
-        />
-
-        {/*
-          Controls come from the device's own data: a bool is a switch, a bounded number is a level,
-          a temperature is a stepper, and a sensor is a reading. That is what makes an unfamiliar
-          product usable on the day its vendor ships it.
-        */}
-        {/* One place decides that a silent device's controls are inert, rather than each control
-            remembering to dim itself. */}
-        <Box gap="md" style={{ opacity: device.online ? 1 : 0.6 }}>
-          {orderedPoints(device.points).map((point) => (
-            <Glass key={point.code} accent={point.writable ? accent : undefined}>
-              <PointControl device={device} point={point} accent={accent} />
-            </Glass>
-          ))}
-        </Box>
-
-        {setPoint.error ? (
-          <AppText tone="danger" variant="caption">
-            {setPoint.error.message}
-          </AppText>
-        ) : null}
 
         {/* Last, quiet, and destructive: the bottom of the screen is where "I am done with this" lives,
             not next to the switch someone presses ten times a day. */}
@@ -455,10 +475,14 @@ function formatValue(value: boolean | number | string | null): string {
  */
 function HistoryChart({
   deviceId,
+  accent,
+  gapColor,
   points,
   asOf,
 }: {
   deviceId: string;
+  accent: string;
+  gapColor: string;
   points: DevicePoint[];
   /** When the data stops, for a device that has stopped: a chart drawn from silence has to say so. */
   asOf?: string | null;
@@ -537,7 +561,20 @@ function HistoryChart({
         </AppText>
       ) : (
         <>
-          <Sparkline buckets={data?.buckets ?? []} isBoolean={isBoolean} />
+          {/* A line, and the same one the dashboard draws.
+              This was a bar sparkline whose scale started at **zero** — so a day that moved between
+              16.6 and 21.5 °C drew as twenty-six bars of 0.77, 0.80, 0.83 … all the same height. The
+              screen's one job is "what has it been doing", and it answered "it has been a rectangle".
+              Bars encode magnitude and so must start at zero; a line encodes change, and may describe a
+              band — which is why the range is printed underneath: the axis is truncated, and says so. */}
+          <Box style={{ paddingVertical: tokens.space.sm }}>
+            <AreaChart
+              buckets={data?.buckets ?? []}
+              accent={accent}
+              gapColor={gapColor}
+              height={120}
+            />
+          </Box>
           {/* One string, not three children: a sentence assembled from nodes is also a sentence a test
               cannot match and a screen reader may split. The range is here because bars with no scale
               answer "did it move" and nothing else — the same complaint the hero's chart earned. */}

@@ -25,7 +25,6 @@ export {
   RANGE_WORDS,
   chartPoint,
   gapHours,
-  heights,
   RANGES,
   useHistory,
   type Bucket,

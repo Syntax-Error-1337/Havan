@@ -353,6 +353,44 @@ failed six tests on the default 5 s timeout that pass in a second locally, so
 
 ## Design language
 
+### A bar chart was answering the wrong question
+
+The device screen had its own chart — a bar sparkline — and `heights()` scaled every series from **zero**:
+
+```ts
+const min = isBoolean ? 0 : Math.min(0, ...values);   // the zero belongs to booleans only
+```
+
+A day that moved between 16.6 and 21.5 °C therefore drew twenty-six bars of 0.77, 0.80, 0.83 — a rectangle. The
+screen's one job is "what has it been doing", and the honest answer from that picture was "nothing". It had a
+test asserting the behaviour ("18° and 21° must look close together"), which is a fine rule for a count and a
+bad one for a sensor.
+
+Two things were wrong at once, so both were fixed:
+
+- **The encoding.** Bars measure magnitude, so a bar chart *must* start at zero. A line describes change and may
+  show a band. This screen has always been a time series; it now uses `AreaChart`, the same chart the dashboard
+  hero uses, with the same gap handling and the same truncated axis.
+- **The declaration.** The range is printed under the chart (`16.6–21.5 °C over the last day`) because the axis
+  no longer includes zero. A truncated axis that says so is honest; a full axis that flattens the data is not.
+
+`Sparkline`, `heights()` and its tests are deleted rather than left unused — one chart component, one scale rule.
+
+Two more defects from the same review:
+
+- **The room chooser sat between the offline banner and the readings.** The first thing under "this device has
+  stopped reporting" was a list of rooms; it is now at the bottom, labelled `In which room`, above the
+  destructive action. Configuration comes last.
+- **Unselected rooms looked disabled** (`glass` fill, muted label) — the same defect the scene editor's chips had.
+  They are `surface` + full-strength text now, in one horizontally scrolling row instead of a wrap that left
+  `Kitchen` alone on a second line.
+
+And one the probe found by accident: **the navigator's card background was the static palette's**, not the
+operator's (`contentStyle: { backgroundColor: tokens.color.bg }` at module load). It is read from the runtime
+theme now, so the gaps between screens follow a theme change instead of keeping the old colour.
+
+Device detail **6 → 9/10**.
+
 ### Rendered contrast is the only contrast that counts
 
 `check-contrast.mjs` compares tokens against a base background. It cannot see a translucent card, a mesh
