@@ -233,6 +233,33 @@ export function DashboardPage() {
                   them on screen pushes the result the person is looking for below the fold. */}
               {filtering ? null : (
                 <>
+                  {/* One sentence, once, above everything a stale reading could mislead: the rail's counts,
+                      the hero's number and every tile below are the last thing the house said. Per-tile
+                      qualifiers are noise at this size; the banner is what makes "0 on" and "Offline"
+                      legible as facts about the network rather than about the bulbs. */}
+                  {summary.silent > 0 ? (
+                    <Box
+                      row
+                      gap="xs"
+                      testID="silence-banner"
+                      style={{ alignItems: 'center', paddingHorizontal: tokens.space.lg }}
+                    >
+                      <Box
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor: color.warning,
+                        }}
+                      />
+                      <AppText variant="tiny" tone="muted">
+                        {summary.silent === 1
+                          ? '1 device is not reporting — showing what it last sent'
+                          : `${summary.silent} devices are not reporting — showing what they last sent`}
+                      </AppText>
+                    </Box>
+                  ) : null}
+
                   <StatRail
                     summary={summary}
                     rooms={sections.filter((s) => s.title !== 'Unassigned').length}

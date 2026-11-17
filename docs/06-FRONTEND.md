@@ -653,6 +653,32 @@ disagree, and "one bucket behind now" is a bucket being filled rather than missi
 Vision reviews traced the card **6.5 → 7 → 7.5 → 9 / 10** across those four versions; the last one still called
 the *screen* 7.5–8, so the card is no longer the weak part.
 
+### A reading has its own clock
+
+`last_seen_at` answers *is the device reachable*. It does not answer *how old is this number*, and for two
+iterations the dashboard pretended otherwise: the hero sensor said `Living Room · online` above a chart that
+stopped eleven hours earlier, with a 44-point `21.5` that looked like right now.
+
+The reading's timestamp was in the database from the first migration. The API never selected it. With
+`updated_at` on every point the card can be honest in four places at once:
+
+| The claim | Before | Now |
+|---|---|---|
+| the connection | `online` | `11 h since the last reading` when the series has a gap |
+| the number | full-strength, 44 pt | dimmed to 72 % with a `last reading` tag |
+| the chart | marker at the right edge | marker **at the reading's own moment**, empty space to `now` |
+| the gap | nothing | `11 h without a reading`, on a muted dotted connector |
+
+The x-axis still ends at *now* — that is what makes a gap look like a gap instead of pushing the last
+reading against the right edge and calling it current. Placing the marker at its own timestamp inside that
+window is the whole fix: a chart cannot draw a reading at a time no reading exists for.
+
+Two smaller corrections came out of the same review: the stat rail counts **lights that are on and still
+reporting** (`lightsOnLive`), because a bulb whose last word was "on" twenty minutes before it went quiet is
+not a light that is on now; and one banner above everything says `5 devices are not reporting — showing what
+they last sent`, so the rail's `0 on` and the tiles' `Offline` read as facts about the network rather than
+about the bulbs.
+
 ### Colour is a token, or it is a bug
 
 `src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and

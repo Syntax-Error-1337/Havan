@@ -32,9 +32,19 @@ export function AreaChart({
   height = 96,
   showFill = true,
   now = null,
+  nowAt,
+  gapColor,
 }: {
   buckets: Bucket[];
   accent: string;
+  /**
+   * When the live reading was taken. The marker is placed at *that* moment, not at "now": a reading from
+   * eleven hours ago drawn at the right edge is a claim the house is reporting, which is the one thing a
+   * chart must not invent. Absent means the reading is current.
+   */
+  nowAt?: number;
+  /** The colour of the "no readings here" connector. Muted by the caller: accent means measured. */
+  gapColor?: string;
   height?: number;
   showFill?: boolean;
   /** The live reading, when it is not already the last bucket. Drawn detached, at the right edge. */
@@ -68,10 +78,14 @@ export function AreaChart({
 
   const first = at(buckets[0]!);
   const lastRecorded = at(buckets[buckets.length - 1]!);
-  // With a live marker the axis runs to now; without one it stops at the last reading.
-  const end = now === null ? lastRecorded : Math.max(lastRecorded, Date.now());
+  // The axis is the requested window, ending at *now* — that is what makes a gap visible instead of pushing
+  // the last reading against the right edge and calling it current. The marker is placed on that axis at its
+  // own moment, so an eleven-hour-old reading sits eleven hours back, with the empty space doing the talking.
+  const nowMoment = nowAt ?? Date.now();
+  const end = Math.max(lastRecorded, Date.now());
   const spanMs = Math.max(end - first, 1);
   const x = (i: number) => ((at(buckets[i]!) - first) / spanMs) * plot;
+  const nowX = now === null ? null : Math.max(0, Math.min(plot, ((nowMoment - first) / spanMs) * plot));
   const y = (v: number) => pad + (1 - (v - min) / span) * (height - pad * 2);
 
   let line = '';
@@ -117,16 +131,18 @@ export function AreaChart({
              segment: solid would claim those hours were measured, a floating dot with no line at all
              reads as a rendering mistake. Dotted is the honest middle — "no readings in between". */
           <>
-            <Path
-              d={`M${lastX.toFixed(1)},${y(values[values.length - 1]!).toFixed(1)} L${(width - 3).toFixed(1)},${y(now).toFixed(1)}`}
-              stroke={accent}
-              strokeWidth="1.6"
-              strokeDasharray="2 3"
-              fill="none"
-              strokeLinecap="round"
-            />
-            <Circle cx={width - 3} cy={y(now)} r="4.5" fill={accent} />
-            <Circle cx={width - 3} cy={y(now)} r="9" fill={accent} fillOpacity="0.2" />
+            {nowX !== null && nowX - lastX > 6 ? (
+              <Path
+                d={`M${lastX.toFixed(1)},${y(values[values.length - 1]!).toFixed(1)} L${nowX.toFixed(1)},${y(now).toFixed(1)}`}
+                stroke={gapColor ?? accent}
+                strokeWidth="1.6"
+                strokeDasharray="2 3"
+                fill="none"
+                strokeLinecap="round"
+              />
+            ) : null}
+            <Circle cx={nowX ?? plot} cy={y(now)} r="4.5" fill={accent} />
+            <Circle cx={nowX ?? plot} cy={y(now)} r="9" fill={accent} fillOpacity="0.2" />
           </>
         )}
       </Svg>

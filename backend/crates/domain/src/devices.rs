@@ -38,6 +38,14 @@ pub struct Point {
     /// a chart for a point the platform does not store.
     pub history: Option<String>,
     pub value: Option<PointValue>,
+    /// When this reading was written.
+    ///
+    /// Without it a client can only ask "is the *device* reachable", and a sensor that is online but has not
+    /// reported a temperature for eleven hours has to be drawn as if the number were current — the exact
+    /// confident-stale-number the presence work was meant to remove, one level down. The column existed; it
+    /// was simply never sent.
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub updated_at: Option<time::OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -807,6 +815,39 @@ mod tests {
     async fn a_member_sees_the_home_devices() {
         let f = fixture();
         assert_eq!(f.svc.list(f.home, f.member).await.unwrap().len(), 1);
+    }
+
+    /// The reading's own clock has to reach the client, or a screen can only ask whether the *device* is
+    /// reachable — and an online sensor with an eleven-hour-old temperature then has to be drawn as current.
+    #[test]
+    fn a_point_carries_when_its_reading_was_taken() {
+        let at = time::OffsetDateTime::from_unix_timestamp(1_763_400_000).unwrap();
+        let point = Point {
+            id: Uuid::now_v7(),
+            code: "temperature.value".into(),
+            dp: "1".into(),
+            capability: "temperature".into(),
+            slot: "value".into(),
+            kind: "float".into(),
+            writable: false,
+            unit: Some("°C".into()),
+            min: None,
+            max: None,
+            history: Some("interval:300".into()),
+            value: Some(PointValue::Num(21.5)),
+            updated_at: Some(at),
+        };
+        let json = serde_json::to_value(&point).unwrap();
+        assert_eq!(
+            json["updated_at"], "2025-11-17T17:20:00Z",
+            "RFC 3339, so every client parses it without guessing"
+        );
+        // A point that has never been written says so rather than inventing a time.
+        let cold = Point {
+            updated_at: None,
+            ..point
+        };
+        assert!(serde_json::to_value(&cold).unwrap()["updated_at"].is_null());
     }
 
     #[tokio::test]

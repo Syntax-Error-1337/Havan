@@ -109,10 +109,13 @@ export function StatRail({
   const chips: { icon: IconName; label: string; value: string; accent: string }[] = [];
 
   if (summary.lights > 0) {
+    // Lights that are on *and still reporting*. A bulb that was on when it lost the network is not a light
+    // that is on now, and the rail above a grid of "Offline" tiles claiming "3 on" is the contradiction a
+    // customer reads first. When something is silent the banner under the header says why the numbers moved.
     chips.push({
       icon: 'bulb',
       label: 'Lights',
-      value: `${summary.lightsOn} on`,
+      value: `${summary.lightsOnLive} on`,
       accent: accentFor('light', color.accent),
     });
   }

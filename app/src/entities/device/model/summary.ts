@@ -1,3 +1,4 @@
+import { freshness } from './silence';
 import type { Device } from './types';
 
 /**
@@ -11,7 +12,17 @@ import type { Device } from './types';
 export type HomeSummary = {
   devices: number;
   online: number;
+  /**
+   * Devices still reporting, by the same rule the tiles use (`freshness`). `online` is the server's flag and
+   * can disagree with it; this is the number the screen can defend, and the reason a rail can say
+   * "3 lights on" while the header says "1 of 6 online".
+   */
+  live: number;
+  /** Devices not live: their values are the last thing they said, not the current state. */
+  silent: number;
   lightsOn: number;
+  /** Lights on *and* still reporting — the only count that is true of the house right now. */
+  lightsOnLive: number;
   lights: number;
   /** The room reading, when some device actually measures one. */
   temperature: { value: number; unit: string } | null;
@@ -43,16 +54,22 @@ export function summarise(devices: Device[]): HomeSummary {
   const roomHumidity =
     devices.map((d) => num(d.points, 'humidity')).find((h) => h !== null) ?? null;
 
+  const isOn = (d: Device): boolean => {
+    const power = d.points.find((p) => p.capability === 'switch');
+    const level = d.points.find((p) => p.capability === 'brightness');
+    if (power) return power.value === true;
+    return typeof level?.value === 'number' && level.value > 0;
+  };
+  const liveCount = devices.filter((d) => freshness(d) === 'live').length;
+
   return {
     devices: devices.length,
     online: devices.filter((d) => d.online).length,
+    live: liveCount,
+    silent: devices.length - liveCount,
     lights: lights.length,
-    lightsOn: lights.filter((d) => {
-      const power = d.points.find((p) => p.capability === 'switch');
-      const level = d.points.find((p) => p.capability === 'brightness');
-      if (power) return power.value === true;
-      return typeof level?.value === 'number' && level.value > 0;
-    }).length,
+    lightsOn: lights.filter(isOn).length,
+    lightsOnLive: lights.filter((d) => isOn(d) && freshness(d) === 'live').length,
     temperature: roomTemp,
     humidity: roomHumidity,
     climateRange:

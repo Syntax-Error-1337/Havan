@@ -123,11 +123,16 @@ export function HeroCard({ device }: { device: Device }) {
             <AppText variant="caption" weight="600" numberOfLines={1}>
               {device.name}
             </AppText>
+            {/* The line describes the *reading*, not the connection. "online" next to a chart that stopped
+                eleven hours ago is true and reads as a contradiction: the device is reachable and the number
+                is old. When the series has a gap, the gap is the fact worth printing. */}
             <AppText variant="tiny" tone="muted" numberOfLines={1}>
               {device.room_name ?? 'No room'} ·{' '}
-              {freshness(device) === 'live'
-                ? 'online'
-                : (silenceWords(device) ?? `last reported ${relative(device.last_seen_at)}`)}
+              {liveIsSeparate
+                ? `${silentHours} h since the last reading`
+                : freshness(device) === 'live'
+                  ? 'online'
+                  : (silenceWords(device) ?? `last reported ${relative(device.last_seen_at)}`)}
             </AppText>
           </View>
 
@@ -153,7 +158,16 @@ export function HeroCard({ device }: { device: Device }) {
               fontSize: 44,
               lineHeight: 48,
               fontWeight: '700',
-              color: value === null || state !== 'live' ? color.muted : color.text,
+              // The number is dimmed once it is no longer the house's current state — and an old reading is
+              // old even when the device is reachable. A 44-point figure is the most authoritative thing on
+              // the screen, so it must not be the one that lies; but 55%-opacity grey reads as "disabled",
+              // not "old". 72% white still clears 3:1 at this size and keeps the number legible.
+              color:
+                value === null || liveIsSeparate
+                  ? withAlpha(color.muted, 0.9)
+                  : state !== 'live'
+                    ? color.muted
+                    : color.text,
             }}
           >
             {value === null ? '—' : value}
@@ -161,6 +175,11 @@ export function HeroCard({ device }: { device: Device }) {
           {point?.unit ? (
             <AppText variant="subhead" tone="muted" style={{ marginBottom: 8 }}>
               {point.unit}
+            </AppText>
+          ) : null}
+          {liveIsSeparate ? (
+            <AppText variant="tiny" tone="muted" style={{ marginBottom: 10 }}>
+              last reading
             </AppText>
           ) : null}
         </View>
@@ -173,6 +192,9 @@ export function HeroCard({ device }: { device: Device }) {
               // gone quiet, the line keeps its shape and loses its authority.
               accent={state === 'live' ? accent : withAlpha(accent, 0.4)}
               now={liveIsSeparate ? value : null}
+              // The marker sits where the reading was taken, from the point's own clock.
+              nowAt={point?.updated_at ? Date.parse(point.updated_at) : undefined}
+              gapColor={withAlpha(color.muted, 0.55)}
               height={78}
             />
             {/* An axis, however small: a shape with no ends answers "did it move" and leaves "over

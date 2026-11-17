@@ -216,6 +216,13 @@ A device also carries `last_seen_at` (RFC 3339) and, when its product declared o
 is `max(15 min, 3 × report_interval_secs)`, and the platform's own presence sweep uses the same rule, so
 a device is never marked offline before the app would call it quiet.
 
+Each point carries `updated_at` too, and that one was missing for a long time. `last_seen_at` answers
+"is the device reachable", which is not the same question as "how old is this number": a sensor can hold a
+healthy connection and report temperature on an interval, so a device that is online with an eleven-hour-old
+reading had to be drawn as if the value were current. The column existed in `device_points` from the first
+migration; the API simply never selected it. It is `null` for a point that has never been written, and a
+client that gets `null` should say "no reading yet" rather than substitute the device's clock.
+
 ### Alerts
 
 | Method | Path | Notes |

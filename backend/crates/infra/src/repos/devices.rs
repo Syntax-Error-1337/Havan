@@ -129,6 +129,7 @@ type PointRow = (
     Option<bool>,
     Option<String>,
     Option<String>,
+    Option<time::OffsetDateTime>,
 );
 
 // No join to `products`: that table is vendor-scoped, and a customer request
@@ -190,6 +191,7 @@ fn map_point(row: PointRow) -> (Uuid, Point) {
         boolean,
         text,
         history,
+        updated_at,
     ) = row;
 
     // Exactly one of the value columns is populated by the writer.
@@ -216,6 +218,7 @@ fn map_point(row: PointRow) -> (Uuid, Point) {
             max,
             history,
             value,
+            updated_at,
         },
     )
 }
@@ -239,7 +242,7 @@ impl DeviceRepo for PgDevices {
         let point_rows = sqlx::query_as::<_, PointRow>(
             r#"SELECT dp.device_id, dp.id, dp.code, dp.dp, dp.capability, dp.slot, dp.kind,
                       dp.writable, dp.unit, dp.min_val, dp.max_val,
-                      dp.value_num, dp.value_bool, dp.value_text, dp.history
+                      dp.value_num, dp.value_bool, dp.value_text, dp.history, dp.updated_at
                FROM device_points dp
                JOIN devices d ON d.id = dp.device_id
                WHERE d.home_id = $1
@@ -320,7 +323,7 @@ impl DeviceRepo for PgDevices {
         let point_rows = sqlx::query_as::<_, PointRow>(
             r#"SELECT dp.device_id, dp.id, dp.code, dp.dp, dp.capability, dp.slot, dp.kind,
                       dp.writable, dp.unit, dp.min_val, dp.max_val,
-                      dp.value_num, dp.value_bool, dp.value_text, dp.history
+                      dp.value_num, dp.value_bool, dp.value_text, dp.history, dp.updated_at
                FROM device_points dp
                WHERE dp.device_id = ANY($1)
                ORDER BY dp.code"#,
@@ -396,7 +399,7 @@ impl DeviceRepo for PgDevices {
 
         let points = sqlx::query_as::<_, PointRow>(
             r#"SELECT device_id, id, code, dp, capability, slot, kind, writable, unit,
-                      min_val, max_val, value_num, value_bool, value_text, history
+                      min_val, max_val, value_num, value_bool, value_text, history, updated_at
                FROM device_points WHERE device_id = $1 ORDER BY code"#,
         )
         .bind(device_id)
