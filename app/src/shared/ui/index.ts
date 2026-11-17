@@ -6,6 +6,7 @@ export { TabBar, type TabKey } from './TabBar';
 export { Glass } from './Glass';
 export { Icon, iconForCapability, iconForCategory, type IconName } from './Icon';
 export { Screen } from './Screen';
+export { Skeleton, HomeSkeleton } from './Skeleton';
 export { Sparkline } from './Sparkline';
 export { ChipPicker } from './ChipPicker';
 export { Section } from './Section';

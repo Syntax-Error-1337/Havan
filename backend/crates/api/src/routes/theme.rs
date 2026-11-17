@@ -7,7 +7,7 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::State;
-use axum::http::{HeaderMap, HeaderValue, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::get;
 
@@ -28,16 +28,70 @@ pub fn router() -> Router<AppState> {
 ///
 /// Public on purpose, and cached for a minute: a phone that starts offline keeps the theme it last
 /// saw, and one that starts online spends no round trip doing it.
-async fn public_theme(State(state): State<AppState>) -> ApiResult<impl IntoResponse> {
+async fn public_theme(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<impl IntoResponse> {
     let theme = state.theme.load().await.map_err(ApiError)?;
 
-    Ok((
-        [(
+    // A weak validator derived from what an operator changes: the row's `updated_at`, or the values
+    // themselves when the row has never been written. A million phones asking on launch should be
+    // answering "nothing changed" with 304 and no body, not re-downloading a palette they already have.
+    let etag = etag_for(&theme);
+
+    let unchanged = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|sent| sent.split(',').any(|candidate| candidate.trim() == etag));
+
+    let cache = [
+        (
             header::CACHE_CONTROL,
             HeaderValue::from_static("public, max-age=60"),
-        )],
-        Json(theme),
-    ))
+        ),
+        // The tag is hex and two quotes, so this cannot fail; if it somehow did, that is our bug and
+        // a 500 is the honest answer rather than serving a theme with no validator.
+        (
+            header::ETAG,
+            HeaderValue::from_str(&etag).map_err(|_| {
+                ApiError(kernel::AppError::code(
+                    kernel::ErrorCode::Internal,
+                    "could not build the theme validator",
+                ))
+            })?,
+        ),
+    ];
+
+    if unchanged {
+        return Ok((
+            StatusCode::NOT_MODIFIED,
+            cache,
+            Json(serde_json::Value::Null),
+        )
+            .into_response());
+    }
+
+    Ok((StatusCode::OK, cache, Json(theme)).into_response())
+}
+
+/// `W/"<16 hex>"` — weak because the body's bytes are not canonical JSON, only its meaning is.
+fn etag_for(theme: &AppTheme) -> String {
+    let seed = match theme.updated_at {
+        Some(at) => format!("{}:{}", at.unix_timestamp_nanos(), theme.accent),
+        None => format!(
+            "{}:{}:{}:{}",
+            theme.product_name,
+            theme.accent,
+            theme.accent_secondary,
+            theme.mode.as_str()
+        ),
+    };
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in seed.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("W/\"{hash:016x}\"")
 }
 
 /// `GET /v1/ops/theme` — the console reads the same row the app does, so the preview cannot drift.

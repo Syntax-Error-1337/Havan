@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { Box, Button, Screen, AppText, TabBar } from '../../shared/ui';
+import { Box, Button, Screen, AppText, HomeSkeleton, TabBar } from '../../shared/ui';
 import { DeviceTile } from '../../entities/device';
 import { summarise } from '../../entities/device/model/summary';
 import { useCreateHome, useCreateRoom, useDashboard, useHomes } from '../../entities/home';
@@ -51,7 +51,7 @@ export function DashboardPage() {
   // Live state for whichever home is open.
   useHomeStream(homeId);
 
-  const { data: dashboard, isPending, refetch } = useDashboard(homeId ?? null);
+  const { data: dashboard, isPending, refetch, isRefetching } = useDashboard(homeId ?? null);
 
   // Seed the per-entity caches from the aggregate: the widgets below were written
   // against those keys, and this keeps one request for the whole screen.
@@ -120,6 +120,17 @@ export function DashboardPage() {
       <ScrollView
         contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE + tokens.space.xl }}
         showsVerticalScrollIndicator={false}
+        // Pull to refresh: the live socket keeps values current, but a person who has just plugged
+        // something in wants to ask again by hand, and a screen with no gesture for that feels stuck.
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching && !isPending}
+            onRefresh={() => void refetch()}
+            tintColor={color.muted}
+            colors={[color.accent]}
+            progressBackgroundColor={color.surface}
+          />
+        }
       >
         <Box px="lg" py="md" gap="lg">
           <HomeHeader name={homeName} person={person} subtitle={onlineText} clock={clock} />
@@ -184,14 +195,7 @@ export function DashboardPage() {
         ) : null}
 
         {isPending ? (
-          <Box p="lg" gap="md">
-            {[0, 1, 2].map((i) => (
-              <Box
-                key={i}
-                style={{ height: 96, borderRadius: tokens.radius.lg, backgroundColor: color.glass }}
-              />
-            ))}
-          </Box>
+          <HomeSkeleton />
         ) : devices.length === 0 ? (
           <Box p="xl" gap="md" center>
             <AppText variant="title" weight="600">

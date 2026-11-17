@@ -1,5 +1,5 @@
 import { View } from 'react-native';
-import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import type { Bucket } from '../../entities/device/model/history';
 
@@ -67,6 +67,11 @@ export function AreaChart({
         </Defs>
         {showFill ? <Path d={area} fill="url(#area)" /> : null}
         <Path d={line} stroke={accent} strokeWidth="2.4" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+        {/* The current reading, marked. A line that stops at the right edge leaves the reader asking
+            whether the last point is now or an hour ago — the same question the range text answered
+            in numbers, answered here in space. */}
+        <Circle cx={width} cy={y(values[values.length - 1]!)} r="4" fill={accent} />
+        <Circle cx={width} cy={y(values[values.length - 1]!)} r="8" fill={accent} fillOpacity="0.22" />
       </Svg>
     </View>
   );

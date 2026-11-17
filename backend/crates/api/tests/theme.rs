@@ -99,6 +99,52 @@ async fn the_sign_in_screen_can_be_branded_without_a_session() {
 }
 
 #[tokio::test]
+async fn a_phone_that_already_has_the_brand_is_told_nothing_changed() {
+    let Some((base, _state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+
+    // The whole test reads and writes the one global row, so it takes the turn for its duration:
+    // two tests sharing the theme row is how a validator test fails for a reason that is not the code.
+    let _turn = THEME_LOCK.lock().await;
+
+    let client = reqwest::Client::new();
+    let first = client
+        .get(format!("{base}/v1/theme"))
+        .send()
+        .await
+        .expect("first");
+    assert_eq!(first.status(), 200);
+
+    let etag = first
+        .headers()
+        .get("etag")
+        .and_then(|v| v.to_str().ok())
+        .expect("an etag: without it every launch re-downloads the palette")
+        .to_string();
+
+    let second = client
+        .get(format!("{base}/v1/theme"))
+        .header("if-none-match", &etag)
+        .send()
+        .await
+        .expect("second");
+    assert_eq!(second.status(), 304);
+    assert_eq!(second.bytes().await.expect("body").len(), 0);
+
+    // A different theme is a different validator: a 304 here would pin every phone to the old brand.
+    assert_eq!(put(&base, body("#10B981", "dark")).await.status(), 200);
+    let changed = client
+        .get(format!("{base}/v1/theme"))
+        .header("if-none-match", &etag)
+        .send()
+        .await
+        .expect("changed");
+    assert_eq!(changed.status(), 200);
+}
+
+#[tokio::test]
 async fn what_the_operator_saves_is_what_the_app_reads() {
     let Some((base, _state)) = boot().await else {
         eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
@@ -180,19 +226,31 @@ async fn a_second_identical_save_is_not_recorded_as_a_change() {
 
     // Start from a known theme, then save exactly the same thing twice.
     assert_eq!(put(&base, body("#8b5cf6", "dark")).await.status(), 200);
-    let before = state.theme.history(20).await.expect("history").len();
+    // The newest row is the receipt: comparing counts would compare a capped page of 20 and stop
+    // noticing anything once the log is longer than that.
+    let before = state.theme.history(1).await.expect("history");
     assert_eq!(put(&base, body("#8B5CF6", "dark")).await.status(), 200);
-    let after = state.theme.history(20).await.expect("history").len();
+    let after = state.theme.history(1).await.expect("history");
 
     assert_eq!(
-        before, after,
+        before[0].changed_at, after[0].changed_at,
         "a save that changes nothing must not write a history row: a log of no-ops is a log nobody reads"
     );
 
-    // A real change does write one, and it names the field.
-    assert_eq!(put(&base, body("#10B981", "dark")).await.status(), 200);
-    let changes = state.theme.history(20).await.expect("history");
-    assert!(changes.len() > after);
+    // A real change does write one, and it names the field. The colour is chosen against what is
+    // saved now, because a fixed colour is only a change the first time this test ever runs.
+    let current = state.theme.load().await.expect("load").accent;
+    let next = if current == "#10B981" {
+        "#F43F5E"
+    } else {
+        "#10B981"
+    };
+    assert_eq!(put(&base, body(next, "dark")).await.status(), 200);
+    let changes = state.theme.history(1).await.expect("history");
+    assert!(
+        changes[0].changed_at > before[0].changed_at,
+        "a real change has to leave a newer receipt"
+    );
     assert!(changes[0].fields.contains(&"accent".to_string()));
     assert_eq!(
         changes[0].changed_by, "ops",
