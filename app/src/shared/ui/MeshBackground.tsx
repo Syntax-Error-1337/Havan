@@ -15,7 +15,13 @@ import { useTheme } from '../../app-shell/theme';
  * render looks broken, and a mood that moves is a mood nobody can recognise twice.
  */
 export function MeshBackground() {
-  const { dark } = useTheme();
+  const { dark, color } = useTheme();
+
+  // The two washes are the brand's colours at low opacity, so a white-label operator's canvas is lit
+  // by their accent rather than by ours. The base stays a near-black (or near-white) neutral: a room
+  // lit from three sides still needs a floor.
+  const warm = color.accent;
+  const cool = color.accentAlt;
 
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -29,22 +35,22 @@ export function MeshBackground() {
 
           {/* Teal high left: the cool light a room gets from a window. */}
           <RadialGradient id="teal" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={dark ? '#0E7490' : '#7DD3FC'} stopOpacity={dark ? 0.55 : 0.5} />
-            <Stop offset="0.55" stopColor={dark ? '#0E7490' : '#7DD3FC'} stopOpacity={dark ? 0.16 : 0.16} />
+            <Stop offset="0" stopColor={warm} stopOpacity={dark ? 0.5 : 0.45} />
+            <Stop offset="0.55" stopColor={warm} stopOpacity={dark ? 0.14 : 0.14} />
             <Stop offset="1" stopColor="#0E7490" stopOpacity="0" />
           </RadialGradient>
 
           {/* Violet right: the accent family, low and wide so it never bands. */}
           <RadialGradient id="violet" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={dark ? '#6D28D9' : '#A78BFA'} stopOpacity={dark ? 0.5 : 0.42} />
-            <Stop offset="0.6" stopColor={dark ? '#6D28D9' : '#A78BFA'} stopOpacity={dark ? 0.14 : 0.12} />
+            <Stop offset="0" stopColor={cool} stopOpacity={dark ? 0.46 : 0.38} />
+            <Stop offset="0.6" stopColor={cool} stopOpacity={dark ? 0.13 : 0.1} />
             <Stop offset="1" stopColor="#6D28D9" stopOpacity="0" />
           </RadialGradient>
 
           {/* Indigo at the foot: keeps the tab bar from sitting on pure black. */}
           <RadialGradient id="indigo" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={dark ? '#1E3A8A' : '#93C5FD'} stopOpacity={dark ? 0.45 : 0.3} />
-            <Stop offset="1" stopColor="#1E3A8A" stopOpacity="0" />
+            <Stop offset="0" stopColor={warm} stopOpacity={dark ? 0.3 : 0.22} />
+            <Stop offset="1" stopColor={cool} stopOpacity="0" />
           </RadialGradient>
         </Defs>
 

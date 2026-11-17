@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View } from 'react-native';
 import { ApiError } from '../shared/api/client';
-import { ThemeProvider, tokens } from './theme';
+import { PlatformThemeProvider, ThemeProvider, tokens } from './theme';
 import { installRefreshHandler, useSession } from '../entities/session';
 
 /**
@@ -64,9 +64,9 @@ export function Providers({ children }: { children: ReactNode }) {
           still tested — Settings can switch to it — but the default is the night one, and saying so
           here is better than defaulting to whatever a browser reports as the platform preference.
         */}
-        <ThemeProvider mode="dark">
+        <PlatformThemeProvider>
           <SessionBoot>{children}</SessionBoot>
-        </ThemeProvider>
+        </PlatformThemeProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
   );

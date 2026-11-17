@@ -362,6 +362,24 @@ than from taste:
   device's switch is dimmed, because a live-looking switch promises a command the
   platform cannot deliver.
 
+### The brand is data, not a constant
+
+`tokens.ts` used to be the whole brand, which meant a white-label partner needed a fork. It is now the
+**default** brand. `GET /v1/theme` returns the operator's (`product_name`, `logo_text`, `accent`,
+`accent_secondary`, `mode`, and a computed `accent_on`), and `PlatformThemeProvider` turns that into
+the palette every screen already reads — no screen changed to become white-label.
+
+- **Only three things move**: the accent, the text colour that sits on it, and the halo derived from
+  it. Backgrounds, text tiers and separators stay the system's: a customer buys a product that still
+  behaves like a phone, not a colour picker that can make a screen unreadable.
+- **The server decides readability.** `accent_on` arrives computed by luminance; the app never guesses
+  and the console's preview applies the same rule, so what the operator sees is what ships.
+- **It survives a cold start offline.** The last good answer is cached in `expo-secure-store` and used
+  before the first paint; a failed fetch, a 500 or a malformed payload all fall back to the built-in
+  palette rather than to a blank screen.
+- **It is cached for an hour in the client and a minute on the wire.** A brand changes when an
+  operator decides to, not between two launches.
+
 ### Demo content
 
 `scripts/seed-demo.sql` fills the demo account's home with the products the vendor

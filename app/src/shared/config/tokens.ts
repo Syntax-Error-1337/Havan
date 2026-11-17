@@ -37,6 +37,8 @@ export type Palette = {
   glass: string;
   /** Accent at low alpha, for the halo behind an icon and the fill under a chart. */
   glow: string;
+  /** The operator's second colour: charts, secondary highlights, the second washes of the mesh. */
+  accentAlt: string;
 };
 
 /** iOS light appearance. */
@@ -62,6 +64,7 @@ export const light: Palette = {
   bgBottom: '#E8ECF6',
   glass: 'rgba(255,255,255,0.78)',
   glow: 'rgba(0,122,255,0.14)',
+  accentAlt: '#8B5CF6',
 };
 
 /** iOS dark appearance. Not a dimmed light theme: different values by design. */
@@ -83,6 +86,7 @@ export const dark: Palette = {
   bgBottom: '#05070F',
   glass: 'rgba(255,255,255,0.06)',
   glow: 'rgba(10,132,255,0.22)',
+  accentAlt: '#8B5CF6',
 };
 
 export const tokens = {
@@ -146,4 +150,38 @@ export function glowFor(category: string | undefined, fallback: string): string 
 }
 
 export type Tokens = typeof tokens;
-export type Theme = { color: Palette; dark: boolean };
+/** Who the product is, as the operator named it. */
+export type Brand = { productName: string; logoText: string };
+
+export type Theme = { color: Palette; dark: boolean; brand: Brand };
+
+/**
+ * The same palette, wearing an operator's accent.
+ *
+ * Only the three things that are *the brand* move: the accent, the text that sits on it, and the halo
+ * derived from it. Everything else — backgrounds, text tiers, separators — stays the system's,
+ * because a white-label customer is buying a product that still behaves like a phone, not a
+ * colour picker that can make a screen unreadable.
+ */
+export function applyBrand(
+  base: Palette,
+  brand: { accent: string; accentOn?: string; accentSecondary?: string },
+): Palette {
+  const accent = brand.accent;
+  return {
+    ...base,
+    accent,
+    onAccent: brand.accentOn ?? base.onAccent,
+    accentAlt: brand.accentSecondary ?? base.accentAlt,
+    glow: withAlphaLocal(accent, base.glow.includes('0.22') ? 0.22 : 0.14),
+  };
+}
+
+function withAlphaLocal(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return hex;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}

@@ -120,7 +120,7 @@ export function StatRail({
     });
   }
   if (rooms > 0) {
-    chips.push({ icon: 'home', label: 'Rooms', value: String(rooms), accent: '#60A5FA' });
+    chips.push({ icon: 'home', label: 'Rooms', value: String(rooms), accent: color.accentAlt });
   }
   if (summary.unlocked > 0) {
     chips.push({

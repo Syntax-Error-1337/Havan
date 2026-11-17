@@ -30,6 +30,7 @@ import { tokens } from '../../shared/config/tokens';
  */
 export function SettingsPage() {
   const router = useRouter();
+  const { brand } = useTheme();
 
   const homeId = useSession((s) => s.homeId);
   const signOut = useSession((s) => s.signOut);
@@ -107,12 +108,12 @@ export function SettingsPage() {
         </Section>
 
         <Section title="About">
-          <Row title="App" value="Haven" />
+          <Row title="App" value={brand.productName} />
           <Row title="Back to home" onPress={() => router.push('/')} />
         </Section>
 
         <AppText variant="caption" tone="muted" style={{ textAlign: 'center' }}>
-          Haven 0.1.0
+          {brand.productName} 0.1.0
         </AppText>
       </ScrollView>
     </Screen>
@@ -133,7 +134,7 @@ function EditableRow({
   onSave: (next: string) => void;
   right?: ReactNode;
 }) {
-  const { color } = useTheme();
+  const { color, brand } = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
