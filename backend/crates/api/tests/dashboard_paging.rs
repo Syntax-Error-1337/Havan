@@ -203,6 +203,29 @@ async fn a_page_is_a_page_and_the_cursor_reaches_the_rest() {
 }
 
 #[tokio::test]
+async fn the_presence_is_the_homes_and_not_the_pages() {
+    let Some(f) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+
+    // Two of five devices on a page of two: a header that counted the page would say "2 offline".
+    let (status, body) = page(&f, "device_limit=2").await;
+    assert_eq!(status, 200);
+    let presence = &body["presence"];
+    assert_eq!(presence["total"], 5, "the house, not the response");
+    // The fixture's devices were created now and have never reported: online, but silent, is the
+    // honest answer, and either way the two counts have to agree with the total.
+    let online = presence["online"].as_i64().expect("online");
+    let silent = presence["silent"].as_i64().expect("silent");
+    assert_eq!(
+        online + silent,
+        5,
+        "every device is either reporting or not"
+    );
+}
+
+#[tokio::test]
 async fn no_limit_still_answers_with_the_whole_home() {
     let Some(f) = boot().await else {
         eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");

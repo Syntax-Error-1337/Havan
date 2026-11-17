@@ -296,6 +296,9 @@ struct Dashboard {
     devices_total: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     devices_next_cursor: Option<String>,
+    /// The home's own presence, not the page's: a 1 200-device home that reports "200 offline"
+    /// because it fetched 200 devices is telling the customer about our pagination.
+    presence: domain::devices::Presence,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -349,6 +352,12 @@ async fn dashboard(
         .list(id, auth.user.id)
         .await
         .map_err(ApiError)?;
+    let presence = state
+        .devices
+        .home_presence(id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
     let unread_count = state
         .notifications
         .unread_count(auth.user.id)
@@ -361,6 +370,7 @@ async fn dashboard(
         devices,
         scenes,
         unread_count,
+        presence,
         devices_total,
         devices_next_cursor,
     }))

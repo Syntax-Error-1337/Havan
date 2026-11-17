@@ -276,6 +276,40 @@ impl DeviceRepo for PgDevices {
     /// of a large home costs fifty pages of work, and a device claimed between two requests shifts
     /// every later row — the classic page that skips an item or shows one twice. The ordering is
     /// `(room sort, name, id)`, and `id` is there because two devices in one room can share a name.
+    async fn home_presence(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<domain::devices::Presence, AppError> {
+        let mut tx = self.pg.scoped(&ctx_for(user_id)).await?;
+        // One row, three counts. The silence rule is the client's own (`max(15 min, 3 x interval)`),
+        // written once here so the header cannot drift from the tiles it summarises.
+        let row: (i64, i64, i64) = sqlx::query_as(
+            r#"SELECT count(*),
+                      count(*) FILTER (WHERE d.online)::bigint,
+                      count(*) FILTER (
+                          WHERE NOT d.online
+                             OR d.last_seen_at IS NULL
+                             OR d.last_seen_at < now() - GREATEST(
+                                    interval '15 minutes',
+                                    COALESCE(d.report_interval_secs, 60) * 3 * interval '1 second')
+                      )::bigint
+                 FROM devices d
+                WHERE d.home_id = $1"#,
+        )
+        .bind(home_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(domain::devices::Presence {
+            total: row.0,
+            online: row.1,
+            silent: row.2,
+        })
+    }
+
     async fn list_page(
         &self,
         home_id: Uuid,

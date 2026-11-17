@@ -55,6 +55,12 @@ the client shipping a change — and a cursor this server did not issue is refus
 the page's points are read, which is half of what paging is for — the payload was 322 kB for a
 hundred devices.
 
+Every answer also carries `presence: { total, online, silent }`, counted over the **home's** rows rather
+than the page's. The header used to summarise the page it had fetched, so a 1,200-device home read
+"200 offline" — a fact about our pagination printed as a fact about the house. `silent` applies the
+client's own rule (`max(15 min, 3 × report_interval_secs)`) in SQL, so the header and the tiles cannot
+disagree about who has gone quiet.
+
 ### Appearance (no session needed)
 
 | Method | Path | Notes |

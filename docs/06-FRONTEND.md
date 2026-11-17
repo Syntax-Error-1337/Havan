@@ -152,6 +152,38 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### A pill that counted the page
+
+The header of a 1,200-device home read **`200 offline`**. Two hundred was the size of the dashboard page it had
+fetched; the home's own answer was *1,200* — every one of the seeded devices had long stopped reporting. The
+presence pill was summarising our pagination and printing it as a fact about the house.
+
+This is the third appearance of the same rule in this document ("a count is a fact about the home, not about the
+page you fetched"), and the first two were fixed by *reading* `devices_total` rather than by counting client-side.
+Here the number did not exist at all: the dashboard answer carried the page, the home's total, and nothing about
+presence.
+
+So the server counts it. `devices.home_presence` is one aggregate over the home's rows:
+
+```sql
+SELECT count(*),
+       count(*) FILTER (WHERE d.online),
+       count(*) FILTER (WHERE NOT d.online
+                           OR d.last_seen_at IS NULL
+                           OR d.last_seen_at < now() - GREATEST(
+                                  interval '15 minutes',
+                                  COALESCE(d.report_interval_secs, 60) * 3 * interval '1 second'))
+  FROM devices d WHERE d.home_id = $1
+```
+
+That is the client's own silence rule — `max(15 min, 3 × report_interval)` — written once on the server so the
+header and the tiles cannot drift apart. `GET /homes/{id}/dashboard` now returns `presence: { total, online,
+silent }`, and the app prefers it, falling back to the page summary when talking to an older server.
+
+Verified against the running API and then on the Plant home: `presence: { total: 1200, online: 0, silent: 1200 }`,
+and the pill reads **`1,200 offline`** instead of `200 offline` (with locale separators, like the subtitle above
+it — "1200 offline" is a number, "1,200 offline" is a count).
+
 ### A fleet you cannot look anything up in
 
 The vendor's fleet screen showed 1,909 devices, 200 at a time, with one filter: a `State` dropdown. The first

@@ -135,6 +135,15 @@ pub struct Device {
 ///
 /// `next_cursor` is opaque to the client on purpose: it names a position in an ordering the server
 /// owns, so the server can change the ordering without the app shipping a matching change.
+/// The home's presence, as counts that add up to the fleet a customer sees.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct Presence {
+    pub total: i64,
+    pub online: i64,
+    /// Online but quiet, or not online at all: the number the header's pill shows.
+    pub silent: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DevicePage {
     pub devices: Vec<Device>,
@@ -210,6 +219,20 @@ pub trait DeviceRepo {
     ///
     /// Defaulted so an in-memory repo in a test does not have to grow a cursor: it slices the full
     /// list, which is exactly right for three devices and is never used in production.
+    /// How the home as a whole is doing: devices online, devices that have gone quiet.
+    ///
+    /// The header's presence pill used to count the *page* it had fetched, so a 1 200-device home read
+    /// "200 offline" — a fact about the response, printed as a fact about the house. This is one indexed
+    /// count over the home's own rows, and it is what the pill needs to be true at any size.
+    ///
+    /// "Silent" is the same rule the client applies per device (`max(15 min, 3 x report_interval)`),
+    /// expressed once so the header and the tiles cannot disagree.
+    fn home_presence(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<Presence, AppError>> + Send;
+
     fn list_page(
         &self,
         home_id: Uuid,
@@ -388,6 +411,12 @@ where
     }
 
     /// One page, with the home check first so a stranger learns nothing about the page size.
+    /// The home's presence. A read-through: the rule lives in the repository because it is one SQL
+    /// aggregate, and the service has nothing to decide.
+    pub async fn home_presence(&self, home_id: Uuid, user_id: Uuid) -> Result<Presence, AppError> {
+        self.devices.home_presence(home_id, user_id).await
+    }
+
     pub async fn list_page(
         &self,
         home_id: Uuid,
@@ -708,6 +737,21 @@ mod tests {
                 .cloned()
                 .collect())
         }
+        /// The fake keeps no timestamps, so "silent" is "not online": the same shape, none of the clock.
+        async fn home_presence(&self, home_id: Uuid, _user: Uuid) -> Result<Presence, AppError> {
+            let devices = self.devices.lock().unwrap();
+            let mine: Vec<&Device> = devices
+                .iter()
+                .filter(|d| d.home_id == Some(home_id))
+                .collect();
+            let online = mine.iter().filter(|d| d.online).count() as i64;
+            Ok(Presence {
+                total: mine.len() as i64,
+                online,
+                silent: mine.len() as i64 - online,
+            })
+        }
+
         async fn get(&self, id: Uuid, _user: Uuid) -> Result<Option<Device>, AppError> {
             Ok(self
                 .devices

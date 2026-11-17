@@ -17,6 +17,14 @@ export type Dashboard = {
   devices_total?: number;
   /** Present only when there is another page behind this one. */
   devices_next_cursor?: string;
+  /**
+   * The home's own presence, counted on the server.
+   *
+   * The header used to count the devices it had fetched, so a 1,200-device home said "200 offline" —
+   * the page's truth printed as the house's. Absent on an older server, in which case the page count
+   * is the only answer available and the header falls back to it.
+   */
+  presence?: { total: number; online: number; silent: number };
 };
 
 /** How many devices one dashboard request asks for. */

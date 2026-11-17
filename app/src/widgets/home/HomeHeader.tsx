@@ -158,13 +158,15 @@ export function HomeHeader({
             {/* The number lives here and the *explanation* lives in the banner below, so the same count is
                 not printed twice in two different vocabularies ("1/6 online" / "5 not reporting"). */}
             <AppText variant="caption" weight="600">
+              {/* Locale separators: "1200 offline" is a number, "1,200 offline" is a count — the same
+                  reason the subtitle underneath formats its total. */}
               {unknown
                 ? 'unknown'
                 : total === 0
                   ? 'no devices'
-                : silent === 0
-                  ? `${online} of ${total} online`
-                  : `${silent} offline`}
+                  : silent === 0
+                    ? `${online.toLocaleString()} of ${total.toLocaleString()} online`
+                    : `${silent.toLocaleString()} offline`}
             </AppText>
           </View>
         </Glass>

@@ -209,10 +209,10 @@ export function DashboardPage() {
   const subtitleText = dashboardFailed
     ? '— devices · — rooms'
     : devices.length === totalDevices
-      ? `${totalDevices} ${totalDevices === 1 ? 'device' : 'devices'} · ${roomCount} ${
+      ? `${totalDevices.toLocaleString()} ${totalDevices === 1 ? 'device' : 'devices'} · ${roomCount} ${
           roomCount === 1 ? 'room' : 'rooms'
         }`
-      : `${totalDevices} devices · showing ${devices.length}`;
+      : `${totalDevices.toLocaleString()} devices · showing ${devices.length.toLocaleString()}`;
 
   return (
     <Screen>
@@ -239,9 +239,11 @@ export function DashboardPage() {
                 name={homeName}
                 person={person}
                 subtitle={subtitleText}
-                online={summary.online}
-                total={totalDevices}
-                silent={summary.silent}
+                online={dashboard?.presence?.online ?? summary.online}
+                total={dashboard?.presence?.total ?? totalDevices}
+                // The pill's number is the home's, counted by the server: on a paged home the page's
+                // own summary is a fact about our pagination.
+                silent={dashboard?.presence?.silent ?? summary.silent}
                 unknown={dashboardFailed}
                 unread={unread}
                 onOpenAlerts={() => router.push('/alerts')}
