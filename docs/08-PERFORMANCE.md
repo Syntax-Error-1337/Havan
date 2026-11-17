@@ -139,6 +139,40 @@ Measured on this machine, six sockets on one home:
 Both numbers are exported as gauges because the ratio *is* the health check: channels should track homes
 with a phone open, sockets should track phones. If they converge again, the fan-out has regressed.
 
+### A thousand phones on one pod, then two pods
+
+`scripts/sockets.sh` (`make sockets`) holds N real websockets open on one home and counts what Redis, the
+pods and the sockets actually do. Measured on the dev laptop:
+
+| run | sockets | pods | Redis subs on the home | every socket got the frame | armed |
+|---|---|---|---|---|---|
+| one pod | 1 000 | `:8080` | **1** | **1 000 / 1 000** | 1.18 s |
+| one pod | 1 500 | `:8080` | **1** | **1 500 / 1 500** | 1.81 s |
+| two pods | 1 000 | 500 + 500 | **2** (one per pod) | **1 000 / 1 000** | 1.05 s |
+
+A second pod is one environment variable — `HAVEN_BIND=127.0.0.1:8090 ./backend/target/debug/haven-api` —
+and `make sockets PORTS=8080,8090` spreads the phones across both.
+
+Per-pod gauges during the two-pod run — the numbers an operator would page on:
+
+```text
+pod :8080  sockets 500  channels 2  rss 62 MB
+pod :8090  sockets 500  channels 2  rss 59 MB
+redis subscriptions on the home channel: 2
+```
+
+Memory on one pod at 1 500 sockets: **32 MB -> 190 MB** (~105 kB a socket: a tokio task, two socket buffers
+and its broadcast receiver). A second 1 500-socket run on the same process went **149 MB -> 208 MB** — the
+arena is reused, it does not double. After the sockets close, RSS stays near the peak: the allocator keeps
+pages it has already asked for. That is a plateau, not a leak, and the way to tell is to run it twice
+rather than once.
+
+The honest limit: **a per-process hub costs one Redis subscription per pod per channel.** Two replicas
+serving one home hold two subscriptions and Redis delivers the frame twice — once per pod, which is exactly
+the fan-out the per-socket design did N times. Ten pods serving one home cost ten. Past that the answer is a
+single fan-out tier (one subscriber forwarding to pods over their own channel), not a bigger broadcast
+buffer, and it should be built when a home actually spans pods rather than before.
+
 The cost is one extra hop through an in-process broadcast channel per event (~microseconds), and one
 bounded backlog per channel: a socket that falls 256 messages behind is not reading, and is better
 dropped than allowed to stall its neighbours.

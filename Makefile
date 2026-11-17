@@ -211,6 +211,9 @@ load: ## how much ingest this stack takes, and whether it loses any (RATE= SECON
 api-replicas: ## two API instances: do they agree about a dependency that died?
 	@bash scripts/api-replicas.sh
 
+sockets: ## one home, N phones: subscriptions per pod, memory per socket, and does every socket hear one frame (COUNT= PORTS=)
+	@bash scripts/sockets.sh $(COUNT) $(PORTS)
+
 .PHONY: broker-auth
 broker-auth: ## assert the broker authenticates a device and confines it to its own topics
 	@bash scripts/broker-auth.sh

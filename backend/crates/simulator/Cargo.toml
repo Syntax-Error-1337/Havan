@@ -13,6 +13,11 @@ path = "src/main.rs"
 name = "haven-load"
 path = "src/bin/load.rs"
 
+# A thousand phones on one home: the fan-out measurement the hub was written for.
+[[bin]]
+name = "haven-sockets"
+path = "src/bin/sockets.rs"
+
 [dependencies]
 haven-sdk.workspace = true
 protocol.workspace = true
@@ -26,3 +31,5 @@ rumqttc.workspace = true
 anyhow.workspace = true
 uuid.workspace = true
 reqwest.workspace = true
+futures-util.workspace = true
+tokio-tungstenite.workspace = true
