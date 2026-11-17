@@ -696,6 +696,25 @@ because the internal `withAlpha` could not parse the string it was given and fel
 Staleness is now expressed by dropping the halo and stepping the card's opacity back, with the accent left
 opaque for the component to fade in its own way.
 
+### One button, and it asks
+
+Three creates lived in three places: the centre button went straight to a device scan, `New room` was a chip
+among the filters, and `Add a scene` was a dashed card in the strip. A customer looking for "add something"
+had to know *which* something before they could find *where* to say it.
+
+The centre button now opens a short sheet — `Add to Workshop`: a device, a room, a scene, each with one line
+saying what it is for. The rows are sentences rather than a grid of icons because the labels carry the
+distinction ("One tap that sets several devices"), and a sheet you can read is faster than a grid you have to
+decode. Picking "Add a room" reveals the name field inline, in the list it will join, with its own Cancel.
+
+The empty scene strip is gone with it: an empty state that duplicates a menu item is a border around nothing.
+
+**The sheet asks the server's question before it asks the customer's.** `POST /homes/{id}/rooms` answers
+`403 only an admin can add a room` to a member — and the demo account *is* a member of the seeded home, so
+pressing "Add a room" did nothing at all, silently. The role arrives with the homes list, so the option is now
+drawn only when `canManage(role)`; and if the API refuses anyway, the form prints the reason under the field
+instead of failing quietly.
+
 ### Three jobs were stacked as three identical pills
 
 Under the hero card sat `Alerts · 2` beside `New room` — a status and a create action, drawn the same

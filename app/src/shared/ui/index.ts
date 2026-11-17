@@ -5,6 +5,12 @@ export { MeshBackground } from './MeshBackground';
 export { TabBar, type TabKey } from './TabBar';
 export { Glass } from './Glass';
 export { Confirm, useConfirm, type ConfirmOptions } from './Confirm';
+export {
+  ActionSheet,
+  useActionSheet,
+  type ActionItem,
+  type ActionSheetOptions,
+} from './ActionSheet';
 export { Icon, iconForCapability, iconForCategory, type IconName } from './Icon';
 export { Screen } from './Screen';
 export { Skeleton, HomeSkeleton } from './Skeleton';

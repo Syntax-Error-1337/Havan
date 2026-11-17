@@ -208,6 +208,90 @@ describe('dashboard', () => {
     expect(await view.findByText('No devices yet')).toBeTruthy();
   });
 
+  // Three creates used to live in three places: the centre button went straight to a device scan, "New
+  // room" was a chip among the filters, and "Add a scene" was a dashed card in the strip. One button now
+  // asks which, and each answer lands somewhere sensible.
+  it('asks which kind of thing to add instead of assuming a device', async () => {
+    stubApi((url) => {
+      if (url.endsWith('/homes')) {
+        return [
+          {
+            id: 'home-1',
+            owner_id: 'u1',
+            name: 'Flat',
+            timezone: 'UTC',
+            role: 'owner',
+            member_count: 1,
+            device_count: 1,
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ];
+      }
+      if (url.includes('/dashboard')) {
+        return {
+          home: { id: 'home-1', name: 'Flat', timezone: 'UTC' },
+          rooms: [],
+          devices: [],
+          scenes: [],
+          unread_count: 0,
+        };
+      }
+      return [];
+    });
+
+    const view = await renderDashboard();
+    fireEvent.press(await view.findByLabelText('Add'));
+
+    // The sheet names the home, so the person knows where it lands.
+    expect(await view.findByText('ADD TO FLAT')).toBeTruthy();
+    expect(view.getByText('Add a device')).toBeTruthy();
+    expect(view.getByText('Add a room')).toBeTruthy();
+    expect(view.getByText('Add a scene')).toBeTruthy();
+
+    // Choosing a room reveals the form in the list it will join, rather than navigating away from it.
+    fireEvent.press(view.getByTestId('action-room'));
+    expect(await view.findByPlaceholderText('Room name')).toBeTruthy();
+    expect(view.queryByText('Add a device')).toBeNull();
+  });
+
+  // The endpoint answers 403 to a member. Offering the action anyway produced a sheet that did nothing:
+  // the rule is known from the homes list, so the option is drawn only when it will work.
+  it('does not offer to add a room to a member who could not', async () => {
+    stubApi((url) => {
+      if (url.endsWith('/homes')) {
+        return [
+          {
+            id: 'home-1',
+            owner_id: 'u1',
+            name: 'Flat',
+            timezone: 'UTC',
+            role: 'member',
+            member_count: 2,
+            device_count: 1,
+            created_at: '2026-01-01T00:00:00Z',
+          },
+        ];
+      }
+      if (url.includes('/dashboard')) {
+        return {
+          home: { id: 'home-1', name: 'Flat', timezone: 'UTC' },
+          rooms: [],
+          devices: [],
+          scenes: [],
+          unread_count: 0,
+        };
+      }
+      return [];
+    });
+
+    const view = await renderDashboard();
+    fireEvent.press(await view.findByLabelText('Add'));
+
+    expect(await view.findByText('Add a device')).toBeTruthy();
+    expect(view.queryByText('Add a room')).toBeNull();
+    expect(view.getByText('Add a scene')).toBeTruthy();
+  });
+
   it('offers to create a home when the account has none', async () => {
     stubApi(() => []);
 

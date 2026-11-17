@@ -3,7 +3,16 @@ import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput,
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { Box, Button, Screen, AppText, HomeSkeleton, Icon, TabBar } from '../../shared/ui';
+import {
+  Box,
+  Button,
+  Screen,
+  AppText,
+  HomeSkeleton,
+  Icon,
+  TabBar,
+  useActionSheet,
+} from '../../shared/ui';
 import { DeviceTile } from '../../entities/device';
 import { summarise } from '../../entities/device/model/summary';
 import {
@@ -12,6 +21,7 @@ import {
   useCreateRoom,
   useDashboard,
   useDashboardTail,
+  canManage,
   useHomes,
 } from '../../entities/home';
 import type { Dashboard } from '../../entities/home';
@@ -20,6 +30,7 @@ import { useMe, useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
 import { withAlpha } from '../../shared/ui/Glass';
+import { ApiError } from '../../shared/api/client';
 import { useTheme } from '../../app-shell/theme';
 import { groupByRoom } from './sections';
 import { buildRows } from './rows';
@@ -119,6 +130,7 @@ export function DashboardPage() {
   const unread = dashboard?.unread_count ?? 0;
   const createRoom = useCreateRoom(homeId ?? undefined);
   const [addingRoom, setAddingRoom] = useState(false);
+  const addSheet = useActionSheet();
   const [roomName, setRoomName] = useState('');
 
   // Search is local: the dashboard already holds every device, so asking the network again would be
@@ -172,7 +184,11 @@ export function DashboardPage() {
 
   // The dashboard already carries the home; the list is only a fallback for the
   // moment before it lands.
-  const homeName = dashboard?.home.name ?? homes?.find((h) => h.id === homeId)?.name ?? 'Home';
+  const home = homes?.find((h) => h.id === homeId);
+  const homeName = dashboard?.home.name ?? home?.name ?? 'Home';
+  // What this person is allowed to change. A member who is offered "Add a room" gets a 403 from an API
+  // they cannot see and a sheet that did nothing — the permission is known before the button is drawn.
+  const mayManage = Boolean(home && canManage(home.role));
   const person = me?.display_name || me?.email || 'You';
   // The count is the home's, not the page's: "171 of 200 online" on a 420-device home is a lie the
   // page size told.
@@ -344,14 +360,6 @@ export function DashboardPage() {
                     ))}
                   </>
                 ) : null}
-                {/* Creating a room belongs with the rooms this row filters, not floated above the search
-                    box next to a notification count. It is also the only create action still on this
-                    screen that has nowhere else to live. */}
-                <Chip
-                  label={addingRoom ? 'Cancel' : '+ Room'}
-                  onPress={() => setAddingRoom((v) => !v)}
-                  selected={addingRoom}
-                />
               </ScrollView>
 
               {filtering ? (
@@ -393,6 +401,25 @@ export function DashboardPage() {
                       )
                     }
                   />
+                  {/* The chip that used to open this form also said "Cancel". Now that the form is reached
+                      from the add sheet, it has to carry its own way out or the only exit is a saved room. */}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel adding a room"
+                    onPress={() => {
+                      setRoomName('');
+                      setAddingRoom(false);
+                    }}
+                    hitSlop={8}
+                    style={{ paddingHorizontal: 8 }}
+                  >
+                    <AppText tone="muted">Cancel</AppText>
+                  </Pressable>
+                {createRoom.isError ? (
+                  <AppText variant="tiny" style={{ color: color.danger }} testID="room-error">
+                    {roomError(createRoom.error)}
+                  </AppText>
+                ) : null}
                 </Box>
               ) : null}
             </Box>
@@ -528,16 +555,65 @@ export function DashboardPage() {
         removeClippedSubviews
       />
 
+      {addSheet.sheet}
+
       <TabBar
         active="home"
         onSelect={(key) => {
           if (key === 'automations') router.push('/automations');
-          if (key === 'add') router.push('/add-device');
+          if (key === 'add') {
+            addSheet.open({
+              // The home's name, not "add something": a sheet that says where the thing will land is a
+              // sheet you do not have to think about.
+              title: `Add to ${homeName}`,
+              items: [
+                {
+                  key: 'device',
+                  label: 'Add a device',
+                  hint: 'Scan for a nearby bulb, plug or sensor',
+                  icon: 'radar',
+                  onPress: () => router.push('/add-device'),
+                },
+                ...(mayManage
+                  ? [
+                      {
+                        key: 'room',
+                        label: 'Add a room',
+                        hint: 'Group devices by where they are',
+                        icon: 'home' as const,
+                        onPress: () => setAddingRoom(true),
+                      },
+                    ]
+                  : []),
+                {
+                  key: 'scene',
+                  label: 'Add a scene',
+                  hint: 'One tap that sets several devices',
+                  icon: 'sparkle',
+                  onPress: () => router.push('/scenes'),
+                },
+              ],
+            });
+          }
           if (key === 'settings') router.push('/settings');
         }}
       />
     </Screen>
   );
+}
+
+/**
+ * The server's refusal, in the words of the thing that refused.
+ *
+ * `useCreateRoom` posts to an endpoint that answers 403 for a member; before this line the form simply
+ * stopped working, which reads as a bug in the app rather than a rule of the house.
+ */
+function roomError(error: unknown): string {
+  if (!(error instanceof ApiError)) return 'Could not reach the hub. Try again.';
+  if (error.code === 'forbidden') return 'Only an owner or admin can add a room to this home.';
+  if (error.code === 'conflict') return 'There is already a room with that name.';
+  if (error.code === 'validation_failed') return error.message;
+  return 'That room could not be created. Try again.';
 }
 
 /** One pill. Three of them, not five: a rail of chips is navigation, not a settings panel. */

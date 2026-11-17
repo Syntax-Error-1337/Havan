@@ -35,36 +35,11 @@ export function SceneStrip({
   const activate = useActivateScene(homeId);
   const [note, setNote] = useState<{ sceneId: string; text: string; bad: boolean } | null>(null);
 
-  // With no scenes the strip still offers the way to make one, but only once
-  // the home has devices: a scene with nothing to control is a dead end.
+  // A home with no scenes shows no strip. It used to draw a dashed "+ Add a scene" card here, which was
+  // the third place on one screen to create something — the centre button now offers that alongside "add a
+  // device" and "add a room", and an empty strip above the device list is just a gap with a border.
   if (isPending) return null;
-  if (!scenes || scenes.length === 0) {
-    return (
-      <Box px="lg">
-        <Pressable
-          onPress={() => router.push('/scenes')}
-          accessibilityRole="button"
-          accessibilityLabel="Add a scene"
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            paddingHorizontal: 14,
-            paddingVertical: 11,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderStyle: 'dashed',
-            borderColor: color.border,
-            alignSelf: 'flex-start',
-          }}
-        >
-          <AppText variant="caption" tone="muted">
-            + Add a scene
-          </AppText>
-        </Pressable>
-      </Box>
-    );
-  }
+  if (!scenes || scenes.length === 0) return null;
 
   const run = async (sceneId: string) => {
     setNote(null);

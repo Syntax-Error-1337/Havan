@@ -57,15 +57,15 @@ describe('scene strip', () => {
     expect(view.getByText('2 devices')).toBeTruthy();
   });
 
-  it('offers one way to make a scene when the home has none', async () => {
-    stubApi(() => []);
+  it('draws nothing at all when the home has no scenes', async () => {
+    const calls = stubApi(() => []);
     const view = await renderStrip();
 
-    // This used to assert `toJSON()` was null, which passed only when the assertion won a race
-    // against the query resolving — the strip renders one dashed affordance once it knows the home
-    // is empty. The test now says what the component actually promises: no empty strip, one action.
-    const action = await view.findByText('+ Add a scene');
-    expect(action).toBeTruthy();
+    // The strip used to render a dashed "+ Add a scene" card here, which made it the third place on the
+    // dashboard to create something. The centre button now asks what to add, so an empty strip is a gap
+    // with a border and nothing else: the promise is "no strip", not "one affordance".
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(view.queryByText('+ Add a scene')).toBeNull();
     expect(view.queryByText('Good night')).toBeNull();
   });
 
