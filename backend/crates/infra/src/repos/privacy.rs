@@ -318,6 +318,18 @@ impl PrivacyRepo for PgPrivacy {
         Ok(report)
     }
 
+    async fn purging_soon(&self) -> Result<i64, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("dsar-due")).await?;
+        let (n,): (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM users WHERE purge_after IS NOT NULL AND purge_after <= now()",
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(n)
+    }
+
     async fn purge_due(&self, limit: i64) -> Result<PurgeReport, AppError> {
         let mut tx = self.pg.scoped(&TenantCtx::system("dsar-purge")).await?;
 

@@ -215,6 +215,7 @@ aborting the burst.
 |---|---|---|
 | GET | `/me/export` | everything we hold about the caller, as a download: profile, homes, rooms, devices and their last state, scenes, automations, alerts, and the last 7 days of telemetry (≤5000 rows) |
 | DELETE | `/me` | erases the account: memberships, alerts, sessions, push tokens, and homes nobody else lives in; anonymises the person |
+| GET | `/ops/privacy/due` | `{due}` — how many tombstones are past their window right now; the console's number, and the same one the sweep acts on |
 | POST | `/ops/privacy/purge` | deletes tombstones whose retention window has passed, up to 500 per call; returns the ids purged |
 
 An export contains the caller's data only — another member of the same home appears as a role and
@@ -243,6 +244,7 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | GET | `/vendor/audit?limit=&cursor=` | the vendor's append-only trail, newest first |
 | GET/POST | `/vendor/products` | |
 | GET/PATCH | `/vendor/products/{id}` | |
+| DELETE | `/vendor/products/{id}` | `204`; `409` naming the count when devices are live on it or licence activations reference it — both make the entry permanent |
 | POST | `/vendor/products/{id}/validate` | the six rules from the thing model |
 | POST | `/vendor/products/{id}/publish` | |
 | POST | `/vendor/products/{id}/certification/submit` | `{note?}` → asks us to test it; only a published product |

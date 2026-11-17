@@ -72,5 +72,11 @@ pub trait PrivacyRepo {
     ///
     /// `limit` bounds one run so a backlog is worked through in batches instead of holding a
     /// transaction open for a thousand rows while the rest of the platform waits.
+    /// How many tombstones are past their retention window right now.
+    ///
+    /// The operator console needs this before the button: "purge" with no number in front of it is a
+    /// command nobody can sanity-check, and a number that is not zero is the finding.
+    fn purging_soon(&self) -> impl Future<Output = Result<i64, AppError>> + Send;
+
     fn purge_due(&self, limit: i64) -> impl Future<Output = Result<PurgeReport, AppError>> + Send;
 }

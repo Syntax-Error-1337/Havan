@@ -21,6 +21,19 @@ pub fn router() -> Router<AppState> {
         .route("/me/export", get(export))
         .route("/me", delete(erase))
         .route("/ops/privacy/purge", axum::routing::post(purge))
+        .route("/ops/privacy/due", axum::routing::get(due))
+}
+
+/// `GET /v1/ops/privacy/due` — how many erased accounts are past their retention window.
+async fn due(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    peer: crate::limits::Peer,
+) -> ApiResult<Json<serde_json::Value>> {
+    super::ops::require_ops(&state, &headers, &peer)?;
+    Ok(Json(
+        serde_json::json!({ "due": state.privacy.purging_soon().await.map_err(ApiError)? }),
+    ))
 }
 
 /// `POST /v1/ops/privacy/purge`

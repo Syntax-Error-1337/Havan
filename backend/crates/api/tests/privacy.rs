@@ -337,6 +337,10 @@ async fn a_tombstone_is_deleted_only_once_its_window_has_passed() {
         );
     }
 
+    // The count the operator console shows agrees with the sweep: nothing due, then one.
+    let before = privacy.purging_soon().await.expect("count");
+    assert_eq!(before, 0, "a window that has not passed is not due");
+
     // Bring the window forward, the way a month would.
     sqlx::query("UPDATE users SET purge_after = now() - interval '1 second' WHERE id = $1")
         .bind(s.user_id)
@@ -344,8 +348,14 @@ async fn a_tombstone_is_deleted_only_once_its_window_has_passed() {
         .await
         .expect("advance");
 
+    let due = privacy.purging_soon().await.expect("count");
+    assert_eq!(due, 1, "the console's number follows the window");
+
     let report = privacy.purge_due(500).await.expect("purge");
     assert!(report.purged.contains(&s.user_id));
+
+    let after = privacy.purging_soon().await.expect("count after");
+    assert_eq!(after, 0, "and returns to zero once drained");
 
     let gone: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM users WHERE id = $1")
         .bind(s.user_id)
