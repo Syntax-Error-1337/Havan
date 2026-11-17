@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { AppText, Button, Glass, Icon, Screen } from '../../shared/ui';
+import { AppText, Button, Glass, Icon, Screen, ScreenHeader } from '../../shared/ui';
 import { useCreateHome, useHomes } from '../../entities/home';
 import { useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -52,29 +52,7 @@ export function HomesPage() {
 
   return (
     <Screen>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: tokens.space.sm,
-          paddingHorizontal: tokens.space.lg,
-          paddingVertical: tokens.space.md,
-        }}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={12}
-          onPress={leave}
-        >
-          <View style={{ transform: [{ rotate: '180deg' }] }}>
-            <Icon name="chevron-right" size={20} color={color.muted} />
-          </View>
-        </Pressable>
-        <AppText variant="title" weight="700">
-          Homes
-        </AppText>
-      </View>
+      <ScreenHeader title="Homes" onBack={leave} />
 
       <ScrollView
         contentContainerStyle={{

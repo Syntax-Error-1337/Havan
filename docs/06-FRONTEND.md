@@ -560,6 +560,29 @@ Verified live: opened the device as an admin, pressed Remove, read the sheet, co
 to `/` and the device was gone from the home. The row survived with `state = 'released'`, which is what
 keeps the licence and the history honest.
 
+### The rights are in the product, not in the policy
+
+`GET /v1/me/export` and `DELETE /v1/me` have existed since Phase 6, with receipts, retention windows and
+a purge worker behind them. The app had neither screen — so a customer was legally owed a copy of their
+data and a way to delete it, and the only route to either was to ask a person.
+
+`/privacy` (Account section of Settings) now does both:
+
+- **Download a copy** fetches the bundle, names the file the way the server does
+  (`haven-export-YYYYMMDD.json`), saves it — an anchor download on web, a file plus share sheet on a
+  phone — and says what was saved: *"Saved haven-export-20261117.json · 2 homes · 1017 readings · 3
+  notifications"*. Naming the counts is the difference between a file and a file you can trust.
+- **Delete my account** asks in the app's own sheet, then shows the receipt **before** signing out:
+  *"0 homes and 0 devices deleted · 2 sessions signed out · a receipt kept for 90 days"*. The first
+  version signed out immediately, which unmounted the screen through the session gate and dropped the
+  person at a login form with no confirmation that anything had happened — found by driving it with a
+  throwaway account.
+
+Both endpoints act on the caller and nobody else, so there is no id to guess; the screen adds no new
+authority, only a way to use it. Verified live: exported the demo account's data from the phone-sized
+web build, then registered a throwaway account, deleted it from the screen, read the receipt and was
+signed out.
+
 ### Colour is a token, or it is a bug
 
 `src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and

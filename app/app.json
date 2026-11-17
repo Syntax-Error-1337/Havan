@@ -41,7 +41,8 @@
       "expo-secure-store",
       "expo-image",
       "expo-localization",
-      "react-native-ble-plx"
+      "react-native-ble-plx",
+      "expo-sharing"
     ],
     "experiments": {}
   }

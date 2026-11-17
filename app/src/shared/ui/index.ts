@@ -11,4 +11,5 @@ export { Skeleton, HomeSkeleton } from './Skeleton';
 export { Sparkline } from './Sparkline';
 export { ChipPicker } from './ChipPicker';
 export { Section } from './Section';
+export { ScreenHeader } from './ScreenHeader';
 export { Row, Toggle } from './Row';

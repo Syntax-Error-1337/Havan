@@ -65,6 +65,12 @@ export function SettingsPage() {
         <Section title="Account">
           <Row title="Email" value={me?.email ?? '—'} />
           <Row title="Name" value={me?.display_name ?? '—'} />
+          {/* The rights live one tap from the account they belong to, not buried in a web page. */}
+          <Row
+            title="Privacy"
+            subtitle="A copy of your data, or delete your account"
+            onPress={() => router.push('/privacy')}
+          />
           <Row
             title="Sign out"
             destructive
