@@ -25,6 +25,21 @@ Every mutating request accepts `Idempotency-Key`.
 
 ## Customer (app)
 
+### Appearance (no session needed)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/theme` | the platform's brand: `product_name`, `logo_text`, `accent`, `accent_secondary`, `mode`, and the computed `accent_on` |
+
+Public on purpose: the sign-in screen has to be branded before anybody has a token. Cached for
+60 seconds (`cache-control: public, max-age=60`) because a brand changes when an operator decides to,
+not between two launches. A client that starts offline keeps the last answer it saw; the app caches
+it locally and uses it before the first paint.
+
+`accent_on` is **black or white, chosen by the server** from the accent's relative luminance (WCAG's
+0.179 cut-off). It is derived, not stored and not accepted on write: two clients working it out for
+themselves is two places for a white label to become unreadable.
+
 ### Identity & homes
 
 | Method | Path | Notes |
@@ -282,6 +297,24 @@ with `details.totp = "invalid"` — different answers, because "ask me for a cod
 the portal somewhere different.
 
 ## Operator (internal)
+
+### Appearance
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/ops/theme` | the same row the app reads, so the console's preview cannot drift from it |
+| PUT | `/ops/theme` | `{product_name, logo_text, accent, accent_secondary, mode}`; returns the saved theme |
+| GET | `/ops/theme/history` | last 20 changes: `{changed_at, changed_by, fields}` |
+
+Validation lives in `domain::theme`, so the console and the API cannot disagree about what a colour
+is: `#RRGGBB` (or `#RGB`, expanded), `#` required, an unknown `mode` refused. A refusal is `422` with
+the offending field named (`error.details.field`), which is what lets the console put the message
+beside the input instead of in a toast.
+
+The actor comes from `x-ops-actor` when the console knows who is signed in, and falls back to `ops`.
+An unchanged save writes **no** history row — the diff is computed in the domain, so a log of no-ops
+never accumulates. Every real change keeps the previous theme in `app_theme_history`, because "who
+changed the brand, and what was it before" is not answerable from a single overwritten row.
 
 `/ops/*` — loopback without a token, `OPS_TOKEN` from anywhere else. The same door backs the
 **operator console** in the portal at `/admin` (vendors, health, certification queue, billing).

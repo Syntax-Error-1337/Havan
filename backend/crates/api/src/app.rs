@@ -49,6 +49,8 @@ pub struct AppState {
     pub webhooks: Arc<infra::PgWebhooks>,
     pub sso: Arc<infra::PgSso>,
     pub security: Arc<infra::PgVendorSecurity>,
+    /// Platform appearance: one row, set by an operator, read by every client.
+    pub theme: Arc<infra::PgTheme>,
     pub vendors: Arc<infra::PgVendorAdmin>,
     pub cert_queue: Arc<infra::PgCertificationQueue>,
     pub health: Arc<infra::PgPlatformHealth>,
@@ -100,6 +102,7 @@ impl AppState {
         let vendors = Arc::new(infra::PgVendorAdmin::new(pg.clone()));
         let cert_queue = Arc::new(infra::PgCertificationQueue::new(pg.clone()));
         let health = Arc::new(infra::PgPlatformHealth::new(pg.clone()));
+        let theme = Arc::new(infra::PgTheme::new(pg.clone()));
         let fleet = Arc::new(domain::fleet::FleetService::new(Arc::new(
             infra::PgFleet::new(pg.clone()),
         )));
@@ -136,6 +139,7 @@ impl AppState {
             vendors,
             cert_queue,
             health,
+            theme,
             fleet,
             audit,
             ca: Arc::new(tokio::sync::OnceCell::new()),
@@ -165,6 +169,7 @@ pub fn router(state: AppState) -> Router {
         .merge(routes::sso::router())
         .merge(routes::vendor_security::router())
         .merge(routes::vendor_admin::router())
+        .merge(routes::theme::router())
         .route(
             "/devices/{id}/history",
             axum::routing::get(routes::history::history),

@@ -19,6 +19,7 @@ pub mod privacy;
 pub mod scenes;
 pub mod sso;
 pub mod stream;
+pub mod theme;
 pub mod vendor;
 pub mod vendor_admin;
 pub mod vendor_security;
