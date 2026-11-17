@@ -182,17 +182,23 @@ impl VendorTeamRepo for PgVendorTeam {
     async fn team(&self, vendor_id: Uuid) -> Result<Team, AppError> {
         let mut tx = self.vendor_tx(vendor_id).await?;
 
-        let members: Vec<(Uuid, String, String, String, Option<time::OffsetDateTime>, bool)> =
-            sqlx::query_as(
-                r#"SELECT id, email, display_name, role, last_login_at,
+        let members: Vec<(
+            Uuid,
+            String,
+            String,
+            String,
+            Option<time::OffsetDateTime>,
+            bool,
+        )> = sqlx::query_as(
+            r#"SELECT id, email, display_name, role, last_login_at,
                           sso_subject IS NOT NULL AS sso_bound
                      FROM vendor_users WHERE vendor_id = $1
                     ORDER BY created_at"#,
-            )
-            .bind(vendor_id)
-            .fetch_all(&mut *tx)
-            .await
-            .map_err(db)?;
+        )
+        .bind(vendor_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
 
         let invites: Vec<(Uuid, String, String, time::OffsetDateTime, bool)> = sqlx::query_as(
             r#"SELECT id, email, role, expires_at, expires_at < now()

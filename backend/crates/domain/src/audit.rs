@@ -130,6 +130,18 @@ pub trait AuditRepo {
         before: Option<Uuid>,
         limit: i64,
     ) -> impl Future<Output = Result<Vec<AuditRow>, AppError>> + Send;
+
+    /// The same page across every vendor, for the operator.
+    ///
+    /// Reading it is a system act — there is no vendor to scope to — but the rows are the same rows,
+    /// so an operator's "who suspended this vendor" and the vendor's own "what happened to us" cannot
+    /// disagree. `vendor` narrows it, which is what the console does when it is looking at one.
+    fn page_all(
+        &self,
+        vendor: Option<Uuid>,
+        before: Option<Uuid>,
+        limit: i64,
+    ) -> impl Future<Output = Result<Vec<AuditRow>, AppError>> + Send;
 }
 
 pub struct AuditService<R> {
@@ -176,6 +188,30 @@ impl<R: AuditRepo + Send + Sync> AuditService<R> {
             next_cursor,
         })
     }
+
+    /// The operator's page: every vendor, or one. Same cursor rule, so an operator paging through a
+    /// busy day cannot skip an entry at a page boundary.
+    pub async fn page_all(
+        &self,
+        vendor: Option<Uuid>,
+        before: Option<Uuid>,
+        limit: Option<i64>,
+    ) -> Result<AuditPage, AppError> {
+        let limit = limit.unwrap_or(50).clamp(1, 200);
+        let mut entries = self.repo.page_all(vendor, before, limit + 1).await?;
+
+        let next_cursor = if i64::try_from(entries.len()).unwrap_or(0) > limit {
+            entries.truncate(usize::try_from(limit).unwrap_or(50));
+            entries.last().map(|e| e.id.to_string())
+        } else {
+            None
+        };
+
+        Ok(AuditPage {
+            entries,
+            next_cursor,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -196,6 +232,20 @@ mod tests {
         async fn page(
             &self,
             _vendor_id: Uuid,
+            _before: Option<Uuid>,
+            limit: i64,
+        ) -> Result<Vec<AuditRow>, AppError> {
+            Ok(self
+                .rows
+                .iter()
+                .take(usize::try_from(limit).unwrap_or(50))
+                .cloned()
+                .collect())
+        }
+
+        async fn page_all(
+            &self,
+            _vendor: Option<Uuid>,
             _before: Option<Uuid>,
             limit: i64,
         ) -> Result<Vec<AuditRow>, AppError> {

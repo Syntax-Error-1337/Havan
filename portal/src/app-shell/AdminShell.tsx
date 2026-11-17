@@ -5,6 +5,7 @@ import { useOverview } from '../entities/admin';
 import { AdminError, getAdminToken, setAdminToken } from '../shared/api/admin';
 import { AdminBillingPage } from '../pages/admin/AdminBillingPage';
 import { AdminHealthPage } from '../pages/admin/AdminHealthPage';
+import { AdminAuditPage } from '../pages/admin/AdminAuditPage';
 import { AdminPrivacyPage } from '../pages/admin/AdminPrivacyPage';
 import { AdminCertificationPage } from '../pages/admin/AdminCertificationPage';
 import { AdminLoginPage } from '../pages/admin/AdminLoginPage';
@@ -59,6 +60,9 @@ export function AdminShell() {
           <Link to="/admin/certification" className="muted">
             Certification
           </Link>
+          <Link to="/admin/audit" className="muted">
+            Audit
+          </Link>
           <Link to="/admin/privacy" className="muted">
             Privacy
           </Link>
@@ -99,6 +103,7 @@ export function AdminShell() {
           <Route path="/admin/certification" element={<AdminCertificationPage />} />
           <Route path="/admin/billing" element={<AdminBillingPage />} />
           <Route path="/admin/privacy" element={<AdminPrivacyPage />} />
+          <Route path="/admin/audit" element={<AdminAuditPage />} />
           <Route path="/admin/login" element={<Navigate to="/admin" replace />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>

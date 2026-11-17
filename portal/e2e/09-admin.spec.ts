@@ -152,3 +152,19 @@ test('the console fits a phone viewport', async ({ page }) => {
   );
   expect(overflow, 'the console scrolls sideways at 420 px').toBeLessThanOrEqual(1);
 });
+
+test('the audit log and the purge are reachable from the console', async ({ page }) => {
+  // Both were endpoint-only: an operator could suspend a vendor with no record on screen, and a data
+  // deletion the platform runs hourly had no way to be checked.
+  await page.goto('/admin/audit');
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name: 'Audit' })).toBeVisible();
+  await expect(page.getByTestId('audit-table')).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Action' })).toBeVisible();
+
+  await page.goto('/admin/privacy');
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name: 'Privacy' })).toBeVisible();
+  await expect(page.getByText('Due now')).toBeVisible();
+  await expect(page.getByTestId('run-purge')).toBeEnabled();
+});

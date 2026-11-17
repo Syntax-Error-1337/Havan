@@ -135,12 +135,14 @@ impl SsoRepo for PgSso {
                 ));
             }
             let mut tx = self.vendor_tx(vendor_id).await?;
-            sqlx::query("UPDATE vendor_users SET sso_subject = NULL WHERE vendor_id = $1 AND id = $2")
-                .bind(vendor_id)
-                .bind(user_id)
-                .execute(&mut *tx)
-                .await
-                .map_err(db)?;
+            sqlx::query(
+                "UPDATE vendor_users SET sso_subject = NULL WHERE vendor_id = $1 AND id = $2",
+            )
+            .bind(vendor_id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
             tx.commit().await.map_err(db)?;
             return Ok(());
         }

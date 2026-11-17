@@ -70,6 +70,36 @@ impl AuditRepo for PgAudit {
         tx.commit().await.map_err(db)
     }
 
+    async fn page_all(
+        &self,
+        vendor: Option<Uuid>,
+        before: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<AuditRow>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("audit-read-all")).await?;
+
+        let rows: Vec<Row> = sqlx::query_as(
+            r#"SELECT id, ts, actor_kind, actor_id, action, target_kind, target_id,
+                      request_id, host(ip), detail
+                 FROM audit_log
+                WHERE ($1::uuid IS NULL OR vendor_id = $1)
+                  AND ($2::uuid IS NULL
+                       OR (ts, id) < (SELECT ts, id FROM audit_log WHERE id = $2))
+                ORDER BY ts DESC, id DESC
+                LIMIT $3"#,
+        )
+        .bind(vendor)
+        .bind(before)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(rows.into_iter().map(into_row).collect())
+    }
+
     async fn page(
         &self,
         vendor_id: Uuid,
@@ -102,34 +132,25 @@ impl AuditRepo for PgAudit {
 
         tx.commit().await.map_err(db)?;
 
-        Ok(rows
-            .into_iter()
-            .map(
-                |(
-                    id,
-                    ts,
-                    actor_kind,
-                    actor_id,
-                    action,
-                    target_kind,
-                    target_id,
-                    request_id,
-                    ip,
-                    detail,
-                )| AuditRow {
-                    id,
-                    ts,
-                    actor_kind,
-                    actor_id,
-                    action,
-                    target_kind,
-                    target_id,
-                    request_id,
-                    ip,
-                    detail,
-                },
-            )
-            .collect())
+        Ok(rows.into_iter().map(into_row).collect())
+    }
+}
+
+/// One shape, two readers: a vendor's page and the operator's page are the same rows.
+fn into_row(
+    (id, ts, actor_kind, actor_id, action, target_kind, target_id, request_id, ip, detail): Row,
+) -> AuditRow {
+    AuditRow {
+        id,
+        ts,
+        actor_kind,
+        actor_id,
+        action,
+        target_kind,
+        target_id,
+        request_id,
+        ip,
+        detail,
     }
 }
 

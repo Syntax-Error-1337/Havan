@@ -379,6 +379,16 @@ mod tests {
     }
 
     impl CatalogRepo for Fake {
+        async fn delete(&self, _vendor: Uuid, id: Uuid) -> Result<Option<Unused>, AppError> {
+            let mut all = self.products.lock().unwrap();
+            let before = all.len();
+            all.retain(|p| p.id != id);
+            if all.len() == before {
+                return Err(AppError::not_found("product"));
+            }
+            Ok(None)
+        }
+
         async fn insert(&self, _vendor: Uuid, product: &Product) -> Result<(), AppError> {
             self.products.lock().unwrap().push(product.clone());
             Ok(())

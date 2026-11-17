@@ -18,7 +18,10 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/vendor/auth/login", post(login))
         .route("/vendor/products", get(list).post(create))
-        .route("/vendor/products/{id}", get(one).patch(update).delete(remove_product))
+        .route(
+            "/vendor/products/{id}",
+            get(one).patch(update).delete(remove_product),
+        )
         .route("/vendor/products/{id}/validate", post(validate))
         .route("/vendor/products/{id}/publish", post(publish))
         .route(

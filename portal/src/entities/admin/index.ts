@@ -273,3 +273,33 @@ export function usePurge() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'privacy'] }),
   });
 }
+
+export type AuditEntryRow = {
+  id: string;
+  ts: string;
+  actor_kind: string;
+  actor_id: string | null;
+  action: string;
+  target_kind: string;
+  target_id: string | null;
+  request_id: string | null;
+  ip: string | null;
+  detail: Record<string, unknown>;
+};
+
+export type AuditPage = { entries: AuditEntryRow[]; next_cursor: string | null };
+
+/**
+ * Who did what, across every vendor.
+ *
+ * The operator could suspend a vendor and certify a product with no record a person could read: the
+ * audit log was per vendor, and the console has no vendor to scope to. This is the same page widened,
+ * so an operator's answer and a vendor's cannot disagree.
+ */
+export function useAuditPage(before?: string) {
+  return useQuery({
+    queryKey: ['admin', 'audit', before ?? 'newest'] as const,
+    queryFn: () =>
+      adminRequest<AuditPage>(`/ops/audit?limit=100${before ? `&before=${before}` : ''}`),
+  });
+}

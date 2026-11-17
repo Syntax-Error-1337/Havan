@@ -128,3 +128,79 @@ async fn metrics_render_on_the_loopback_and_count_what_happened() {
         "raw URLs leaked into labels"
     );
 }
+
+/// The operator's audit page: the same rows a vendor sees, widened.
+///
+/// The console can suspend a vendor and certify a product, and until this route existed the record of
+/// that was readable only one vendor at a time — an operator asking "who signed this off" had no
+/// answer on screen.
+#[tokio::test]
+async fn the_operator_can_read_the_audit_log_across_vendors() {
+    let Some((base, state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+
+    let vendor = uuid::Uuid::now_v7();
+    let other = uuid::Uuid::now_v7();
+
+    // Seeding goes through the system role: vendors is RLS-protected and this test is not a vendor.
+    let db = std::env::var("TEST_DATABASE_URL").expect("checked by boot");
+    let admin = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&db)
+        .await
+        .expect("admin pool");
+    sqlx::query("SET ROLE haven_system")
+        .execute(&admin)
+        .await
+        .expect("system role");
+    sqlx::query("INSERT INTO vendors (id, slug, name) VALUES ($1, $2, 'Audit Vendor')")
+        .bind(vendor)
+        .bind(format!("aud-{}", &vendor.simple().to_string()[24..]))
+        .execute(&admin)
+        .await
+        .expect("vendor");
+
+    let entry = domain::audit::AuditEntry::new(
+        vendor,
+        domain::audit::ActorKind::System,
+        "vendor.suspended",
+        "vendor",
+    )
+    .on(vendor);
+    state.audit.record(entry.clone()).await;
+
+    // Unfiltered: the operator sees it.
+    let all: serde_json::Value = reqwest::Client::new()
+        .get(format!("{base}/v1/ops/audit?limit=200"))
+        .send()
+        .await
+        .expect("audit")
+        .json()
+        .await
+        .expect("page");
+    let entries = all["entries"].as_array().expect("entries");
+    assert!(
+        entries.iter().any(|e| e["action"] == "vendor.suspended"),
+        "the operator's page must carry a vendor action"
+    );
+
+    // Filtered to somebody else: it is not theirs to see.
+    let other_only: serde_json::Value = reqwest::Client::new()
+        .get(format!("{base}/v1/ops/audit?limit=200&vendor={other}"))
+        .send()
+        .await
+        .expect("audit")
+        .json()
+        .await
+        .expect("page");
+    assert!(
+        other_only["entries"]
+            .as_array()
+            .expect("entries")
+            .iter()
+            .all(|e| e["action"] != "vendor.suspended"),
+        "the vendor filter must narrow, not decorate"
+    );
+}

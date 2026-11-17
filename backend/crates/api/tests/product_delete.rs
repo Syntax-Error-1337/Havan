@@ -149,11 +149,12 @@ async fn a_product_that_has_been_billed_for_stays() {
     );
 
     // The activation survived — the point of refusing, since the foreign key cascades.
-    let (n,): (i64,) = sqlx::query_as("SELECT count(*) FROM licence_activations WHERE product_id = $1")
-        .bind(product)
-        .fetch_one(&f.pg)
-        .await
-        .expect("count");
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT count(*) FROM licence_activations WHERE product_id = $1")
+            .bind(product)
+            .fetch_one(&f.pg)
+            .await
+            .expect("count");
     assert_eq!(n, 1, "billing history must outlive the catalogue entry");
 }
 

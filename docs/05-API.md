@@ -298,6 +298,7 @@ console that duplicated them would be a second source of truth.
 | POST | `/ops/licences` | `{vendor_id, quantity, unit_price_cents, currency?, expires_in_days?, note?}` → `{id, summary}` |
 | POST | `/ops/products/{id}/certification/certify` | `{note?}` → the sign-off that lets a device into the app |
 | POST | `/ops/products/{id}/certification/revoke` | `{note?}` → new claims refused, existing devices untouched |
+| GET | `/ops/audit` | `?vendor=&before=&limit=` → the vendor audit log widened to every vendor; keyset paged on `(ts, id)` so two actions in one millisecond cannot hide one |
 | GET | `/ops/overview` | vendors, suspended, awaiting certification, invoices this month |
 | GET | `/ops/health` | devices online/total, heard in 15 min, points and commands per hour, notify/webhook backlogs, the five quietest devices and the five stuck commands |
 | GET | `/ops/certification/queue` | submitted products across vendors, oldest first |

@@ -220,17 +220,23 @@ fn declared_vendor_routes() -> Vec<String> {
         }
         let source = std::fs::read_to_string(&path).expect("route source");
 
-        // `.route("/vendor/thing", get(handler))` — the literal is all this needs.
-        for line in source.lines() {
-            let Some(pos) = line.find(".route(\"") else {
+        // `.route("/vendor/thing", get(handler))` — the literal is all this needs, and it may sit on
+        // the next line: rustfmt splits the call as soon as the handler list gets long, and a
+        // line-based scan then reports a route that exists as missing. That failure looks like a
+        // stale entry, which is the opposite of the truth.
+        let mut cursor = source.as_str();
+        while let Some(at) = cursor.find(".route(") {
+            cursor = &cursor[at + ".route(".len()..];
+            let rest = cursor.trim_start();
+            let Some(rest) = rest.strip_prefix('"') else {
                 continue;
             };
-            let rest = &line[pos + 8..];
             let Some(end) = rest.find('"') else { continue };
             let route = &rest[..end];
             if route.starts_with("/vendor") {
                 found.push(route.to_string());
             }
+            cursor = &rest[end..];
         }
     }
 
@@ -247,6 +253,17 @@ const NOT_FETCHABLE: &[(&str, &str)] = &[
         "POST: needs a body and returns credentials",
     ),
     ("/vendor/api-keys/{id}", "DELETE revokes a key"),
+    // Both were invisible to this guard until its scanner learned that rustfmt splits `.route(`
+    // across lines. They are GETs, but parameterised, and this guard calls literal paths — so they
+    // are explained rather than fetched, on purpose, not by omission.
+    (
+        "/vendor/products/{id}/serials",
+        "GET needs a product id, which the guard does not mint",
+    ),
+    (
+        "/vendor/products/{product_id}/firmware",
+        "GET needs a product id, which the guard does not mint",
+    ),
     (
         "/vendor/campaigns/{id}",
         "GET needs a campaign id, which does not exist yet",

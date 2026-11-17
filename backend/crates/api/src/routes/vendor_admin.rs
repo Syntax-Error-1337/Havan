@@ -20,6 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/ops/certification/queue", get(queue))
         .route("/ops/overview", get(overview))
         .route("/ops/health", get(health))
+        .route("/ops/audit", get(audit))
 }
 
 /// `GET /v1/ops/certification/queue` — products waiting for our sign-off, oldest first.
@@ -45,6 +46,42 @@ async fn health(
     super::ops::require_ops(&state, &headers, &peer)?;
 
     Ok(Json(state.health.read().await.map_err(ApiError)?))
+}
+
+#[derive(serde::Deserialize)]
+struct AuditQuery {
+    #[serde(default)]
+    vendor: Option<Uuid>,
+    #[serde(default)]
+    before: Option<Uuid>,
+    #[serde(default = "audit_limit")]
+    limit: i64,
+}
+
+fn audit_limit() -> i64 {
+    100
+}
+
+/// `GET /v1/ops/audit` — who did what, across every vendor.
+///
+/// The operator can suspend a vendor, certify a product and grant licences, and until now the record
+/// of that was readable only per vendor: the console could not answer "who signed this off". Same
+/// rows the vendor sees, widened — so the two answers cannot disagree.
+async fn audit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    peer: Peer,
+    axum::extract::Query(q): axum::extract::Query<AuditQuery>,
+) -> ApiResult<Json<domain::audit::AuditPage>> {
+    super::ops::require_ops(&state, &headers, &peer)?;
+
+    Ok(Json(
+        state
+            .audit
+            .page_all(q.vendor, q.before, Some(q.limit.clamp(1, 200)))
+            .await
+            .map_err(ApiError)?,
+    ))
 }
 
 /// `GET /v1/ops/overview` — the four numbers the console opens with.
