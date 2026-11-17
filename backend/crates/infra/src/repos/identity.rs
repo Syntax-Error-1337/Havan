@@ -240,6 +240,19 @@ impl IdentityRepo for PgIdentity {
             .map_err(|e| AppError::Database(Box::new(e)))
     }
 
+    async fn vendor_id_by_slug(&self, slug: &str) -> Result<Option<Uuid>, AppError> {
+        // Same narrow exception as `find_vendor_user`: authentication happens before a tenant exists, so
+        // this one lookup runs system-scoped and returns an id and nothing else.
+        let mut tx = self.pg.scoped(&TenantCtx::system("vendor-login")).await?;
+        let row: Option<(Uuid,)> =
+            sqlx::query_as("SELECT id FROM vendors WHERE slug = $1 AND deleted_at IS NULL")
+                .bind(slug)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+        Ok(row.map(|r| r.0))
+    }
+
     async fn find_vendor_user(
         &self,
         vendor_id: Uuid,

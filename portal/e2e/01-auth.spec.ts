@@ -18,7 +18,7 @@ test('a vendor signs in and lands on their products', async ({ page }) => {
 
 test('a wrong password is refused without saying whether the account exists', async ({ page }) => {
   await page.goto('/login');
-  await page.getByLabel('Vendor ID').fill(VENDOR.id);
+  await page.getByLabel('Workspace').fill(VENDOR.slug);
   await page.getByLabel('Email').fill(VENDOR.email);
   await page.getByLabel('Password').fill('not-the-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -36,5 +36,5 @@ test('a signed-in vendor is not asked to sign in again on a reload', async ({ pa
 test('a signed-out vendor is sent to the login page, not to an empty shell', async ({ page }) => {
   await page.goto('/licences');
   // No session: the gate lives in the shell, so a deep link cannot skip it.
-  await expect(page.getByLabel('Vendor ID')).toBeVisible();
+  await expect(page.getByLabel('Workspace')).toBeVisible();
 });

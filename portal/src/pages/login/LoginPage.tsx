@@ -14,9 +14,10 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { signIn } = useSession();
 
-  const [vendorId, setVendorId] = useState(
-    import.meta.env.VITE_DEMO_VENDOR_ID ?? '11111111-1111-7111-8111-111111111111',
-  );
+  // The short name, not the id. This field used to ask for a 36-character UUID with a `pattern` that
+  // refused anything else — a credential nobody can remember, check, or read out to a colleague. The
+  // server accepts the slug or the id; the form asks for the slug because that is what a person knows.
+  const [vendor, setVendor] = useState(import.meta.env.VITE_DEMO_VENDOR ?? 'acme');
   const [email, setEmail] = useState('admin@acme.test');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +30,7 @@ export function LoginPage() {
     try {
       const tokens = await request<Tokens>('/vendor/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ vendor_id: vendorId.trim(), email: email.trim(), password }),
+        body: JSON.stringify({ vendor: vendor.trim(), email: email.trim(), password }),
       });
       signIn(tokens.access);
       navigate('/', { replace: true });
@@ -49,17 +50,16 @@ export function LoginPage() {
 
       <form onSubmit={submit} className="card">
         <label className="field">
-          <span>Vendor ID</span>
+          <span>Workspace</span>
           <input
             className="input"
-            value={vendorId}
-            onChange={(e) => setVendorId(e.target.value)}
-            autoComplete="off"
+            value={vendor}
+            onChange={(e) => setVendor(e.target.value)}
+            autoComplete="organization"
             spellCheck={false}
             required
-            // A vendor id is a UUID; the browser can refuse a truncated paste before the request.
-            pattern="[0-9a-fA-F-]{36}"
-            title="36 characters, as shown in the vendor settings"
+            placeholder="acme"
+            title="The short name of your vendor account, as in acme. A vendor ID works too."
           />
         </label>
 

@@ -154,6 +154,46 @@ Three decisions worth knowing:
 
 ## Portal (React)
 
+### A login form that asked for a primary key
+
+The portal's door asked for a **Vendor ID**: thirty-six characters, dashes, no meaning — with a `pattern` that
+refused anything shorter. It is the one credential in this product that a person cannot remember, check, or read
+out to a colleague, and it was the *first* field on the screen.
+
+The `vendors` table has carried a `slug` since the first migration (`acme` — the short name an operator writes in
+their own notes). The door now accepts either: `IdentityService::resolve_vendor` parses a UUID, otherwise looks
+the slug up, and the form asks for a **Workspace**.
+
+The failure mode is deliberately dull: an unknown workspace and a wrong password are the same
+`InvalidCredentials`. Naming "no such workspace" would let anyone enumerate the platform's customers, so the
+resolution happens before the password check and returns the same error.
+
+Verified against the running API:
+
+| Body | Result |
+|---|---|
+| `{"vendor":"acme", …}` | **200** |
+| `{"vendor_id":"11111111-…", …}` (older client, serde alias) | **200** |
+| `{"vendor":"nope", …}` | **401** |
+
+### The money line that read as an overcharge
+
+`/licences` said, under a sentence explaining that a licence is charged **when a device is activated**:
+
+> *498.00 USD authorised at 2.49 USD per device.*
+
+498.00 is 200 × 2.49 — the whole grant. The page also showed **185 activated**, so a vendor doing the arithmetic
+the sentence invites gets 460.65, and a page that prints 498 next to 185 reads as a 37.35 overcharge. Both numbers
+were true; the page never said which was which.
+
+It now reconciles all three, in one sentence:
+
+> *Granted value 498.00 USD (200 × 2.49 USD) · consumed by 185 activations 460.65 USD · unused 37.35 USD.*
+
+A money screen's job is not to be honest in aggregate, it is to be unambiguous line by line — and "authorised"
+was doing work nobody could see.
+
+
 ### The vendor book described the test suite
 
 The operator console opened on **55 vendors**. Thirty-six of them were `E2E Vendor` and `To Suspend`, one per

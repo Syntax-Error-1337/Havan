@@ -133,6 +133,12 @@ pub trait IdentityRepo {
         vendor_id: Uuid,
         email: &str,
     ) -> impl Future<Output = Result<Option<VendorUser>, AppError>> + Send;
+
+    /// A vendor's id from the short name the operator writes down (`acme`), for the portal's door.
+    fn vendor_id_by_slug(
+        &self,
+        slug: &str,
+    ) -> impl Future<Output = Result<Option<Uuid>, AppError>> + Send;
 }
 
 pub struct IdentityService<R> {
@@ -234,6 +240,27 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
             row.vendor_id,
         )
         .await
+    }
+
+    /// Turns what a person types into a vendor id.
+    ///
+    /// The portal used to ask for a **UUID**: thirty-six characters, dashes, no meaning, and no way to
+    /// remember or check it. The vendor table has carried a `slug` since the first migration — `acme`,
+    /// the short name the operator writes in their own notes — so the door accepts either, and the field
+    /// on screen asks for a name.
+    ///
+    /// A workspace that does not exist and a wrong password produce the same error: announcing "no such
+    /// workspace" would let anyone enumerate the platform's customers.
+    pub async fn resolve_vendor(&self, vendor: &str) -> Result<Uuid, AppError> {
+        let typed = vendor.trim();
+        if let Ok(id) = Uuid::parse_str(typed) {
+            return Ok(id);
+        }
+        let slug = typed.to_lowercase();
+        self.repo
+            .vendor_id_by_slug(&slug)
+            .await?
+            .ok_or_else(invalid_credentials)
     }
 
     /// Portal login. The customer's `login` is a different door with a
@@ -528,6 +555,19 @@ mod tests {
             Ok(())
         }
 
+        /// The one workspace this fake knows about: `acme`.
+        async fn vendor_id_by_slug(&self, slug: &str) -> Result<Option<Uuid>, AppError> {
+            Ok((slug == "acme")
+                .then(|| {
+                    self.vendor_user
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .map(|u| u.vendor_id)
+                })
+                .flatten())
+        }
+
         async fn vendor_totp(&self, _user_id: Uuid) -> Result<Option<(String, bool)>, AppError> {
             Ok(self.totp.lock().unwrap().clone())
         }
@@ -679,6 +719,29 @@ mod tests {
         )
         .await
         .expect("a valid code signs in");
+    }
+
+    #[tokio::test]
+    async fn the_portal_door_accepts_a_workspace_name_or_its_id() {
+        let svc = service();
+        let user = portal_account(&svc, None);
+
+        // What a person can type: the short name.
+        assert_eq!(
+            svc.resolve_vendor("acme").await.expect("slug resolves"),
+            user.vendor_id
+        );
+        // What a script or an older client sends.
+        assert_eq!(
+            svc.resolve_vendor(&user.vendor_id.to_string())
+                .await
+                .expect("id resolves"),
+            user.vendor_id
+        );
+        // A workspace that is not there is the same answer as a wrong password: naming the failure
+        // would let anyone enumerate the platform's customers.
+        let err = svc.resolve_vendor("not-a-vendor").await.unwrap_err();
+        assert_eq!(err.code_kind(), ErrorCode::InvalidCredentials);
     }
 
     #[tokio::test]

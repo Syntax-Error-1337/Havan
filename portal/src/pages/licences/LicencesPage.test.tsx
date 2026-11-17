@@ -57,10 +57,13 @@ describe('LicencesPage', () => {
 
     expect(await screen.findByText('200')).toBeDefined();
     expect(screen.getByText('49')).toBeDefined();
-    // 200 licences at 249 cents each: $498 authorised, $2.49 per device.
+    // 200 granted at 249 cents each, 151 of them activated. The page must show the grant AND what the
+    // activations actually consumed: "498.00 authorised" beside "151 activated" reads as an overcharge.
     expect(
-      screen.getByText(/498\.00 USD authorised at 2\.49 USD per device/),
+      screen.getByText(/Granted value 498\.00 USD \(200 × 2\.49 USD\)/),
     ).toBeDefined();
+    expect(screen.getByText(/consumed by 151 activations 375\.99 USD/)).toBeDefined();
+    expect(screen.getByText(/unused 122\.01 USD/)).toBeDefined();
   });
 
   it('never hides a negative balance behind a zero', async () => {

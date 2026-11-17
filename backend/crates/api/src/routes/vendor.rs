@@ -43,7 +43,10 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Deserialize)]
 struct LoginBody {
-    vendor_id: Uuid,
+    /// The workspace: its `slug` (`acme`) or its id, because older clients and scripts send the id and
+    /// both should keep working. A person is asked for the name.
+    #[serde(alias = "vendor_id")]
+    vendor: String,
     email: String,
     password: String,
     /// Present when the account has confirmed a second factor. Absent is not an error in itself —
@@ -66,14 +69,11 @@ async fn login(
     );
     crate::limits::check(&state, &key, crate::limits::LOGIN).await?;
 
+    let vendor_id = state.identity.resolve_vendor(&body.vendor).await?;
+
     match state
         .identity
-        .login_vendor(
-            body.vendor_id,
-            &body.email,
-            &body.password,
-            body.totp.as_deref(),
-        )
+        .login_vendor(vendor_id, &body.email, &body.password, body.totp.as_deref())
         .await
     {
         Ok(tokens) => Ok(Json(tokens)),

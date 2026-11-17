@@ -65,13 +65,28 @@ export function LicencesPage() {
         </p>
       ) : null}
 
+      {/* Three numbers, reconciled.
+          This line used to read "498.00 USD authorised at 2.49 USD per device", which is 200 x 2.49 — the
+          whole grant — printed directly under a sentence saying the charge happens when a device is
+          *activated*. A vendor reading a money page does the other multiplication first: 185 x 2.49 is
+          460.65, and a page that shows 498 next to 185 activated looks like it overcharged them by 37.35.
+          Both numbers are true, and the page now says which is which and what is left. */}
       <p className="muted">
-        {summary.granted_value_cents > 0
-          ? `${formatMoney(summary.granted_value_cents, summary.currency)} authorised at ${formatMoney(
-              summary.unit_price_cents,
+        {summary.granted_value_cents > 0 ? (
+          <>
+            Granted value {formatMoney(summary.granted_value_cents, summary.currency)} (
+            {summary.granted} × {formatMoney(summary.unit_price_cents, summary.currency)}) ·
+            consumed by {summary.used} activations{' '}
+            {formatMoney(summary.used * summary.unit_price_cents, summary.currency)} · unused{' '}
+            {formatMoney(
+              Math.max(0, summary.granted_value_cents - summary.used * summary.unit_price_cents),
               summary.currency,
-            )} per device.`
-          : 'No priced grant yet, so nothing has been invoiced.'}
+            )}
+            .
+          </>
+        ) : (
+          'No priced grant yet, so nothing has been invoiced.'
+        )}
       </p>
 
       <h3 style={{ marginTop: 24 }}>Recent activations</h3>

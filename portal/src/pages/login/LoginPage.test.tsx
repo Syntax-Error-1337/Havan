@@ -45,15 +45,16 @@ describe('vendor login', () => {
     const calls = stubFetch(200, { access: 'a', refresh: 'r' });
     renderLogin();
 
-    await userEvent.clear(screen.getByLabelText('Vendor ID'));
-    await userEvent.type(screen.getByLabelText('Vendor ID'), '22222222-2222-7222-8222-222222222222');
+    // The short name, not the UUID: a person signs in with a workspace, a script may send the id.
+    await userEvent.clear(screen.getByLabelText('Workspace'));
+    await userEvent.type(screen.getByLabelText('Workspace'), 'acme');
     await userEvent.type(screen.getByLabelText('Password'), 'secret12345');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]!.url).toContain('/vendor/auth/login');
     expect(JSON.parse(calls[0]!.body ?? '{}')).toEqual({
-      vendor_id: '22222222-2222-7222-8222-222222222222',
+      vendor: 'acme',
       email: 'admin@acme.test',
       password: 'secret12345',
     });

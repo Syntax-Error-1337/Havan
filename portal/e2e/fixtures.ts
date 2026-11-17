@@ -7,6 +7,9 @@ import { expect, type Page, test as base } from '@playwright/test';
  * development seed keeps `npm run test:e2e` a single command on a laptop.
  */
 export const VENDOR = {
+  /** What the sign-in form asks for: the workspace's short name. */
+  slug: process.env.E2E_VENDOR_SLUG ?? 'acme',
+  /** The id, for the admin console, which works in ids. */
   id: process.env.E2E_VENDOR_ID ?? '11111111-1111-7111-8111-111111111111',
   email: process.env.E2E_VENDOR_EMAIL ?? 'admin@acme.test',
   password: process.env.E2E_VENDOR_PASSWORD ?? 'acme-demo-password',
@@ -15,7 +18,7 @@ export const VENDOR = {
 /** Sign in through the real form, the way a vendor does. */
 export async function signIn(page: Page) {
   await page.goto('/login');
-  await page.getByLabel('Vendor ID').fill(VENDOR.id);
+  await page.getByLabel('Workspace').fill(VENDOR.slug);
   await page.getByLabel('Email').fill(VENDOR.email);
   await page.getByLabel('Password').fill(VENDOR.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
