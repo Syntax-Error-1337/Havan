@@ -207,9 +207,11 @@ impl Runner {
             return (log, "skipped");
         }
 
+        let about = about_for(&automation.definition.trigger);
+
         let mut failed = false;
         for (index, action) in automation.definition.actions.iter().enumerate() {
-            match self.run_action(automation.home_id, action).await {
+            match self.run_action(automation.home_id, action, &about).await {
                 Ok(detail) => log.push(RunStep::Action { index, detail }),
                 Err(error) => {
                     failed = true;
@@ -221,11 +223,16 @@ impl Runner {
         (log, if failed { "failed" } else { "completed" })
     }
 
-    async fn run_action(&self, home_id: Uuid, action: &Action) -> Result<String, String> {
+    async fn run_action(
+        &self,
+        home_id: Uuid,
+        action: &Action,
+        about: &serde_json::Value,
+    ) -> Result<String, String> {
         match action {
             Action::Notify { title, body } => {
                 self.repo
-                    .notify_owner(home_id, title, body)
+                    .notify_owner_about(home_id, title, body, about.clone())
                     .await
                     .map_err(|e| format!("{e:?}"))?;
                 Ok(format!("notified: {title}"))
@@ -294,5 +301,48 @@ fn to_dp_value(value: &serde_json::Value) -> DpValue {
         },
         serde_json::Value::String(s) => DpValue::Text(s.clone()),
         other => DpValue::Text(other.to_string()),
+    }
+}
+
+/// What a run is about, for the alert it may raise.
+///
+/// A device-triggered rule knows which device tripped it, so the alert carries that id and the app can
+/// open the device instead of leaving the customer to hunt for it in a list.
+fn about_for(trigger: &domain::automation::Trigger) -> serde_json::Value {
+    match trigger {
+        domain::automation::Trigger::DeviceState { device_id, .. } => {
+            serde_json::json!({ "device_id": device_id })
+        }
+        _ => serde_json::json!({}),
+    }
+}
+
+#[cfg(test)]
+mod about_tests {
+    use super::about_for;
+    use domain::automation::Trigger;
+    use uuid::Uuid;
+
+    #[test]
+    fn an_alert_from_a_device_rule_names_the_device() {
+        let device = Uuid::now_v7();
+        let about = about_for(&Trigger::DeviceState {
+            device_id: device,
+            code: "switch.power".into(),
+            op: domain::automation::CompareOp::Eq,
+            value: serde_json::json!(true),
+        });
+
+        // The app reads `data.device_id` to make the alert tappable; if this shape changes the jump
+        // silently disappears, which is why it is asserted here rather than assumed.
+        assert_eq!(about["device_id"], serde_json::json!(device));
+    }
+
+    #[test]
+    fn a_rule_about_the_house_raises_an_alert_about_nothing_in_particular() {
+        assert_eq!(
+            about_for(&Trigger::Schedule { every_secs: 60 }),
+            serde_json::json!({})
+        );
     }
 }

@@ -1,7 +1,9 @@
-import { Pressable, ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
-import { Box, AppText, Button, Screen } from '../../shared/ui';
-import { tokens } from '../../app-shell/theme';
+import { Box, AppText, Button, Glass, Icon, Screen } from '../../shared/ui';
+import { withAlpha } from '../../shared/ui/Glass';
+import { useTheme, tokens } from '../../app-shell/theme';
 import {
   ago,
   useMarkAllRead,
@@ -69,34 +71,48 @@ export function AlertsPage() {
 }
 
 function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
+  const router = useRouter();
+  const { color, dark } = useTheme();
   const unread = !alert.read_at;
 
+  // An alert that names a device can be opened on that device. The automation's trigger writes the
+  // id into `data`; older rows carry `{}` and simply do not offer the jump.
+  const deviceId = typeof alert.data?.device_id === 'string' ? alert.data.device_id : null;
+
+  const open = () => {
+    if (unread) onRead();
+    if (deviceId) router.push(`/device/${deviceId}`);
+  };
+
+  const kind = KIND[alert.kind] ?? KIND.alert!;
+
   return (
-    <Pressable
-      onPress={unread ? onRead : undefined}
-      accessibilityRole="button"
-      accessibilityState={{ selected: unread }}
-      disabled={!unread}
+    <Glass
+      onPress={open}
+      accent={unread ? color.accent : undefined}
+      // Read alerts stay pressable: "read" is not "done", and the device is still there.
+      disabled={!deviceId && !unread}
+      testID={`alert-${alert.id}`}
     >
-      <Box row gap="md" p="md" radius="md" bg={unread ? 'elevated' : 'surface'} border>
-        {/* A dot, not a colour change alone: colour is the first thing a
-            colour-blind user loses. */}
-        <Box style={{ width: 8, paddingTop: 6 }}>
-          {unread ? (
-            <Box
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: tokens.color.accent,
-              }}
-            />
-          ) : null}
-        </Box>
+      <Box row gap="md" style={{ alignItems: 'flex-start' }}>
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: withAlpha(kind.accent, dark ? 0.22 : 0.14),
+          }}
+        >
+          <Icon name={kind.icon} size={17} color={kind.accent} />
+        </View>
 
         <Box flex={1} gap="xs">
-          <Box row style={{ justifyContent: 'space-between' }}>
-            <AppText weight={unread ? '600' : '400'}>{alert.title}</AppText>
+          <Box row style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <AppText weight={unread ? '600' : '400'} style={{ flexShrink: 1 }}>
+              {alert.title}
+            </AppText>
             <AppText variant="caption" tone="muted">
               {ago(alert.created_at)}
             </AppText>
@@ -106,8 +122,26 @@ function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
               {alert.body}
             </AppText>
           ) : null}
+          {deviceId ? (
+            <AppText variant="tiny" style={{ color: color.accent }}>
+              Open the device
+            </AppText>
+          ) : null}
         </Box>
+
+        {unread ? (
+          // A dot, not a colour change alone: colour is the first thing a colour-blind user loses.
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color.accent, marginTop: 6 }} />
+        ) : null}
       </Box>
-    </Pressable>
+    </Glass>
   );
 }
+
+/** What kind of thing interrupted you, said in a colour and a glyph rather than in a word. */
+const KIND: Record<string, { icon: 'sparkle' | 'lightning' | 'lock' | 'alert'; accent: string }> = {
+  automation: { icon: 'sparkle', accent: '#8B5CF6' },
+  ota: { icon: 'lightning', accent: '#0EA5E9' },
+  security: { icon: 'lock', accent: '#F472B6' },
+  alert: { icon: 'alert', accent: '#FB923C' },
+};

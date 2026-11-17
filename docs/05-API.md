@@ -217,6 +217,12 @@ gap, never as zero — silence is not a reading.
 `notifications` has no vendor column and no RLS: the only thing keeping one
 person's alerts apart is the `user_id` predicate, so it is never optional.
 
+Each notification carries a free-form `data` object, and one key in it is a contract: when an
+automation is triggered by a device, `data.device_id` names that device, and the app opens it when
+the alert is tapped. An alert that says "hallway light left on" and cannot be opened is a
+notification the customer reads and then goes hunting for. Rows from before this existed carry `{}`
+and simply do not offer the jump, which is why the client treats the key as optional.
+
 ### Scenes
 
 | Method | Path | Notes |
