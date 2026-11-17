@@ -281,6 +281,69 @@ export function usePurge() {
   });
 }
 
+/**
+ * Platform appearance.
+ *
+ * The app's colours were constants in `tokens.ts`, so a new operator meant a new build. They are
+ * platform data now: this is the only screen that writes them, and it writes the row the sign-in
+ * screen reads before anybody has a session.
+ */
+export type PlatformTheme = {
+  product_name: string;
+  logo_text: string;
+  accent: string;
+  accent_secondary: string;
+  mode: 'dark' | 'light';
+  accent_on: string;
+  updated_at: string | null;
+  updated_by: string | null;
+};
+
+export type ThemeChange = {
+  changed_at: string;
+  changed_by: string;
+  fields: string[];
+};
+
+export function useTheme() {
+  return useQuery({
+    queryKey: ['admin', 'theme'] as const,
+    queryFn: () => adminRequest<PlatformTheme>('/ops/theme'),
+    retry: false,
+  });
+}
+
+export function useThemeHistory() {
+  return useQuery({
+    queryKey: ['admin', 'theme', 'history'] as const,
+    queryFn: () => adminRequest<{ changes: ThemeChange[] }>('/ops/theme/history'),
+    retry: false,
+  });
+}
+
+/**
+ * Save.
+ *
+ * `x-ops-actor` carries whoever is signed in to the console, so the history answers "who changed the
+ * brand" instead of "somebody did". The console falls back to `ops` on the server when it has no name
+ * to give, which is honest rather than empty.
+ */
+export function useSaveTheme(actor?: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Omit<PlatformTheme, 'accent_on' | 'updated_at' | 'updated_by'>) =>
+      adminRequest<PlatformTheme>('/ops/theme', {
+        method: 'PUT',
+        body: JSON.stringify(input),
+        ...(actor ? { headers: { 'x-ops-actor': actor } } : {}),
+      }),
+    onSuccess: (saved) => {
+      qc.setQueryData(['admin', 'theme'], saved);
+      qc.invalidateQueries({ queryKey: ['admin', 'theme', 'history'] });
+    },
+  });
+}
+
 export type AuditEntryRow = {
   id: string;
   ts: string;

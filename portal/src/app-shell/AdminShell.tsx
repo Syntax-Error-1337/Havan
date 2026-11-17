@@ -7,6 +7,7 @@ import { AdminBillingPage } from '../pages/admin/AdminBillingPage';
 import { AdminHealthPage } from '../pages/admin/AdminHealthPage';
 import { AdminAuditPage } from '../pages/admin/AdminAuditPage';
 import { AdminPrivacyPage } from '../pages/admin/AdminPrivacyPage';
+import { AdminThemePage } from '../pages/admin/AdminThemePage';
 import { AdminCertificationPage } from '../pages/admin/AdminCertificationPage';
 import { AdminLoginPage } from '../pages/admin/AdminLoginPage';
 import { AdminVendorPage } from '../pages/admin/AdminVendorPage';
@@ -69,6 +70,9 @@ export function AdminShell() {
           <Link to="/admin/billing" className="muted">
             Billing
           </Link>
+          <Link to="/admin/theme" className="muted">
+            Appearance
+          </Link>
           {getAdminToken() ? (
             <button
               className="btn"
@@ -104,6 +108,7 @@ export function AdminShell() {
           <Route path="/admin/billing" element={<AdminBillingPage />} />
           <Route path="/admin/privacy" element={<AdminPrivacyPage />} />
           <Route path="/admin/audit" element={<AdminAuditPage />} />
+          <Route path="/admin/theme" element={<AdminThemePage />} />
           <Route path="/admin/login" element={<Navigate to="/admin" replace />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>

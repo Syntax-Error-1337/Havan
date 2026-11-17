@@ -28,9 +28,16 @@
   working for the people who bought them, and that vendor simply cannot activate new ones. Bricking a
   customer's bulb over an unpaid invoice is the one failure mode that ends a platform's reputation.
 
-A useful consequence: **the app is not white-labelled per vendor.** It is Haven's app, with Haven's
-brand, presenting every vendor's devices coherently. What a vendor buys is placement in a working app
-and a certified device — not their own icon on a stranger's home screen.
+A useful consequence: **the app is not white-labelled per vendor.** It is the platform's app — one
+brand, set once by the operator — presenting every vendor's devices coherently. What a vendor buys is
+placement in a working app and a certified device, not their own icon on a stranger's home screen.
+
+Who the *operator* is, though, is a different question, and that one **is** white-label: a partner who
+licences the platform ships it under their own name and colours. That is why the brand is data —
+`app_theme` plus `GET /v1/theme` — and not a constant in the app's source. The console's Appearance
+page writes it; every phone reads it before sign-in. Per-vendor branding inside a shared home is
+deliberately still out: two vendors' colours on one customer's screen is a question about whose brand
+wins, and it deserves a decision rather than a default.
 
 ## What already exists, and it is more than the first draft of this plan assumed
 

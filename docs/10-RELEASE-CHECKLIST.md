@@ -9,14 +9,14 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 
 | Gate | Command | Green means |
 |---|---|---|
-| Build and tests | `make check` | fmt, clippy `-D warnings`, no secrets in the index, every route's path parameters match its handler, the whole suite as `haven_app` on `haven_test` (51 binaries) |
+| Build and tests | `make check` | fmt, clippy `-D warnings`, no secrets in the index, every route's path parameters match its handler, the whole suite as `haven_app` on `haven_test` (52 binaries) |
 | Customer journey | `make e2e` | 34 assertions: register → home → ticket → forged ticket refused → claim → replay refused → command → history → another account cannot read or command, over HTTP |
 | Licences | `make licences` | 365 crates, 1 035 node packages, none outside the allowlist (ADR-002) |
 | Read performance | `make bench` | timings against `docs/08-PERFORMANCE.md` |
 | Ingest | `make load RATE=600 SECONDS=20` | zero loss at whatever the host's generator reaches (~330/s single, 522/s with two); the loss column is the assertion, not the rate |
 | Degradation | `make chaos` | 20/20: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered, `/ops/health` refuses rather than showing an empty platform |
 | App | `cd app && npx tsc --noEmit && npm test` | 81 tests, 17 suites (the script passes `--forceExit`; see the note below) |
-| Portal unit | `cd portal && npx tsc --noEmit && npm test` | 59 tests |
+| Portal unit | `cd portal && npx tsc --noEmit && npm test` | 63 tests |
 | Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 40 tests per project (80 total) against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
 | Vendor surfaces | `make vendor-smoke` | 25 assertions live: two-factor enrol → confirm → enforced sign-in → disabled, webhook shown once then removed, SSO refused while nobody is bound, an empty invoice period that is a document and not an error |
 | Conformance | `make conformance VENDOR=<uuid> PRODUCT=<uuid>` | 7/7: a real device claims, connects, reports, is commanded, acks, reconnects, and an unknown serial is handled the way the product declares |
