@@ -25,6 +25,7 @@ pub mod scenes;
 pub mod serials;
 pub mod sso;
 pub mod support;
+pub mod telemetry_partitions;
 pub mod theme;
 pub mod vendor_admin;
 pub mod vendor_security;

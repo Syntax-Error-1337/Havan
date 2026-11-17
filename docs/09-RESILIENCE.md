@@ -228,6 +228,57 @@ Verified live, not asserted: a subscriber on the real channel received
 from the running worker's own sweep, and `worker/tests/presence.rs` proves the row, the return value
 and the announcement — subscribing *before* the sweep, because Redis has no replay.
 
+## A disk that fills at three in the morning
+
+`telemetry` is partitioned by month, and 0003 created twenty-four partitions up front with a DEFAULT
+partition for readings whose clock disagrees with the calendar. Both halves of that sentence were a
+promise nobody was keeping:
+
+- **Nothing created a partition after the first twenty-four.** Around November 2028 every reading would
+  land in `telemetry_overflow`: still correct, still queryable, and every query plan suddenly scanning a
+  table that grows forever instead of a month. A performance cliff with a two-year fuse.
+- **Nothing ever dropped one.** At a million devices reporting once a minute that is 1.4 billion rows a
+  day, and the first symptom is a full disk and a database that has stopped accepting writes.
+
+`haven-worker` now runs the same job every six hours, and `haven-telemetry-maintain` (same code, one run,
+prints the report) exists for the operator who cannot wait for a tick. Creating a month ahead is a
+`CREATE TABLE`; dropping an expired month is `DROP TABLE` on a partition, not a mass `DELETE` — which is
+the entire reason the table is partitioned rather than merely indexed.
+
+**The failure that made this worth doing carefully.** The first run against the dev database did not
+create a partition. It failed:
+
+```text
+error returned from database: updated partition constraint for default partition
+"telemetry_overflow" would be violated by some row
+```
+
+Postgres will not create a partition whose bounds would claim rows the DEFAULT partition already holds —
+and there were 9 537 of them, every reading from **October 2026**, because 0003 started partitioning at
+the month it ran in (November) and the month before had nowhere to go. That is not a dev-only accident:
+any deployment that was reporting before its migrations ran has the same stranded month.
+
+The job therefore lifts those rows aside first — a temporary spill table, then the partition, then the
+spill back in through the parent — and reports how many it rescued. After the run:
+
+```text
+created=["telemetry_2026_10"] rescued=9537 overflow_rows=0
+```
+
+and a query for a day in October now touches one partition instead of the parent plus the overflow.
+
+Two operational details that are not incidental:
+
+- **It connects as the schema owner**, exactly as the migrator does. Creating a partition requires owning
+  the parent table, and the application role owns nothing on purpose — that is what makes row-level
+  security apply to it. An app-role pool fails every tick with `must be owner of table telemetry`.
+- **It is safe on a schedule and on three replicas.** Every step is `IF NOT EXISTS` / `IF EXISTS`, the
+  spill is inside one transaction on one connection, and a second run in the same minute does nothing.
+
+Retention is `TELEMETRY_RETENTION_DAYS`, default **730**. It is a platform term rather than a vendor's:
+`licence_grants.retention_days` is about *people*, and letting a vendor's contract decide how long
+telemetry lives would mean one vendor's paperwork destroying another vendor's device history.
+
 ## Backup and restore
 
 A backup nobody has restored is a hypothesis. `scripts/backup.sh` dumps, verifies the dump with

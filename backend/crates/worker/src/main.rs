@@ -248,6 +248,68 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // The telemetry window, every six hours.
+    //
+    // Migration 0003 made twenty-four monthly partitions and a DEFAULT partition for readings whose
+    // clock disagrees with the calendar. Nothing created another one, and nothing ever dropped one: after
+    // two years every insert would land in the overflow — still correct, and every query plan blind —
+    // and every reading ever written would still be on disk. At a million devices reporting a minute
+    // that is 1.4 billion rows a day, and the first symptom is a full disk at three in the morning.
+    //
+    // Six hours because both halves are metadata operations: creating a month ahead is one `CREATE
+    // TABLE`, and dropping an expired month is `DROP TABLE` on a partition rather than a mass `DELETE`.
+    // Running it often is how a partition never has to be created by the person under pressure.
+    {
+        // Partitions are DDL, and creating one requires owning the parent table. The application role
+        // deliberately does not own anything — that is what makes row-level security apply to it — so this
+        // job connects the way the migrator does. An app-role pool here fails every tick with "must be
+        // owner of table telemetry", which is the sort of thing that stays invisible in a log nobody reads.
+        let maint_url = std::env::var("MIGRATE_DATABASE_URL")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| cfg.database_url.clone());
+        let maint = infra::Pg::connect(&maint_url, 1).await.ok();
+        if maint.is_none() {
+            // Not fatal: nothing else in the worker depends on this, and the window only has to roll once
+            // a month — a restart with the right credentials catches up in one tick.
+            warn!("telemetry maintenance has no owner connection; the window will not roll here");
+        }
+        let retention_days = std::env::var("TELEMETRY_RETENTION_DAYS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(infra::repos::telemetry_partitions::DEFAULT_RETENTION_DAYS);
+        if let Some(maint) = maint {
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(Duration::from_secs(6 * 3600));
+                loop {
+                    tick.tick().await;
+                    match infra::repos::telemetry_partitions::maintain(&maint, retention_days).await
+                    {
+                        Ok(report) => {
+                            if !report.created.is_empty() || !report.dropped.is_empty() {
+                                info!(
+                                    created = ?report.created,
+                                    dropped = ?report.dropped,
+                                    retention_days,
+                                    "telemetry partitions rolled"
+                                );
+                            }
+                            if report.overflow_rows > 0 {
+                                // Not a warning about this job: it is the signal that the window ran out
+                                // between ticks, or that a device is reporting from 1970.
+                                warn!(
+                                    rows = report.overflow_rows,
+                                    "readings are landing in the telemetry overflow partition"
+                                );
+                            }
+                        }
+                        Err(e) => warn!(error = ?e, "telemetry maintenance failed"),
+                    }
+                }
+            });
+        }
+    }
+
     // Erased accounts, once their retention window has passed. Hourly, because the window is
     // measured in days and a lighter tick would only make the backlog look bigger than it is.
     //

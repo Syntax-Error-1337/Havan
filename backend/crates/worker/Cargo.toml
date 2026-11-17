@@ -17,6 +17,12 @@ redis.workspace = true
 name = "haven-worker"
 path = "src/main.rs"
 
+# The same maintenance the worker runs every six hours, on demand: for an operator whose disk is filling
+# now, and for proving the job does what the docs say without waiting for a tick.
+[[bin]]
+name = "haven-telemetry-maintain"
+path = "src/bin/telemetry_maintain.rs"
+
 [dependencies]
 kernel.workspace = true
 infra.workspace = true
