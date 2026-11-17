@@ -78,6 +78,10 @@ contrast: ## every text pair in the app palette meets its WCAG threshold
 tokens: ## no colour value in the app lives outside shared/config/tokens.ts
 	@cd app && node scripts/check-tokens.mjs
 
+.PHONY: time-serde
+time-serde: ## every timestamp a client receives is an RFC 3339 string, not a field tuple
+	@python3 scripts/time-serde.py
+
 .PHONY: testdb
 testdb: ## create, migrate and grant the test database
 	@docker exec haven-db psql -U haven -d postgres -tc \
@@ -137,6 +141,7 @@ check: testdb ## fmt + clippy + tests + no secrets + routes match handlers + rea
 	python3 scripts/route-arity.py --self-test
 	$(MAKE) contrast
 	$(MAKE) tokens
+	$(MAKE) time-serde
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	$(CARGO_TEST) test --workspace
 

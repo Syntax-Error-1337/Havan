@@ -4,7 +4,13 @@ import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText, AreaChart, Glass, Icon, iconForCapability } from '../../shared/ui';
 import { withAlpha } from '../../shared/ui/Glass';
 import { accentFor, glowFor } from '../../shared/config/tokens';
-import { useHistory, useSetPoint, type Device } from '../../entities/device';
+import {
+  freshness,
+  silenceWords,
+  useHistory,
+  useSetPoint,
+  type Device,
+} from '../../entities/device';
 
 /**
  * The one device the screen leads with.
@@ -34,6 +40,7 @@ export function HeroCard({ device }: { device: Device }) {
   const setPoint = useSetPoint(device.id);
 
   const value = typeof point?.value === 'number' ? point.value : null;
+  const state = freshness(device);
 
   // The chart's own scale, in words: a line with no numbers on it answers "did it move" and
   // nothing else. Min and max are the two facts a home owner actually wants from a day of readings.
@@ -47,7 +54,13 @@ export function HeroCard({ device }: { device: Device }) {
   const isSwitchable = device.points.some((p) => p.capability === 'switch' && p.writable);
 
   return (
-    <Glass accent={accent} glow={glow} style={{ padding: 18, opacity: device.online ? 1 : 0.72 }}>
+    <Glass
+      accent={accent}
+      glow={state === 'live' ? glow : undefined}
+      // Three levels, not two: a device nobody has heard from for four hours should not look as alive
+      // as one that reported a minute ago, and should not look as dead as one that is gone.
+      style={{ padding: 18, opacity: state === 'live' ? 1 : state === 'stale' ? 0.88 : 0.72 }}
+    >
       <View style={{ gap: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View
@@ -68,7 +81,9 @@ export function HeroCard({ device }: { device: Device }) {
             </AppText>
             <AppText variant="tiny" tone="muted" numberOfLines={1}>
               {device.room_name ?? 'No room'} ·{' '}
-              {device.online ? 'online' : `last reported ${relative(device.last_seen_at)}`}
+              {freshness(device) === 'live'
+                ? 'online'
+                : (silenceWords(device) ?? `last reported ${relative(device.last_seen_at)}`)}
             </AppText>
           </View>
 
@@ -94,7 +109,7 @@ export function HeroCard({ device }: { device: Device }) {
               fontSize: 44,
               lineHeight: 48,
               fontWeight: '700',
-              color: value === null ? color.muted : color.text,
+              color: value === null || state !== 'live' ? color.muted : color.text,
             }}
           >
             {value === null ? '—' : value}
@@ -111,7 +126,9 @@ export function HeroCard({ device }: { device: Device }) {
             buckets={
               value === null ? history.buckets : [...history.buckets, { ...history.buckets[history.buckets.length - 1]!, v: value }]
             }
-            accent={accent}
+            // A chart drawn in full-strength accent says "this is happening now". When the device has
+            // gone quiet, the line keeps its shape and loses its authority.
+            accent={state === 'live' ? accent : withAlpha(accent, 0.4)}
             height={78}
           />
         ) : (

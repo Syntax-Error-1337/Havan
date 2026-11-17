@@ -29,7 +29,9 @@ pub struct Bucket {
 pub struct History {
     pub device_id: Uuid,
     pub code: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub from: time::OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
     pub to: time::OffsetDateTime,
     pub bucket_secs: i64,
     pub buckets: Vec<Bucket>,

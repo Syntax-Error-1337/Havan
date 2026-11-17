@@ -1,6 +1,12 @@
 # API surface (v1)
 
 Base `https://api.haven.dev/v1`. JSON only. RFC 3339 timestamps, UUIDv7 ids.
+
+That first sentence is enforced, not aspirational: `make time-serde` (`scripts/time-serde.py`) fails the
+gate when a `Serialize` struct exposes an `OffsetDateTime` without
+`#[serde(with = "time::serde::rfc3339")]`. It was added after `devices.last_seen_at` shipped as
+`[2026,321,3,26,34,…]` — a JavaScript client turns that into `Invalid Date`, and the app rendered "just
+now" for a device that had been silent for four hours.
 Errors are `{"error":{"code":"…","message":"…","details":{…}}}` with a stable
 `code`; `message` is for humans and may change.
 

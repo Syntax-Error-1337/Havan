@@ -9,13 +9,13 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 
 | Gate | Command | Green means |
 |---|---|---|
-| Build and tests | `make check` | fmt, clippy `-D warnings`, no secrets in the index, every route's path parameters match its handler, the whole suite as `haven_app` on `haven_test` (52 binaries) |
+| Build and tests | `make check` | fmt, clippy `-D warnings`, no secrets in the index, every route's path parameters match its handler, every client-facing timestamp is RFC 3339 (`make time-serde`), the app's colours all come from `tokens.ts` (`make tokens`), the palette's contrast (`make contrast`), the whole suite as `haven_app` on `haven_test` (53 binaries) |
 | Customer journey | `make e2e` | 34 assertions: register → home → ticket → forged ticket refused → claim → replay refused → command → history → another account cannot read or command, over HTTP |
 | Licences | `make licences` | 365 crates, 1 035 node packages, none outside the allowlist (ADR-002) |
 | Read performance | `make bench` | timings against `docs/08-PERFORMANCE.md` |
 | Ingest | `make load RATE=600 SECONDS=20` | zero loss at whatever the host's generator reaches (~330/s single, 522/s with two); the loss column is the assertion, not the rate |
 | Degradation | `make chaos` | 20/20: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered, `/ops/health` refuses rather than showing an empty platform |
-| App | `cd app && npx tsc --noEmit && npm test` | 100 tests, 19 suites (the script passes `--forceExit`; see the note below) |
+| App | `cd app && npx tsc --noEmit && npm test` | 112 tests, 20 suites (the script passes `--forceExit`; see the note below) |
 | Palette contrast | `make contrast` (inside `make check`) | every text pair ≥ 4.5:1, every glyph and category accent ≥ 3:1, in both appearances |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 63 tests |
 | Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 40 tests per project (80 total) against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |

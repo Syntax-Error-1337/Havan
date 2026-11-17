@@ -106,6 +106,13 @@ pub struct Device {
     pub serial: String,
     pub online: bool,
     pub fw_version: Option<String>,
+    /// When the platform last *heard* from it, as an RFC 3339 string.
+    ///
+    /// Serialised explicitly: `time`'s default for `OffsetDateTime` is a field tuple, so this arrived as
+    /// `[2026,321,3,26,34,…]` and every client's `new Date(...)` produced an invalid date — which the app
+    /// then rendered as "just now". A device that had been silent for four hours looked current, and no
+    /// amount of UI work could fix that from the client side.
+    #[serde(with = "time::serde::rfc3339::option")]
     pub last_seen_at: Option<time::OffsetDateTime>,
     pub points: Vec<Point>,
 }

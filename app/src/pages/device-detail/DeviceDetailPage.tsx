@@ -7,6 +7,8 @@ import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
   RANGES,
   describeUpdate,
+  freshness,
+  silenceWords,
   useDevice,
   useDeviceUpdate,
   useHistory,
@@ -77,7 +79,11 @@ export function DeviceDetailPage() {
             {device.name}
           </AppText>
           <AppText variant="caption" tone="muted">
-            {device.online ? 'Online' : 'Offline'}
+            {freshness(device) === 'live'
+              ? 'Online'
+              : freshness(device) === 'stale'
+                ? (silenceWords(device) ?? 'Silent')
+                : 'Offline'}
             {device.room_name ? ` · ${device.room_name}` : ''}
           </AppText>
           </Box>
@@ -93,12 +99,17 @@ export function DeviceDetailPage() {
 
         {/* Values below are the last ones this device reported. Saying so is the difference between
             "this is broken" and "this is what the house looked like when it went quiet". */}
-        {!device.online ? (
+        {freshness(device) !== 'live' ? (
           <Glass accent={color.warning}>
             <Box row gap="sm" style={{ alignItems: 'center' }}>
               <Icon name="alert" size={16} color={color.warning} />
               <AppText variant="caption" tone="muted" style={{ flex: 1 }}>
-                Offline — showing the last values this device reported.
+                {freshness(device) === 'stale'
+                  ? // Online, and quiet. The platform still has a connection to it; what it does not
+                    // have is a recent word from it, and the difference matters to someone deciding
+                    // whether to walk over and look.
+                    `Connected, but ${(silenceWords(device) ?? 'silent').toLowerCase()} — these are the last values it sent.`
+                  : 'Offline — showing the last values this device reported.'}
               </AppText>
             </Box>
           </Glass>

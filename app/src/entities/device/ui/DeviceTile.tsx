@@ -7,6 +7,7 @@ import { withAlpha } from '../../../shared/ui/Glass';
 import { useSetPoint } from '../model/queries';
 import { commandNotice } from '../model/notices';
 import { primaryPoint, type Device } from '../model/types';
+import { freshness, silenceWords } from '../model/silence';
 import { PillSwitch, controlFor } from './controls';
 
 /**
@@ -34,6 +35,12 @@ export function DeviceTile({
   const { color, dark } = useTheme();
   const accent = accentFor(device.category, color.accent, dark);
   const glow = glowFor(device.category, color.glow);
+
+  // "Online" is what the platform believes; silence is what it has actually heard. A device that
+  // stopped reporting an hour ago is not online in any sense the customer cares about.
+  const state = freshness(device);
+  const silent = silenceWords(device);
+  const quiet = state === 'stale';
 
   const point = primaryPoint(device);
   const setPoint = useSetPoint(device.id);
@@ -82,7 +89,12 @@ export function DeviceTile({
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: 999,
-        backgroundColor: withAlpha(device.online ? color.success : color.warning, 0.16),
+        backgroundColor: withAlpha(
+          state === 'live' ? color.success : color.warning,
+          // Silence is a question, not a fault: quieter than offline, so the eye still goes to the
+          // device that is definitely not there.
+          quiet ? 0.1 : 0.16,
+        ),
       }}
     >
       <View
@@ -90,11 +102,15 @@ export function DeviceTile({
           width: 6,
           height: 6,
           borderRadius: 3,
-          backgroundColor: device.online ? color.success : color.warning,
+          backgroundColor: state === 'live' ? color.success : color.warning,
+          opacity: quiet ? 0.7 : 1,
         }}
       />
-      <AppText variant="tiny" style={{ color: device.online ? color.success : color.warning }}>
-        {device.online ? 'Online' : 'Offline'}
+      <AppText
+        variant="tiny"
+        style={{ color: state === 'live' ? color.success : color.warning, opacity: quiet ? 0.9 : 1 }}
+      >
+        {state === 'live' ? 'Online' : state === 'stale' ? 'Silent' : 'Offline'}
       </AppText>
     </View>
   );
@@ -128,7 +144,9 @@ export function DeviceTile({
       glow={glow}
       style={{ flex: 1, minHeight: wide ? 104 : 132, opacity: device.online ? 1 : 0.8 }}
       testID={`device-tile-${device.serial}`}
-      accessibilityLabel={`${device.name}, ${device.online ? 'online' : 'offline'}`}
+      accessibilityLabel={`${device.name}, ${
+        state === 'live' ? 'online' : state === 'stale' ? `silent, ${silent ?? 'not heard from'}` : 'offline'
+      }`}
     >
       {/* One structure at both widths. Two layouts meant the status badge sat in a different place
           depending on how many neighbours a room had, which reads as a bug rather than a layout. */}
@@ -172,18 +190,11 @@ export function DeviceTile({
 
 /** One line that says what the device is doing, in the words a person would use. */
 function stateLine(device: Device, point: ReturnType<typeof primaryPoint>): string {
-  if (!device.online) {
-    const minutes = device.last_seen_at
-      ? Math.round((Date.now() - new Date(device.last_seen_at).getTime()) / 60000)
-      : null;
-    // "Offline" alone does not say whether it dropped a minute ago or a week ago, and that
-    // difference is what a person acts on.
-    // The pill already says "Offline"; this line only has to say how long.
-    if (minutes === null || Number.isNaN(minutes)) return 'Not heard from';
-    if (minutes < 2) return 'Heard just now';
-    if (minutes < 60) return `Silent for ${minutes}m`;
-    if (minutes < 1440) return `Silent for ${Math.round(minutes / 60)}h`;
-    return `Silent for ${Math.round(minutes / 1440)}d`;
+  // "Offline" alone does not say whether it dropped a minute ago or a week ago, and that difference is
+  // what a person acts on. The pill already says which; this line says how long.
+  const silent = silenceWords(device);
+  if (!device.online || freshness(device) === 'stale') {
+    return silent ?? 'Not heard from';
   }
   if (!point) return device.category;
   const value = point.value;

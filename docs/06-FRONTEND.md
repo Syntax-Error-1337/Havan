@@ -421,6 +421,39 @@ mounting a component under jest's fake timers leaves the next mount in the file 
 is an artefact of the environment, not something a customer meets. The drop, the resume and the status
 transition are all exercised for real against the test socket.
 
+### Silence is not presence, on screen too
+
+The worker has swept for silent devices since Phase 5 — "online, but nobody has heard from it" — and the
+screens did not know about it. A device that dropped off Wi-Fi an hour ago kept its online flag until
+the sweep noticed, and until then the app rendered its last reading as this morning's: the tile said
+"Reading · 21.5 °C", the hero said "online", and the customer's conclusion was that the platform lies.
+
+Three states now, from one function (`entities/device/model/silence.ts`, `SILENT_AFTER_MS = 15 min`)
+rather than each screen deciding what "recently" means:
+
+| State | Pill | Second line | Hero |
+|---|---|---|---|
+| `live` | Online | the reading | full accent, glow, live chart |
+| `stale` (online, silent) | **Silent** | **Silent for 4h** | muted value, dimmed chart, no glow |
+| `offline` | Offline | Silent for 2h | as before, at 0.72 opacity |
+
+A quiet device also stops claiming to be current in the one place it most looked like it: the hero's
+number turns muted and the chart loses its accent, because a chart in full-strength accent says "this
+is happening now". The device screen says it in words — *"Connected, but silent for 4h — these are the
+last values it sent"* — which is the sentence someone deciding whether to walk over and look needs.
+
+**The reason none of this could have worked before**: `last_seen_at` was serialised by `time`'s default,
+a field tuple like `[2026,321,3,26,34,…]`. Every client's `new Date(...)` produced `Invalid Date`, which
+the app rendered as "just now" — so a device silent for four hours looked current, and no amount of UI
+work could fix it from the client side. It is an RFC 3339 string now, and `make time-serde`
+(`scripts/time-serde.py`) fails the gate when any `Serialize` struct exposes an un-annotated
+`OffsetDateTime` again. Verified by deleting the attribute: the gate names the file, the line and the
+attribute to add.
+
+Verified live at 390 × 844 with a device set online and last heard four hours ago: tile **Silent / Silent
+for 4h**, hero muted with a dimmed chart, detail banner "Connected, but silent for 4h". The presence
+sweep then flipped it to Offline on its own, which is the worker doing its job.
+
 ### Colour is a token, or it is a bug
 
 `src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and
