@@ -200,6 +200,14 @@ fmt: ## format
 e2e: ## the customer journey over HTTP (needs stack, seed, api and worker up)
 	./scripts/e2e.sh
 
+.PHONY: e2e-app
+e2e-app: ## the customer app in a real browser (needs api, worker and `make dev-mobile`)
+	cd app && npx playwright test
+
+.PHONY: e2e-portal
+e2e-portal: ## the vendor portal in a real browser (needs api, seed and `make dev-portal`)
+	cd portal && npx playwright test
+
 .PHONY: app
 app: ## start the Expo app
 	cd app && npm start

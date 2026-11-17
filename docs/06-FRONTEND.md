@@ -152,6 +152,39 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The customer app had no end-to-end tests
+
+The portal has had a Playwright suite for months; the app — the product the customer actually holds — was
+verified by unit tests and by my eyes on a screenshot. That is the wrong way round, and last iteration made the
+case: a **420 px sideways scrollbar** existed in the portal for a week and nothing but a real browser at a real
+viewport could see it.
+
+`app/e2e/journeys.spec.ts` is now five blunt tests at 390×844 against the Expo web build (`make e2e-app`):
+
+| Journey | What it proves |
+|---|---|
+| the house is on the screen after signing in | the demo home's **own** name, a device count, at least one tile |
+| a device opens with its readings and its room | a tile that opens, a chart, and the room row at the bottom |
+| a rule can be run by hand | `Run now` → `History` → a run labelled **`manual`**, not `schedule` |
+| appearance follows the customer | tapping *Light* writes `haven.appearance`, *Match my phone* restores it |
+| signing out returns to login | not an empty shell |
+
+Three things the suite taught, all of them about the tests rather than the app:
+
+- **`getByLabel('Password')` matched two elements** — the field and the *Show password* button. The fix is
+  `{ exact: true }`, and the reason is worth keeping: that ambiguity is exactly what a screen-reader user would
+  also meet.
+- **A test that skips its own subject is a check nobody runs.** The run-now test first fell back to asserting the
+  empty state on a home with no rules. It now creates the rule through the API, runs it in the UI, and deletes it
+  in a `finally` — and it uses a **schedule** trigger on purpose, because a hand run of a scheduled rule is the
+  case that used to be logged as `schedule`.
+- **Timeouts are tests too.** A `link` locator with a `.catch()` fallback spent thirty seconds failing before the
+  fallback ran; the tab bar is a set of pressables, so the spec navigates by URL and leaves tab-bar behaviour to
+  the test that is actually about the tab bar.
+
+Five for five in ~15 s, wired as `make e2e-app` beside `make e2e-portal`, with Playwright artefacts added to
+`.gitignore` — a trace is evidence for a failure, not source.
+
 ### The regression the suite caught
 
 Thirty-two iterations of changes, then a full run of the portal's Playwright suite — which had not been run as a

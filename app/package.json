@@ -36,6 +36,7 @@
     "zustand": "^5.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@react-native/jest-preset": "^0.88.1",
     "@testing-library/react-native": "^14.1.0",
     "@types/jest": "^30.0.0",
@@ -55,7 +56,8 @@
     "lint": "eslint .",
     "test": "jest --forceExit",
     "test:watch": "jest --watch",
-    "start:mcp": "EXPO_UNSTABLE_MCP_SERVER=1 expo start"
+    "start:mcp": "EXPO_UNSTABLE_MCP_SERVER=1 expo start",
+    "test:e2e": "playwright test"
   },
   "private": true
 }

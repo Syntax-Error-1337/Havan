@@ -21,3 +21,9 @@ graphify-out/
 
 # The runtime test binary (the protocol one is already listed above).
 sdk/c/tests/test_runtime
+
+# Playwright artefacts (traces, screenshots, reports) — evidence for a failure, not source.
+app/test-results/
+app/playwright-report/
+portal/test-results/
+portal/playwright-report/
