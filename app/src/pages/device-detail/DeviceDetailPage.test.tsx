@@ -57,10 +57,24 @@ function stubApi(handler: (url: string, init?: RequestInit) => unknown) {
   globalThis.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, method: init?.method ?? 'GET', body: init?.body as string });
-    return { ok: true, status: 200, text: async () => JSON.stringify(handler(url, init)) } as Response;
+    // `/homes` decides whether the caller may rename, so it answers in every test: a stub that returns
+    // a device here is a test saying "there are no homes", which is never what it meant.
+    const body = url.endsWith('/homes') ? [homeAsAdmin] : handler(url, init);
+    return { ok: true, status: 200, text: async () => JSON.stringify(body) } as Response;
   }) as unknown as typeof fetch;
   return calls;
 }
+
+const homeAsAdmin = {
+  id: 'home-1',
+  owner_id: 'u1',
+  name: 'Flat',
+  timezone: 'UTC',
+  role: 'admin',
+  member_count: 2,
+  device_count: 1,
+  created_at: '2026-01-01T00:00:00Z',
+};
 
 async function renderPage() {
   const client = testQueryClient();
@@ -98,8 +112,82 @@ describe('device detail', () => {
     expect(JSON.parse(patch?.body ?? '{}')).toEqual({ room_id: 'room-1' });
   });
 
-  it('sends a command when the switch is flipped', async () => {
+  it('renames the device in place, and sends only the name', async () => {
+    const calls = stubApi((url) => {
+      if (url.includes('/rooms')) return [];
+      if (url.endsWith('/homes')) return [homeAsAdmin];
+      return device;
+    });
+    const view = await renderPage();
+    await view.findByText('Desk lamp');
+
+    // The server has accepted this since the first PATCH; the app simply never offered it, so every
+    // home was full of product names.
+    fireEvent.press(view.getByTestId('rename-device'));
+    // React 19 schedules the re-render; the input is not there on the very next tick.
+    await waitFor(() => expect(view.getByLabelText('Device name')).toBeTruthy());
+    fireEvent.changeText(view.getByLabelText('Device name'), 'Bedside lamp');
+    // The draft has to be committed before Save is pressed: `save` closes over the last render's value,
+    // and pressing in the same tick would compare against the old name and send nothing.
+    await waitFor(() => expect(view.getByLabelText('Device name').props.value).toBe('Bedside lamp'));
+    fireEvent.press(view.getByTestId('rename-save'));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'PATCH' && c.url.includes('/devices/device-1'))).toBe(
+        true,
+      ),
+    );
+    const patchCall = calls.find((c) => c.method === 'PATCH')!;
+    expect(JSON.parse(patchCall.body ?? '{}')).toEqual({ name: 'Bedside lamp' });
+  });
+
+  it('treats an emptied name as a cancel rather than a request', async () => {
+    const calls = stubApi((url) => {
+      if (url.includes('/rooms')) return [];
+      if (url.endsWith('/homes')) return [homeAsAdmin];
+      return device;
+    });
+    const view = await renderPage();
+    await view.findByText('Desk lamp');
+
+    fireEvent.press(view.getByTestId('rename-device'));
+    await waitFor(() => expect(view.getByLabelText('Device name')).toBeTruthy());
+    fireEvent.changeText(view.getByLabelText('Device name'), '   ');
+    await waitFor(() => expect(view.getByLabelText('Device name').props.value).toBe('   '));
+    fireEvent.press(view.getByTestId('rename-save'));
+
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+    expect(await view.findByText('Desk lamp')).toBeTruthy();
+  });
+
+  it('does not offer a rename a member would be refused', async () => {
+    // The server says "only an admin can rename a device". A control that exists only to be refused is
+    // worse than no control: the member types a name, presses Save, and learns nothing except "no".
     const calls = stubApi((url) => (url.includes('/rooms') ? [] : device));
+    globalThis.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, method: init?.method ?? 'GET', body: init?.body as string });
+      const body = url.endsWith('/homes')
+        ? [{ ...homeAsAdmin, role: 'member' }]
+        : url.includes('/rooms')
+          ? []
+          : device;
+      return { ok: true, status: 200, text: async () => JSON.stringify(body) } as Response;
+    }) as unknown as typeof fetch;
+
+    const view = await renderPage();
+    await view.findByText('Desk lamp');
+
+    expect(view.queryByTestId('rename-device')).toBeNull();
+    expect(view.getByText('Desk lamp')).toBeTruthy();
+  });
+
+  it('sends a command when the switch is flipped', async () => {
+    const calls = stubApi((url) => {
+      if (url.includes('/rooms')) return [];
+      if (url.endsWith('/homes')) return [homeAsAdmin];
+      return device;
+    });
 
     const view = await renderPage();
     await view.findByText('Desk lamp');

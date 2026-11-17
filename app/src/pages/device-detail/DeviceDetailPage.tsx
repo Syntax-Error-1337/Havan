@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, TextInput } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Box, Screen, AppText, Glass, Icon, Sparkline, iconForCategory } from '../../shared/ui';
 import { PointControl } from '../../entities/device';
@@ -17,13 +17,15 @@ import {
   useDevice,
   useDeviceUpdate,
   useHistory,
+  useRenameDevice,
   useSetPoint,
   useSetRoom,
   type Range,
 } from '../../entities/device';
 import type { DevicePoint } from '../../entities/device';
-import { useRooms } from '../../entities/home';
+import { canManage, useHomes, useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
+import { useInlineEdit } from '../../shared/lib/useInlineEdit';
 
 export function DeviceDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -38,7 +40,16 @@ export function DeviceDetailPage() {
   const expectedReport = device ? expectedReportWords(device) : null;
   const setPoint = useSetPoint(id ?? '');
   const setRoom = useSetRoom();
+  const rename = useRenameDevice();
+  // Hooks above the early returns, as always: `device` is undefined until the query resolves.
+  const nameEdit = useInlineEdit(device?.name ?? '', (name) => {
+    if (id) rename.mutate({ deviceId: id, name });
+  });
   const { data: rooms } = useRooms(device?.home_id ?? undefined);
+  const { data: homes } = useHomes(false);
+  // Renaming is an admin action on the server. A control that exists only to be refused is worse than
+  // no control: the member taps their device's name, types, presses Save and is told no.
+  const canRename = canManage(homes?.find((h) => h.id === device?.home_id)?.role ?? 'member');
 
   if (isPending) {
     return (
@@ -83,9 +94,68 @@ export function DeviceDetailPage() {
             <Icon name={iconForCategory(device.category)} size={28} color={accent} />
           </Box>
           <Box gap="xs" style={{ flex: 1 }}>
-          <AppText variant="title" weight="700">
-            {device.name}
-          </AppText>
+          {nameEdit.editing ? (
+            // In place, not on another screen: renaming a device is the one edit a customer makes
+            // while looking at it, and a form that pushes over the thing being renamed hides the
+            // context that made them rename it.
+            <Box row gap="sm" style={{ alignItems: 'center' }}>
+              <TextInput
+                value={nameEdit.draft}
+                onChangeText={nameEdit.setDraft}
+                autoFocus
+                placeholder="Device name"
+                placeholderTextColor={color.muted}
+                onSubmitEditing={nameEdit.save}
+                accessibilityLabel="Device name"
+                style={{
+                  flex: 1,
+                  color: color.text,
+                  fontSize: 22,
+                  fontWeight: '700',
+                  borderBottomWidth: 1,
+                  borderBottomColor: color.accent,
+                  paddingVertical: 2,
+                }}
+              />
+              <Pressable
+                onPress={nameEdit.save}
+                testID="rename-save"
+                accessibilityRole="button"
+                hitSlop={10}
+              >
+                <AppText tone="accent">Save</AppText>
+              </Pressable>
+              <Pressable
+                onPress={nameEdit.cancel}
+                testID="rename-cancel"
+                accessibilityRole="button"
+                hitSlop={10}
+              >
+                <AppText tone="muted">Cancel</AppText>
+              </Pressable>
+            </Box>
+          ) : canRename ? (
+            <Pressable
+              onPress={nameEdit.open}
+              testID="rename-device"
+              accessibilityRole="button"
+              accessibilityLabel={`Rename ${device.name}`}
+              accessibilityHint="Opens an editor for the device's name"
+            >
+              <AppText variant="title" weight="700">
+                {device.name}
+              </AppText>
+            </Pressable>
+          ) : (
+            <AppText variant="title" weight="700">
+              {device.name}
+            </AppText>
+          )}
+          {rename.isError ? (
+            <AppText variant="tiny" tone="danger">
+              {rename.error instanceof Error ? rename.error.message : 'That name was not saved.'}
+            </AppText>
+          ) : null}
           <AppText variant="caption" tone="muted">
             {freshness(device) === 'live'
               ? 'Online'

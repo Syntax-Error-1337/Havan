@@ -14,8 +14,8 @@ import {
   useRooms,
 } from '../../entities/home';
 import { useMe, useSession } from '../../entities/session';
-import { useTheme } from '../../app-shell/theme';
-import { tokens } from '../../shared/config/tokens';
+import { useTheme, tokens } from '../../app-shell/theme';
+import { useInlineEdit } from '../../shared/lib/useInlineEdit';
 
 /**
  * Settings.
@@ -140,8 +140,9 @@ function EditableRow({
   right?: ReactNode;
 }) {
   const { color, brand } = useTheme();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  // The rules — reset the draft on open, blank is a cancel, unchanged is not a request — live in the
+  // hook, because the device header renames things too and the two screens must behave the same.
+  const { editing, draft, setDraft, open, save } = useInlineEdit(value, onSave);
 
   if (!editing) {
     return (
@@ -151,19 +152,10 @@ function EditableRow({
         right={right}
         // Tapping the row still edits it when a control sits on the right: the
         // Delete button captures its own taps, the rest of the row opens the draft.
-        onPress={() => {
-          setDraft(value);
-          setEditing(true);
-        }}
+        onPress={open}
       />
     );
   }
-
-  const save = () => {
-    setEditing(false);
-    const next = draft.trim();
-    if (next.length > 0 && next !== value) onSave(next);
-  };
 
   return (
     <Box row gap="sm" p="md" style={{ alignItems: 'center' }}>

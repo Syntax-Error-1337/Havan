@@ -508,6 +508,27 @@ sensor's slot is `value` — so humidity and temperature appeared as two cards b
 `titleFor` now prefers the capability unless it only names the kind of device (`switch`, `sensor`,
 `cover`, …), which gives **Humidity**, **Temperature**, **Battery**, and still **Power** for a bulb.
 
+### A customer's own name for their own device
+
+The server has accepted `PATCH /devices/{id} {"name": …}` since the first month; the app never offered
+it, so every home was full of product names — "Acme Smart Plug (2)" where the household says "coffee
+machine". The name on the device screen is now pressable and becomes the editor in place, because
+renaming is the one edit a customer makes *while looking at the device* and a form that covers it hides
+the context that prompted the rename.
+
+Two rules came out of the server refusing the first attempt:
+
+- **No control a member would be refused.** Renaming is an admin action (`403 only an admin can rename a
+  device`), so the name is plain text for a member. A control that exists only to say no teaches people
+  to stop touching the app.
+- **A refusal is shown where the name was.** If the role changed elsewhere, the API's sentence appears
+  under the header rather than the editor closing as if it had worked.
+
+The interaction rules — draft resets on open, whitespace is a cancel, unchanged is not a request — live
+in `shared/lib/useInlineEdit` and are used by the settings list too, so the two renaming surfaces cannot
+drift. Verified live as an admin: typed a new name in the hero, pressed Save, and the dashboard showed it
+without a reload; the demo account was returned to `member` and the device to its name afterwards.
+
 ### Colour is a token, or it is a bug
 
 `src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and

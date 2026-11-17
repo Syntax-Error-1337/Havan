@@ -66,6 +66,31 @@ export function useSetPoint(deviceId: string) {
 }
 
 /**
+ * Give a device the name the household actually uses for it.
+ *
+ * "Acme Smart Plug (2)" is what the box said; "Coffee machine" is what the person says. The server has
+ * accepted this since the first PATCH — the app simply never offered it, so every customer's home was
+ * full of product names.
+ */
+export function useRenameDevice() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { deviceId: string; name: string }) =>
+      request<Device>(`/devices/${input.deviceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: input.name }),
+      }),
+    onSuccess: (device) => {
+      qc.setQueryData(qk.device(device.id), device);
+      // The list and every cached dashboard page carry the old name; one prefix update fixes them all.
+      void qc.invalidateQueries({ queryKey: qk.devices(device.home_id ?? 'none') });
+      if (device.home_id) qc.invalidateQueries({ queryKey: qk.dashboard(device.home_id) });
+    },
+  });
+}
+
+/**
  * Move a device into a room, or out of one (`roomId: null`).
  *
  * The API distinguishes "field absent" from "field null" so clearing a room is
