@@ -152,6 +152,36 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The first sixty seconds of a new account
+
+Signing up with a fresh address lands on **`Create your first home`** with one button, which posts:
+
+```ts
+createHome.mutate({ name: 'My home', timezone: 'UTC' })
+```
+
+Two things wrong with one line. The name is one nobody chose — and it is not a label, it is the thing the
+customer will say out loud for years ("Flat 3", "The cottage"). And the timezone is **UTC for every person on
+the planet**, which is not cosmetic: schedules and automations are evaluated in the home's zone, so a customer in
+Taipei gets their 7 a.m. automation at half past two in the afternoon.
+
+The screen now asks for the name (defaulting to `My home` if they skip it) and sends `deviceTimeZone()`, which
+reads the IANA zone from `expo-localization` and falls back to UTC rather than to a guess — a wrong zone is a
+schedule firing at the wrong hour. Verified live: a brand-new account created **`Flat 3` / `Asia/Taipei`**, where
+the same request used to produce `My home` / `UTC`.
+
+Two smaller things the first-run screen was missing, both about a person who is already stuck:
+
+- **A way out.** Signed in on the wrong account, there was no home and no exit — the same rule as every other
+  state in this document. There is now *Use a different account*.
+- **The invitee's sentence.** Someone who has been added to a partner's home sees this screen and reasonably
+  concludes the app is broken. It says: *"Has someone added you to their home? It will appear here once they
+  do."*
+
+The tests for this needed two fixes of their own, both worth recording: `findByLabelText` on a labelled wrapper
+returns something `changeText` cannot type into (use a testID on the input), and a press that follows a
+`changeText` can run before the state commit — assert the field's value first, then press.
+
 ### A pill that counted the page
 
 The header of a 1,200-device home read **`200 offline`**. Two hundred was the size of the dashboard page it had

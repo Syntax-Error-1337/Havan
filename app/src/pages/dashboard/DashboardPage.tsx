@@ -33,6 +33,7 @@ import { tokens } from '../../shared/config/tokens';
 import { withAlpha } from '../../shared/ui/Glass';
 import { ApiError } from '../../shared/api/client';
 import { useTheme } from '../../app-shell/theme';
+import { deviceTimeZone } from '../../shared/lib/timeZone';
 import { groupByRoom } from './sections';
 import { buildRows } from './rows';
 import { categoriesOf, filterDevices } from './search';
@@ -72,6 +73,7 @@ export function DashboardPage() {
 
   const homeId = useSession((s) => s.homeId);
   const setHome = useSession((s) => s.setHome);
+  const signOut = useSession((s) => s.signOut);
   const { data: me } = useMe();
   const { data: homes, isPending: homesPending } = useHomes(Boolean(homeId));
   const createHome = useCreateHome();
@@ -143,6 +145,7 @@ export function DashboardPage() {
   // Search is local: the dashboard already holds every device, so asking the network again would be
   // slower and would flicker the grid. The rail and the hero keep showing the *home* — a filter is a
   // question about the list, not a claim that the other devices stopped existing.
+  const [homeNameTyped, setHomeNameTyped] = useState('');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const categories = useMemo(() => categoriesOf(devices), [devices]);
@@ -155,6 +158,21 @@ export function DashboardPage() {
 
   const rows = useMemo(() => buildRows(sections), [sections]);
 
+  /**
+   * Create the first home, in the customer's own words and their own timezone.
+   *
+   * The name defaults to "My home" when they do not type one — an empty field is not a refusal — and the
+   * timezone comes from the device, because a home created in UTC schedules everything at the wrong hour
+   * for everybody who is not in London.
+   */
+  const createFirstHome = () => {
+    const name = homeNameTyped.trim() || 'My home';
+    createHome.mutate(
+      { name, timezone: deviceTimeZone() },
+      { onSuccess: (home) => setHome(home.id) },
+    );
+  };
+
   // A disabled query reports `isPending` forever, so the gate is "no home yet", not
   // "the homes list has not arrived" — with a stored home we never ask for it.
   if (!homeId && homesPending) return <Screen>{null}</Screen>;
@@ -164,26 +182,62 @@ export function DashboardPage() {
       <Screen>
         <Box p="xl" gap="md" center flex={1}>
           <AppText variant="title" weight="600">
-            Create your first home
+            Name your home
           </AppText>
           <AppText tone="muted" style={{ textAlign: 'center' }}>
-            A home holds your rooms and devices. You can add more later.
+            A home holds your rooms and devices. Most people call it their address — “Flat 3”, “The
+            cottage” — because that is what they say out loud.
           </AppText>
+          {/* It used to create a home called "My home" in UTC without asking: a name nobody chose, and a
+              timezone that put every schedule in the wrong hour for everybody outside London. */}
+          <TextInput
+            value={homeNameTyped}
+            onChangeText={setHomeNameTyped}
+            placeholder="My home"
+            placeholderTextColor={color.muted}
+            accessibilityLabel="Home name"
+            testID="first-home-name"
+            autoFocus
+            returnKeyType="go"
+            onSubmitEditing={createFirstHome}
+            style={{
+              width: '100%',
+              paddingVertical: tokens.space.md,
+              paddingHorizontal: tokens.space.lg,
+              borderRadius: tokens.radius.md,
+              borderWidth: 1,
+              borderColor: color.border,
+              backgroundColor: color.surface,
+              color: color.text,
+              fontSize: tokens.font.body,
+            }}
+          />
           <Button
             label="Create home"
             loading={createHome.isPending}
-            onPress={() =>
-              createHome.mutate(
-                { name: 'My home', timezone: 'UTC' },
-                { onSuccess: (home) => setHome(home.id) },
-              )
-            }
+            onPress={createFirstHome}
           />
+          {/* The person invited to somebody else's home sees this screen too, and needs to know that
+              nothing is missing yet. Saying so is cheaper than a support ticket. */}
+          <AppText variant="tiny" tone="muted" style={{ textAlign: 'center' }}>
+            Has someone added you to their home? It will appear here once they do.
+          </AppText>
           {createHome.error ? (
             <AppText tone="danger" variant="caption">
               {createHome.error.message}
             </AppText>
           ) : null}
+          {/* Every state needs an exit: signed in on the wrong account, this screen has no way out. */}
+          <Pressable
+            onPress={() => void signOut()}
+            accessibilityRole="button"
+            hitSlop={10}
+            style={{ paddingVertical: tokens.space.sm }}
+          >
+            <AppText variant="caption" tone="muted">
+              Use a different account
+            </AppText>
+          </Pressable>
         </Box>
       </Screen>
     );

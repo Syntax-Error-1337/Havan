@@ -40,6 +40,72 @@ beforeEach(() => {
   useSession.setState({ access: null, homeId: null, refresh: null });
 });
 
+describe('a brand-new account', () => {
+  it('creates the first home in the customer\'s words and their own timezone', async () => {
+    // It used to post `{ name: 'My home', timezone: 'UTC' }` without asking: a name nobody chose, and a
+    // zone that put every schedule in the wrong hour for everybody outside London.
+    const posts: { url: string; body: string | undefined }[] = [];
+    // The homes list is empty until the POST happens — otherwise `useCurrentHome` adopts the home this
+    // test is about to create and the first-run screen never shows.
+    let created = false;
+    globalThis.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'POST') {
+        posts.push({ url, body: init.body as string | undefined });
+        created = true;
+        return {
+          ok: true,
+          status: 201,
+          text: async () => JSON.stringify({ id: 'home-new', name: 'Flat 3', timezone: 'Europe/Berlin', role: 'owner' }),
+        } as Response;
+      }
+      // After the create, the next render asks for the homes list: answer with the new home, or the
+      // screen looks for a home that its own POST just invented.
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(
+            url.endsWith('/homes') && !created
+              ? []
+              : url.endsWith('/homes')
+              ? [{ id: 'home-new', name: 'Flat 3', timezone: 'Europe/Berlin', role: 'owner', member_count: 1 }]
+              : url.includes('/dashboard')
+                ? { home: { id: 'home-new', name: 'Flat 3' }, rooms: [], devices: [], scenes: [], unread_count: 0 }
+                : [],
+          ),
+      } as Response;
+    }) as unknown as typeof fetch;
+
+    const view = await renderDashboard();
+    // By testID: the input sits inside a labelled wrapper, and `findByLabelText` may hand back the
+    // wrapper, where `changeText` does nothing at all.
+    const nameField = await view.findByTestId('first-home-name');
+    fireEvent.changeText(nameField, 'Flat 3');
+    await waitFor(() => expect(nameField.props.value).toBe('Flat 3'));
+    fireEvent.press(view.getByText('Create home'));
+
+    await waitFor(() => expect(posts.some((p) => p.url.includes('/homes'))).toBe(true));
+    const body = JSON.parse(posts.find((p) => p.url.endsWith('/homes'))!.body ?? '{}');
+    expect(body.name).toBe('Flat 3');
+    // A real IANA zone from the device, not the literal 'UTC' every home used to be created in.
+    expect(typeof body.timezone).toBe('string');
+    expect(body.timezone.length).toBeGreaterThan(0);
+  });
+
+  it('offers a way out for the wrong account', async () => {
+    // Signed in as somebody else, the first-run screen was a dead end: no home, no exit.
+    const signOut = jest.fn(async () => undefined);
+    useSession.setState({ access: 'token', homeId: null, refresh: null, signOut });
+    stubApi((url) => (url.endsWith('/homes') ? [] : null));
+
+    const view = await renderDashboard();
+    fireEvent.press(await view.findByText('Use a different account'));
+
+    await waitFor(() => expect(signOut).toHaveBeenCalled());
+  });
+});
+
 describe('dashboard', () => {
   it('says the home could not be loaded instead of pretending it is empty', async () => {
     // Measured with the dashboard request blocked: a home with six devices told the customer "No devices
@@ -322,6 +388,6 @@ describe('dashboard', () => {
 
     const view = await renderDashboard();
 
-    expect(await view.findByText('Create your first home')).toBeTruthy();
+    expect(await view.findByText('Name your home')).toBeTruthy();
   });
 });
