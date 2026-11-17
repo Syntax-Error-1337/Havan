@@ -247,6 +247,9 @@ export function DashboardPage() {
                 </>
               )}
 
+              {/* Two actions, not three. "Automations" was a third chip pointing at a screen the tab bar
+                  already owns permanently, so it read as a third kind of thing when it was navigation —
+                  and a row of equal chips is a row nobody scans. */}
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Chip
                   label={unread > 0 ? `Alerts · ${unread}` : 'Alerts'}
@@ -258,7 +261,6 @@ export function DashboardPage() {
                   onPress={() => setAddingRoom((v) => !v)}
                   selected={addingRoom}
                 />
-                <Chip label="Automations" onPress={() => router.push('/automations')} />
               </View>
 
               {/* Search first, filters under it: a house with two hundred devices is not navigated by

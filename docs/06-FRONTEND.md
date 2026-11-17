@@ -626,6 +626,33 @@ authority, only a way to use it. Verified live: exported the demo account's data
 web build, then registered a throwaway account, deleted it from the screen, read the receipt and was
 signed out.
 
+### A chart that stops where the readings stop
+
+The hero card led with a 24-hour line and the live reading. Three versions of that chart were wrong before the
+fourth was honest, and each looked like a rendering bug because each *was* one:
+
+1. **Appending the live value** put two points at the same x — the last bucket and "now" are the same hour — and
+   drew a vertical cliff at the right edge.
+2. **Overwriting the last bucket** with the live value was worse: a bucket from 03:36 was painted as if it held a
+   21:30 reading, and the footer printed a maximum the line never reached.
+3. **An index-based x axis** hid the real problem: a twelve-hour gap between the last reading and now occupied
+   fourteen pixels, so the card said *"10 PM–now"* above a line that visibly stopped at 11 AM.
+
+What it does now:
+
+- the line is the recorded history, **placed at each bucket's own timestamp** — a gap takes the space it took;
+- the live reading is a **separate marker past a gutter**, joined by a **dotted** segment (solid would claim those
+  hours were measured; a floating dot with no line reads as a mistake);
+- the axis names the first bucket with its day (`Yest 10 PM`) and ends at `now`;
+- the footer prints the range **including the live value** — otherwise a 21.5 sat above a printed maximum of 20.7 —
+  and, when there is a gap, says what it is: *"11 h without a reading"*.
+
+The gap threshold lives in one function (`gapHours`), because the marker and the caption must not be able to
+disagree, and "one bucket behind now" is a bucket being filled rather than missing data.
+
+Vision reviews traced the card **6.5 → 7 → 7.5 → 9 / 10** across those four versions; the last one still called
+the *screen* 7.5–8, so the card is no longer the weak part.
+
 ### Colour is a token, or it is a bug
 
 `src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and

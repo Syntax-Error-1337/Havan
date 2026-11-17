@@ -6,6 +6,7 @@ import { withAlpha } from '../../shared/ui/Glass';
 import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
   freshness,
+  gapHours,
   silenceWords,
   useHistory,
   useSetPoint,
@@ -42,16 +43,59 @@ export function HeroCard({ device }: { device: Device }) {
   const value = typeof point?.value === 'number' ? point.value : null;
   const state = freshness(device);
 
+  /**
+   * `10 PM` / `2 AM`: the hour a bucket starts, for the axis under the chart — with the day when it is not
+   * today. A 24-hour window that began yesterday evening reads as "10 PM" at 10 PM, which is the same hour
+   * twice and the reason a twelve-hour gap looked like a bug.
+   */
+  const hourLabel = (iso: string | undefined): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const hour = d.toLocaleTimeString([], { hour: 'numeric' }).replace(':00', '');
+    const day = d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+    const today = new Date().toLocaleDateString([], { day: 'numeric', month: 'short' });
+    const yesterday = new Date(Date.now() - 86_400_000).toLocaleDateString([], {
+      day: 'numeric',
+      month: 'short',
+    });
+    if (day === today) return hour;
+    return `${day === yesterday ? 'Yest' : day} ${hour}`;
+  };
+
   // The chart's own scale, in words: a line with no numbers on it answers "did it move" and
   // nothing else. Min and max are the two facts a home owner actually wants from a day of readings.
+  // The range covers what the chart draws, and the chart's axis now runs to *now* — the live reading is a
+  // point on it. Leaving the live value out put a 21.5 above a printed maximum of 20.7, which is the kind of
+  // contradiction a customer reads faster than any other part of the card.
   const readings = (history?.buckets?.map((b) => b.v) ?? []).concat(value === null ? [] : [value]);
-  // The current reading is part of the day. Leaving it out made the card contradict itself — a
-  // number above its own maximum — which is exactly the kind of thing a customer notices first.
+  const isSwitchable = device.points.some((p) => p.capability === 'switch' && p.writable);
+
+  /**
+   * The line is the recorded history, untouched. The live reading joins it only when it belongs to the
+   * last bucket; otherwise it is drawn as a separate marker past a gutter, because a reading taken at
+   * 21:30 is not a reading from 03:36 and drawing it as one is a straight line between two facts that
+   * never met — which is what made this chart look broken for two iterations.
+   */
+  const chartBuckets = history?.buckets ?? [];
+  const lastBucket = chartBuckets[chartBuckets.length - 1];
+  // The same function that explains the gap draws the marker: two thresholds would eventually disagree.
+  const silentHours = gapHours(chartBuckets, history?.bucket_secs ?? 3600);
+  const liveIsSeparate = value !== null && silentHours !== null;
+
+  // The range, then the window it actually covers. "last 24 h" claimed a full day even when the readings
+  // stopped eleven hours ago — the same overstatement the detached marker exists to avoid.
   const rangeText =
     readings.length > 1
-      ? `${Math.min(...readings).toFixed(1)}–${Math.max(...readings).toFixed(1)} ${point?.unit ?? ''} · last 24 h`
-      : 'last 24 h';
-  const isSwitchable = device.points.some((p) => p.capability === 'switch' && p.writable);
+      ? `${Math.min(...readings).toFixed(1)}–${Math.max(...readings).toFixed(1)} ${point?.unit ?? ''} recorded`
+      : 'no readings yet';
+
+  // What the day did, in one number: a range says how far it moved, the delta says which way.
+  const delta =
+    readings.length > 1 ? chartBuckets[chartBuckets.length - 1]!.v - chartBuckets[0]!.v : null;
+  const direction = delta === null || Math.abs(delta) < 0.05 ? null : delta > 0 ? '↑' : '↓';
+
+
 
   return (
     <Glass
@@ -121,16 +165,30 @@ export function HeroCard({ device }: { device: Device }) {
           ) : null}
         </View>
 
-        {history?.buckets && history.buckets.length > 1 ? (
-          <AreaChart
-            buckets={
-              value === null ? history.buckets : [...history.buckets, { ...history.buckets[history.buckets.length - 1]!, v: value }]
-            }
-            // A chart drawn in full-strength accent says "this is happening now". When the device has
-            // gone quiet, the line keeps its shape and loses its authority.
-            accent={state === 'live' ? accent : withAlpha(accent, 0.4)}
-            height={78}
-          />
+        {chartBuckets.length > 1 ? (
+          <View style={{ gap: 4 }}>
+            <AreaChart
+              buckets={chartBuckets}
+              // A chart drawn in full-strength accent says "this is happening now". When the device has
+              // gone quiet, the line keeps its shape and loses its authority.
+              accent={state === 'live' ? accent : withAlpha(accent, 0.4)}
+              now={liveIsSeparate ? value : null}
+              height={78}
+            />
+            {/* An axis, however small: a shape with no ends answers "did it move" and leaves "over
+                what" to the reader. Two labels are enough for a day. */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <AppText variant="tiny" tone="muted">
+                {hourLabel(chartBuckets[0]?.t)}
+              </AppText>
+              {/* The right label says where the line actually ends. When the live reading is detached
+                  from it, "now" would claim the line reaches the present — the label names the last
+                  bucket instead, and the marker at the edge is the present. */}
+              <AppText variant="tiny" tone="muted">
+                now
+              </AppText>
+            </View>
+          </View>
         ) : (
           <AppText variant="tiny" tone="muted">
             No history for this reading yet.
@@ -141,8 +199,14 @@ export function HeroCard({ device }: { device: Device }) {
           <AppText variant="tiny" tone="muted">
             {rangeText}
           </AppText>
+          {/* What the dotted segment means, in words. A delta over a window with an eleven-hour hole in it
+              is a number nobody can reconcile with the chart — the gap is the fact worth printing. */}
           <AppText variant="tiny" style={{ color: accent }}>
-            {humanise(point?.capability)}
+            {liveIsSeparate
+              ? `${silentHours} h without a reading`
+              : direction === null
+                ? 'steady'
+                : `${direction} ${Math.abs(delta ?? 0).toFixed(1)} ${point?.unit ?? ''}`.trim()}
           </AppText>
         </View>
       </View>

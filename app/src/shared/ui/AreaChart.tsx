@@ -12,30 +12,66 @@ import type { Bucket } from '../../entities/device/model/history';
  * the bar sparkline and this card uses the area.
  *
  * Gaps are honoured: a bucket with no reading breaks the line instead of being drawn as zero.
+ *
+ * ## The current reading, when it is not in the series
+ *
+ * A home screen shows the freshest value the platform has, and the history behind it can be hours old —
+ * a sensor that reports every fifteen minutes leaves a 24-hour chart whose last bucket is 03:36 while the
+ * number above it is from 21:30. Two wrong answers are available there: append the live value as another
+ * point (a vertical spike at the edge, because it shares its x with the last bucket) or overwrite the last
+ * bucket (a bucket from 03:36 drawn as if it held a 21:30 reading). Both were tried on this card and both
+ * looked like a rendering bug, because both were one.
+ *
+ * So the live value is drawn as what it is: a marker of its own, past a gutter, disconnected from the
+ * line. `now` says "this is a separate observation, after a gap" instead of connecting two readings that
+ * never touched.
  */
 export function AreaChart({
   buckets,
   accent,
   height = 96,
   showFill = true,
+  now = null,
 }: {
   buckets: Bucket[];
   accent: string;
   height?: number;
   showFill?: boolean;
+  /** The live reading, when it is not already the last bucket. Drawn detached, at the right edge. */
+  now?: number | null;
 }) {
+  /**
+   * The x axis is **time**, not index.
+   *
+   * An index axis draws a twelve-hour gap between the last reading and now as fourteen pixels, which is how
+   * a card ended up saying "10 PM–now" above a line that visibly stopped at 11 AM: the picture claimed the
+   * readings continued. Placing each bucket at its own timestamp makes a gap look like the time it took,
+   * and the axis labels then mean what they say.
+   */
+  const at = (bucket: Bucket): number => new Date(bucket.t).getTime();
   const width = 320;
   const values = buckets.map((b) => b.v).filter((v) => Number.isFinite(v));
   if (buckets.length < 2 || values.length < 2) {
     return <View style={{ height }} />;
   }
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  // The live value is part of the scale, or its marker floats outside the chart it belongs to.
+  const scaleValues = now === null ? values : [...values, now];
+  const min = Math.min(...scaleValues);
+  const max = Math.max(...scaleValues);
   const span = max - min || 1;
   const pad = 6;
 
-  const x = (i: number) => (i / (buckets.length - 1)) * width;
+  // A gutter keeps the line's last point from colliding with the live marker at the edge.
+  const gutter = now === null ? 0 : 14;
+  const plot = width - gutter;
+
+  const first = at(buckets[0]!);
+  const lastRecorded = at(buckets[buckets.length - 1]!);
+  // With a live marker the axis runs to now; without one it stops at the last reading.
+  const end = now === null ? lastRecorded : Math.max(lastRecorded, Date.now());
+  const spanMs = Math.max(end - first, 1);
+  const x = (i: number) => ((at(buckets[i]!) - first) / spanMs) * plot;
   const y = (v: number) => pad + (1 - (v - min) / span) * (height - pad * 2);
 
   let line = '';
@@ -54,7 +90,10 @@ export function AreaChart({
       area += ` L${px.toFixed(1)},${py.toFixed(1)}`;
     }
   });
-  area += ` L${width},${height} Z`;
+  // The fill closes under the last *reading*, not under the axis end: filling to the edge would paint the
+  // gap as if it had been measured.
+  const lastX = x(buckets.length - 1);
+  area += ` L${lastX.toFixed(1)},${height} Z`;
 
   return (
     <View style={{ height }}>
@@ -67,11 +106,29 @@ export function AreaChart({
         </Defs>
         {showFill ? <Path d={area} fill="url(#area)" /> : null}
         <Path d={line} stroke={accent} strokeWidth="2.4" fill="none" strokeLinejoin="round" strokeLinecap="round" />
-        {/* The current reading, marked. A line that stops at the right edge leaves the reader asking
-            whether the last point is now or an hour ago — the same question the range text answered
-            in numbers, answered here in space. */}
-        <Circle cx={width} cy={y(values[values.length - 1]!)} r="4" fill={accent} />
-        <Circle cx={width} cy={y(values[values.length - 1]!)} r="8" fill={accent} fillOpacity="0.22" />
+        {now === null ? (
+          /* The last bucket *is* the current reading: mark it where the line ends. */
+          <>
+            <Circle cx={x(buckets.length - 1)} cy={y(values[values.length - 1]!)} r="4" fill={accent} />
+            <Circle cx={x(buckets.length - 1)} cy={y(values[values.length - 1]!)} r="8" fill={accent} fillOpacity="0.22" />
+          </>
+        ) : (
+          /* A reading taken after a gap. The marker is its own point, joined to the line by a dotted
+             segment: solid would claim those hours were measured, a floating dot with no line at all
+             reads as a rendering mistake. Dotted is the honest middle — "no readings in between". */
+          <>
+            <Path
+              d={`M${lastX.toFixed(1)},${y(values[values.length - 1]!).toFixed(1)} L${(width - 3).toFixed(1)},${y(now).toFixed(1)}`}
+              stroke={accent}
+              strokeWidth="1.6"
+              strokeDasharray="2 3"
+              fill="none"
+              strokeLinecap="round"
+            />
+            <Circle cx={width - 3} cy={y(now)} r="4.5" fill={accent} />
+            <Circle cx={width - 3} cy={y(now)} r="9" fill={accent} fillOpacity="0.2" />
+          </>
+        )}
       </Svg>
     </View>
   );

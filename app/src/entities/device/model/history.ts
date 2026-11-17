@@ -14,6 +14,29 @@ export type History = {
   buckets: Bucket[];
 };
 
+/**
+ * How long the readings have been missing, in whole hours — `null` when the last bucket is still fresh.
+ *
+ * The chart draws the live reading as a marker detached from the line, and the footer says why. Both need the
+ * same answer to "is there a gap?", so it is computed once, here, and both read it: a marker explained by one
+ * number and a caption computed from another is how a card ends up contradicting itself.
+ *
+ * "Fresh" means within two buckets: a bucket that is simply still being filled is not a gap.
+ */
+export function gapHours(
+  buckets: Bucket[],
+  bucketSecs: number,
+  now: number = Date.now(),
+): number | null {
+  const last = buckets[buckets.length - 1];
+  if (!last) return null;
+  const at = new Date(last.t).getTime();
+  if (Number.isNaN(at)) return null;
+  const silentMs = now - at;
+  if (silentMs <= (bucketSecs || 3600) * 1000 * 2) return null;
+  return Math.max(1, Math.round(silentMs / 3_600_000));
+}
+
 export const RANGES = ['1h', '1d', '7d', '30d'] as const;
 export type Range = (typeof RANGES)[number];
 

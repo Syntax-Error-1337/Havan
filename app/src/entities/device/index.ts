@@ -23,6 +23,7 @@ export {
   CHART_PREFERENCE,
   RANGE_WORDS,
   chartPoint,
+  gapHours,
   heights,
   RANGES,
   useHistory,
