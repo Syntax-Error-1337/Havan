@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
 import { useSession } from './session';
 import { LoginPage } from '../pages/login/LoginPage';
@@ -44,43 +44,79 @@ export function AppShell() {
       <header className="topbar">
         <span className="brand">Haven</span>
         <span className="muted">Vendor Portal</span>
-        <nav className="row" style={{ marginLeft: 'auto', gap: 16 }}>
-          <Link to="/" className="muted">
-            Products
-          </Link>
-          <Link to="/fleet" className="muted">
-            Fleet
-          </Link>
-          <Link to="/analytics" className="muted">
-            Analytics
-          </Link>
-          <Link to="/audit" className="muted">
-            Audit
-          </Link>
-          <Link to="/campaigns" className="muted">
-            Rollouts
-          </Link>
-          <Link to="/licences" className="muted">
-            Licences
-          </Link>
-          <Link to="/invoices" className="muted">
-            Invoices
-          </Link>
-          <Link to="/team" className="muted">
-            Team
-          </Link>
-          <Link to="/webhooks" className="muted">
-            Webhooks
-          </Link>
-          <Link to="/security" className="muted">
-            Security
-          </Link>
-          <Link to="/api-keys" className="muted">
-            API keys
-          </Link>
-          <Link to="/support" className="muted">
-            Support
-          </Link>
+        <nav className="row nav-links" style={{ marginLeft: 'auto', gap: 16 }}>
+          <NavLink
+  to="/"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Products
+</NavLink>
+<NavLink
+  to="/fleet"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Fleet
+</NavLink>
+<NavLink
+  to="/analytics"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Analytics
+</NavLink>
+<NavLink
+  to="/audit"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Audit
+</NavLink>
+<NavLink
+  to="/campaigns"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Rollouts
+</NavLink>
+<NavLink
+  to="/licences"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Licences
+</NavLink>
+<NavLink
+  to="/invoices"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Invoices
+</NavLink>
+<NavLink
+  to="/team"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Team
+</NavLink>
+<NavLink
+  to="/webhooks"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Webhooks
+</NavLink>
+<NavLink
+  to="/security"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Security
+</NavLink>
+<NavLink
+  to="/api-keys"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  API keys
+</NavLink>
+<NavLink
+  to="/support"
+  className={({ isActive }) => (isActive ? 'nav-link nav-link--active' : 'nav-link')}
+>
+  Support
+</NavLink>
         </nav>
       </header>
       <main className="content">

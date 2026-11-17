@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { useFleet, type FleetFilter } from '../../entities/fleet';
+import { useFleet, useFleetStats, type FleetFilter } from '../../entities/fleet';
 import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
@@ -12,10 +12,33 @@ import { TableFrame } from '../../shared/ui/TableFrame';
  */
 export function FleetPage() {
   const [filter, setFilter] = useState<FleetFilter>({});
+  const [loadingAll, setLoadingAll] = useState(false);
   const { data, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
     useFleet(filter);
+  // The count the page cannot derive from what it has loaded: "650 devices shown · more available" told a
+  // vendor nothing about whether the rest was five devices or five thousand.
+  const { data: stats } = useFleetStats();
 
   const devices = data?.pages.flatMap((p) => p.devices) ?? [];
+  const total = stats?.devices.total ?? devices.length;
+
+  /**
+   * Everything, in one press.
+   *
+   * Ten requests for a 1 900-device fleet, walked one at a time so a slow page cannot start ten at once.
+   * The cap is a guard against a server that never stops returning a cursor, not a product limit.
+   */
+  const loadAll = async () => {
+    setLoadingAll(true);
+    try {
+      for (let page = 0; page < 40 && hasNextPage; page += 1) {
+        await fetchNextPage();
+        if (!hasNextPage) break;
+      }
+    } finally {
+      setLoadingAll(false);
+    }
+  };
 
   if (isPending) return <p className="muted">Loading the fleet…</p>;
   if (error) {
@@ -49,10 +72,35 @@ export function FleetPage() {
         </div>
       </div>
 
-      <p className="muted">
-        {devices.length} device{devices.length === 1 ? '' : 's'} shown
-        {hasNextPage ? ' · more available' : ''}
-      </p>
+      {/* The count and the controls sit above the table, not below it: at 1 900 devices the buttons were
+          two hundred rows away, which on a phone is the same as not having them. */}
+      <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+        <span className="muted">
+          {devices.length.toLocaleString()} of {total.toLocaleString()} device{total === 1 ? '' : 's'} shown
+        </span>
+        {/* One set of controls, and it lives here rather than under the table: at 1 900 devices the bottom
+            of the page is two hundred rows away, which on a phone is the same as not having the buttons. */}
+        {hasNextPage ? (
+          <>
+            <button
+              className="btn"
+              onClick={() => void fetchNextPage()}
+              disabled={isFetchingNextPage || loadingAll}
+            >
+              {isFetchingNextPage && !loadingAll ? 'Loading…' : 'Load more'}
+            </button>
+            <button
+              className="btn btn--quiet"
+              onClick={() => void loadAll()}
+              disabled={isFetchingNextPage || loadingAll}
+            >
+              {loadingAll
+                ? `Loading ${devices.length.toLocaleString()} of ${total.toLocaleString()}…`
+                : `Load all ${total.toLocaleString()}`}
+            </button>
+          </>
+        ) : null}
+      </div>
 
       {devices.length === 0 ? (
         <div className="card">
@@ -98,11 +146,6 @@ export function FleetPage() {
 </TableFrame>
       )}
 
-      {hasNextPage ? (
-        <button onClick={() => void fetchNextPage()} disabled={isFetchingNextPage}>
-          {isFetchingNextPage ? 'Loading…' : 'Load more'}
-        </button>
-      ) : null}
     </div>
   );
 }

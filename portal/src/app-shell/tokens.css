@@ -103,6 +103,25 @@ button {
   padding: calc(var(--space) * 2);
 }
 
+.nav-links .nav-link {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.nav-links .nav-link:hover {
+  color: var(--text);
+}
+
+/*
+ * Twelve destinations and no way to see which one you are on. The active item takes the text colour and a
+ * weight step: a colour alone would be the only signal, and a console is read by people who may not see it.
+ * `NavLink` also sets `aria-current="page"`, so the state is in the accessibility tree and not only in CSS.
+ */
+.nav-links .nav-link--active {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -124,6 +143,22 @@ button {
 
 .table tr:hover td {
   background: var(--elevated);
+}
+
+/*
+ * A fleet table is not a page of twenty rows: a vendor with 1 900 devices who presses "load all" gets
+ * 1 900 `<tr>`, and the browser pays for every one of them on every scroll. `content-visibility: auto`
+ * lets it skip the layout and paint of rows that are off screen, and `contain-intrinsic-size` keeps the
+ * scrollbar honest about how tall the skipped rows are.
+ *
+ * This is not virtualisation — the nodes are still there — but it is the part of virtualisation that
+ * costs a phone: the per-frame work. A vendored windowing library would replace the table's own
+ * semantics (sticky headers, keyboard order, copy-paste), which is a worse trade for a screen whose job
+ * is "look at a row and believe it".
+ */
+.table tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 48px;
 }
 
 .badge {
@@ -221,6 +256,18 @@ select.input {
   background: var(--accent);
   border-color: var(--accent);
   color: #04070c;
+}
+
+.btn--quiet {
+  /* The second action on a screen, not the first. `Load more` is the one a vendor presses a hundred times;
+     `Load all 1 909` is the one they press once, and it should not look like the default. */
+  background: transparent;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.btn--quiet:hover:not(:disabled) {
+  color: var(--text);
 }
 
 .btn--danger {

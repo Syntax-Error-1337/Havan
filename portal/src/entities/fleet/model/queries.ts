@@ -21,6 +21,14 @@ export type FleetPage = {
   next_cursor: string | null;
 };
 
+/**
+ * The most the server will return in one page (`FleetFilter::limit` clamps at 200).
+ *
+ * The page used to ask for the default fifty, which is a reasonable page for a web table and a bad one
+ * for a fleet: a vendor with 1 900 devices needed thirty-eight presses to see them all.
+ */
+export const FLEET_PAGE_SIZE = 200;
+
 export type FleetFilter = {
   product_key?: string;
   state?: 'online' | 'offline' | 'bound' | 'unbound';
@@ -28,6 +36,7 @@ export type FleetFilter = {
 
 function query(filter: FleetFilter, cursor?: string | null): string {
   const params = new URLSearchParams();
+  params.set('limit', String(FLEET_PAGE_SIZE));
   if (filter.product_key) params.set('product_key', filter.product_key);
   if (filter.state) params.set('state', filter.state);
   if (cursor) params.set('cursor', cursor);

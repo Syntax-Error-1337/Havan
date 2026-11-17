@@ -91,11 +91,61 @@ describe('fleet', () => {
     );
     renderPage();
 
-    expect(await screen.findByText(/more available/i)).toBeTruthy();
-    await userEvent.click(screen.getByRole('button', { name: /load more/i }));
+    // The affordance is the button now, not the words "more available": the count says how many there are
+    // and the button says what the next press does.
+    await userEvent.click(await screen.findByRole('button', { name: /load more/i }));
 
     expect(await screen.findByText('SN-2')).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('button', { name: /load more/i })).toBeNull());
+  });
+});
+
+describe('a fleet bigger than a page', () => {
+  // A stub that answers by route, because the page now asks two questions: the devices, and how many
+  // there are. The old stub answered every URL with a device page, which hid a missing total.
+  function stubByRoute() {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        urls.push(url);
+        const body = url.includes('/vendor/analytics')
+          ? {
+              devices: { total: 1909, online: 0, bound: 1909, unbound: 0 },
+              new_devices: { last_7d: 0, last_30d: 0 },
+              by_product: [],
+              firmware: [],
+            }
+          : {
+              devices: Array.from({ length: 200 }, (_, i) => device({ id: `d${i}`, serial: `SN-${i}` })),
+              next_cursor: 'cursor-2',
+            };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+    );
+    return urls;
+  }
+
+  it('asks for the largest page the server allows', async () => {
+    // Fifty was the default and the reason a 1 900-device fleet took thirty-eight presses.
+    const urls = stubByRoute();
+    renderPage();
+    await screen.findByText('SN-0');
+    expect(urls.some((u) => u.includes('/vendor/devices') && u.includes('limit=200'))).toBe(true);
+  });
+
+  it('says how many there are, and loads them in one press', async () => {
+    stubByRoute();
+    renderPage();
+
+    // "200 devices shown · more available" never told a vendor whether the rest was five or five thousand.
+    expect(await screen.findByText('200 of 1,909 devices shown')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /load all 1,909/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /load more/i })).toBeTruthy();
   });
 });
 

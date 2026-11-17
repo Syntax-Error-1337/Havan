@@ -560,6 +560,34 @@ Verified live: opened the device as an admin, pressed Remove, read the sheet, co
 to `/` and the device was gone from the home. The row survived with `state = 'released'`, which is what
 keeps the licence and the history honest.
 
+### The fleet at 1 900 devices
+
+The portal's fleet screen had never been pointed at more than a few hundred devices. The dev seed now has
+1 909 (the "Plant" and "Bench house" homes plus the demo home), and the screen showed three things:
+
+- **It asked for fifty devices a page.** Thirty-eight presses to see a vendor's own fleet, and each press was
+  a full re-render of everything already loaded.
+- **It said "650 devices shown · more available".** A vendor reading that cannot tell whether the rest is
+  five devices or five thousand — the one number an operations screen exists to give.
+- **The buttons were under the table.** At 1 900 rows that is two hundred rows of scrolling away, which on a
+  phone is the same as not having them.
+
+Now: `limit=200` (the API's maximum, so ten pages instead of thirty-eight), the total comes from
+`/vendor/analytics` (`200 of 1,909 devices shown`), **Load all 1,909** walks the cursors one at a time behind
+a progress label (`Loading 600 of 1,909…`) and finishes the whole fleet in **1.3 s** on this machine, and the
+controls sit in a toolbar above the table with `Load more` primary and `Load all` quiet, because one is
+pressed a hundred times and the other once.
+
+Two smaller things found while measuring:
+
+- **The nav had no active state.** Twelve destinations, all rendered as `className="muted"`, so the only way
+  to know where you were was the page title. `NavLink` now marks the current one — weight as well as colour,
+  because a colour alone is not a signal for everyone — and sets `aria-current`.
+- **`content-visibility: auto` on table rows**, with `contain-intrinsic-size` so the scrollbar stays honest.
+  Measured honestly: at 1 909 rows it moved p95 frame time from **17.2 ms to 16.9 ms** and the worst frame
+  from 19.4 to 17.7 while scrolling — real, and small, because Chrome was already coping. It is there for the
+  fleet sizes where it is not small, and it costs nothing to have.
+
 ### "Load more" is a cursor, not a bigger number
 
 The footer used to raise `device_limit` (`limit * 4`) and ask again. The server clamps a page at **500**, so
