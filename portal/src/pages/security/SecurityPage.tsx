@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { useTeam } from '../../entities/team';
+import { TableFrame } from '../../shared/ui/TableFrame';
 import {
   useBindSso,
   useConfirmTotp,
@@ -187,7 +188,8 @@ export function SecurityPage() {
           The subject is the stable identifier your identity provider issues for a person — not their
           email, which changes. {ssoConfig.bound_members} of {ssoConfig.total_members} bound.
         </p>
-        <table className="table" data-testid="sso-members">
+        <TableFrame label="Identities">
+          <table className="table" data-testid="sso-members">
           <thead>
             <tr>
               <th>Member</th>
@@ -239,8 +241,9 @@ export function SecurityPage() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </TableFrame>
         {bindSso.error ? <p className="error">{bindSso.error.message}</p> : null}
       </section>
     </>
