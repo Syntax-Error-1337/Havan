@@ -353,6 +353,28 @@ failed six tests on the default 5 s timeout that pass in a second locally, so
 
 ## Design language
 
+### The first frame was blank
+
+Throttled to Slow 3G and reloaded the app the way a customer does, the screen was a **blank white page for two
+seconds, then four**, and only then the dashboard. Not a spinner, not a skeleton, not the brand — nothing. A
+blank screen is indistinguishable from a broken app, and in a white-label product it is the operator's logo
+replaced by the browser's default background.
+
+The cause is not a missing loading state; it is that **no code of ours runs before the bundle does**, and the
+bundle is what is slow. Three things were done about it, and one was documented instead:
+
+- **`expo-splash-screen` is now a dependency** (MIT, `app.json` plugin, `#0B0D10`, the app icon at 120 pt). It was
+  simply absent, which means the native first frame was uncovered too.
+- **The splash is held until the session is known.** `preventAutoHideAsync()` in the root and `hideAsync()` after
+  keychain hydration: without it the OS splash drops at the first frame, so a signed-in customer watches the
+  *login form* appear and vanish on every cold start — the app looks like it signed them out.
+- **The web fallback is untouched by that fix**, and this is the honest limitation: in Expo's default `web.output:
+  'single'` the HTML is a fixture the CLI owns, so `app/+html.tsx` and the splash plugin's web injection are both
+  ignored — verified by exporting and grepping: `splash` appears **zero** times in the built `index.html`. A
+  branded pre-bundle canvas needs `output: 'static'`, which is a routing and deployment decision, not a coat of
+  paint, so it was not taken here. `+html.tsx` was written, proven inert, and deleted rather than left in the
+  tree looking like it does something.
+
 ### A confirmation form that cannot succeed is not a confirmation
 
 The privacy screen scored well on separation — the dangerous card is red, bordered, and below the safe one — and

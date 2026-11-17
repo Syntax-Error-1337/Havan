@@ -42,7 +42,16 @@
       "expo-image",
       "expo-localization",
       "react-native-ble-plx",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B0D10",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 120,
+          "resizeMode": "contain"
+        }
+      ]
     ],
     "experiments": {}
   }
