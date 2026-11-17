@@ -150,7 +150,7 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
           {isSwitchable ? (
             <AppText
               variant="tiny"
-              style={{ color: accent }}
+              style={{ color: color.accentInk }}
               onPress={() => {
                 const power = device.points.find((p) => p.capability === 'switch');
                 if (power?.writable && device.online) {

@@ -69,7 +69,7 @@ export function AppText({
     <Text
       style={[
         {
-          color: color[tone],
+          color: tone === 'accent' ? color.accentInk : color[tone],
           fontSize: tokens.font[variant],
           // The SF styles are a pairing: a 17 pt body has 22 pt of leading, and
           // setting one without the other is how text looks "off" on iOS.

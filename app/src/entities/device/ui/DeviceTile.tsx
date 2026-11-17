@@ -97,7 +97,9 @@ export function DeviceTile({
         style={{
           // Offline is dim, not invisible: at 10-point it still has to clear 4.5:1, and muted-on-a-tinted
           // card was the one thing a reviewer consistently could not read.
-          color: state === 'stale' ? color.warning : withAlpha(color.text, state === 'live' ? 0.62 : 0.72),
+          // 78 %, not 62 %: measured from rendered pixels, 62 % white on a translucent card over the mesh came
+          // out at 3.2:1 for the one line that says whether the thing in your hand is working.
+          color: state === 'stale' ? color.warning : withAlpha(color.text, state === 'live' ? 0.78 : 0.84),
         }}
       >
         {stateLine(device, point)}

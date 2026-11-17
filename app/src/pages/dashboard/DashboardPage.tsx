@@ -537,7 +537,7 @@ export function DashboardPage() {
                   backgroundColor: withAlpha(color.accent, pressed ? 0.24 : 0.14),
                 })}
               >
-                <AppText variant="caption" weight="600" style={{ color: color.accent }}>
+                <AppText variant="caption" weight="600" style={{ color: color.accentInk }}>
                   Load {Math.min(DEVICE_PAGE_MAX, totalDevices - devices.length)} more
                 </AppText>
                 <AppText variant="tiny" tone="muted">
@@ -645,7 +645,7 @@ function Chip({
     >
       <AppText
         variant="caption"
-        style={{ color: selected ? color.onAccent : urgent ? color.accent : color.muted }}
+        style={{ color: selected ? color.onAccent : urgent ? color.accentInk : color.muted }}
       >
         {label}
       </AppText>

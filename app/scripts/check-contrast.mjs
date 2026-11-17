@@ -105,6 +105,10 @@ const checks = (p) => {
     ['muted on glass', over(p.muted, bg), glassOnBg, 4.5],
     ['accent on bg', parse(p.accent), parse(bg), 3],
     ['accent on surface', parse(p.accent), parse(surface), 3],
+    // The accent as *text*: 4.5, because letters are not glyphs. `accent` alone measures 4.08:1 as an
+    // 11-point label on a card, which is why `accentInk` exists.
+    ['accentInk on bg', parse(p.accentInk), parse(bg), 4.5],
+    ['accentInk on surface', parse(p.accentInk), parse(surface), 4.5],
     ['onAccent on accent', parse(p.onAccent), parse(p.accent), 4.5],
     ['success on bg', parse(p.success), parse(bg), 4.5],
     ['success on surface', parse(p.success), parse(surface), 4.5],

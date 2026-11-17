@@ -353,6 +353,35 @@ failed six tests on the default 5 s timeout that pass in a second locally, so
 
 ## Design language
 
+### Rendered contrast is the only contrast that counts
+
+`check-contrast.mjs` compares tokens against a base background. It cannot see a translucent card, a mesh
+gradient, or a compositing effect — and all three sat between the token and the customer's eye. This pass
+measured instead: a screenshot at devicePixelRatio 2, the bounding box of every leaf text node from the DOM, and
+per box the modal pixel colour as the surface with the extreme glyph core as the ink.
+
+The method costs about ten lines of probing and found things the gate structurally could not:
+
+| Element | Before | After text-weight fix |
+|---|---|---|
+| 11 pt secondary caption over a card | 3.85:1 | 4.78:1 |
+| banner text over the mesh | 4.27:1 | 5.53:1 |
+| `now` on the chart axis | 4.21:1 | 5.49:1 |
+| accent text at 11 pt | 4.08:1 | 6.5–8:1 |
+
+Two rules came out of it, and both are now in the palette rather than in a component:
+
+- **Dark `muted` is 0.72, not Apple's 0.60.** At 60 % white it is 5.4:1 on the base background — passes the gate —
+  and 3.8–4.4:1 on the card it is actually drawn on.
+- **`accent` is a fill; `accentInk` is text.** `#146EF5` is a fine button and a 4.08:1 label at 11 pt. `accentInk`
+  is the same hue two steps lighter (`#5AA2FF`, 7.17:1), and `tone="accent"` in `AppText` now resolves to it —
+  a sentence is not a glyph. The gate enforces 4.5 on `accentInk` and 3 on `accent`, which is exactly the
+  distinction.
+
+The probe also produced two false positives (a 13-point label whose box excluded its glyphs, and a badge whose
+surface *was* its text), which is a fair summary of the technique: useful, and not to be trusted without looking
+at the picture.
+
 ### Light mode was never looked at
 
 Every screenshot in this document is dark, and the palette has always had a light half. Flipping the operator

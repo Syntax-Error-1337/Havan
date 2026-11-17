@@ -25,6 +25,13 @@ export type Palette = {
   border: string;
   text: string;
   muted: string;
+  /**
+   * The accent at *text* weight. Apple's system colours are tints — they are chosen to be a filled button or a
+   * glyph, not a sentence — and the same is true of this one: `accent` measured 4.08:1 as an 11-point label on
+   * a translucent card, under AA, while being perfectly legible as a 28-point number or a switch. So the fill
+   * keeps `accent` and the letters get `accentInk`.
+   */
+  accentInk: string;
   accent: string;
   onAccent: string;
   success: string;
@@ -71,6 +78,8 @@ export const light: Palette = {
   // The system blue is 4.02:1 against white text — a button label nobody could pass AA with. This is
   // the same hue two steps deeper, 5.8:1.
   accent: '#0062CC',
+  // 7.7:1 on white and 7.3:1 on the light card: the same hue, deep enough to be read as type.
+  accentInk: '#0051A8',
   // A filled iOS button puts white on the tint, not black.
   onAccent: '#FFFFFF',
   // Apple's system green/amber/red are *tints*, not text: 1.99, 1.97 and 3.18:1 on the background.
@@ -98,10 +107,17 @@ export const dark: Palette = {
   elevated: '#2C2C2E',
   border: 'rgba(84,84,88,0.65)',
   text: '#FFFFFF',
-  muted: 'rgba(235,235,245,0.6)',
+  // 0.72, not Apple's 0.6. Secondary label at 60 % white is 5.4:1 on the base background — and the contrast
+  // gate passes it — but every card in this app is translucent over a coloured mesh, and measured from
+  // rendered pixels an 11-point caption landed at 3.8–4.4:1 on the real surface. The palette has to answer
+  // for the surface it is actually drawn on.
+  muted: 'rgba(235,235,245,0.72)',
   // 4.59:1 against white (the system blue is 3.65) and still 4.1:1 on the night background, so a
   // filled button is readable without the accent disappearing into the canvas.
   accent: '#146EF5',
+  // The dark accent is a fill: 4.08:1 as 11-point text on a card, 7.17:1 two steps lighter. Same hue, so the
+  // brand still reads, and the small print still passes.
+  accentInk: '#5AA2FF',
   onAccent: '#FFFFFF',
   success: '#30D158',
   warning: '#FF9F0A',
