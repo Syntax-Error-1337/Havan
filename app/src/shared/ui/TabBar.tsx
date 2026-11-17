@@ -3,7 +3,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme, tokens } from '../../app-shell/theme';
-import { AppText, Icon, type IconName } from '.';
+// Direct imports, not the barrel: `index.ts` exports this file, so importing the barrel here closes
+// a require cycle (Metro warns about it, and a cycle can hand back an uninitialised binding).
+import { AppText } from './Box';
+import { Icon, type IconName } from './Icon';
 import { withAlpha } from './Glass';
 
 export type TabKey = 'home' | 'automations' | 'add' | 'settings';

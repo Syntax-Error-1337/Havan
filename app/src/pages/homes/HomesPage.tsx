@@ -33,9 +33,21 @@ export function HomesPage() {
     () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   );
 
+  /**
+   * Leaving after a choice.
+   *
+   * `router.back()` alone assumes this screen was pushed from the dashboard. It can also be the first
+   * screen in the stack — a deep link, a reload on `/homes`, a notification — and then there is
+   * nothing behind it and expo-router logs "GO_BACK was not handled". Ask, then leave either way.
+   */
+  const leave = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  };
+
   const choose = async (id: string) => {
     await setHome(id);
-    router.back();
+    leave();
   };
 
   return (
@@ -53,7 +65,7 @@ export function HomesPage() {
           accessibilityRole="button"
           accessibilityLabel="Back"
           hitSlop={12}
-          onPress={() => router.back()}
+          onPress={leave}
         >
           <View style={{ transform: [{ rotate: '180deg' }] }}>
             <Icon name="chevron-right" size={20} color={color.muted} />

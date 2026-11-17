@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { AccessibilityInfo, Animated, Easing, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Platform, View } from 'react-native';
 
 import { useTheme, tokens } from '../../app-shell/theme';
 
@@ -38,13 +38,17 @@ export function Skeleton({
               toValue: 0.9,
               duration: 900,
               easing: Easing.inOut(Easing.quad),
-              useNativeDriver: true,
+              // Web has no native animated module; asking for it only produces a warning on every
+              // cold start, which is noise that hides real ones in the log.
+              useNativeDriver: Platform.OS !== 'web',
             }),
             Animated.timing(pulse, {
               toValue: 0.55,
               duration: 900,
               easing: Easing.inOut(Easing.quad),
-              useNativeDriver: true,
+              // Web has no native animated module; asking for it only produces a warning on every
+              // cold start, which is noise that hides real ones in the log.
+              useNativeDriver: Platform.OS !== 'web',
             }),
           ]),
         );
