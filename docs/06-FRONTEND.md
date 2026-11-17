@@ -486,6 +486,16 @@ Verified live at 390 × 844 with a device set online and last heard four hours a
 for 4h**, hero muted with a dimmed chart, detail banner "Connected, but silent for 4h". The presence
 sweep then flipped it to Offline on its own, which is the worker doing its job.
 
+**The screen also says what the device promised.** "Silent for 4h" is only judgeable if the customer knows
+the schedule behind it, so the device header carries one line when the product declared an interval:
+*"Reports hourly · quiet after 3h without a report"*. Both numbers come from the same threshold
+function, so the explanation cannot drift from the behaviour.
+
+Same screen, a smaller wart removed: the control headings preferred the point's `slot`, and a humidity
+sensor's slot is `value` — so humidity and temperature appeared as two cards both headed **"Value"**.
+`titleFor` now prefers the capability unless it only names the kind of device (`switch`, `sensor`,
+`cover`, …), which gives **Humidity**, **Temperature**, **Battery**, and still **Power** for a bulb.
+
 ### Colour is a token, or it is a bug
 
 `src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and

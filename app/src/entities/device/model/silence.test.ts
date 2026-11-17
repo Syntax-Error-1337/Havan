@@ -1,4 +1,11 @@
-import { freshness, silenceThresholdMs, silenceWords, SILENT_AFTER_MS } from './silence';
+import {
+  expectedReportWords,
+  freshness,
+  quietAfterWords,
+  silenceThresholdMs,
+  silenceWords,
+  SILENT_AFTER_MS,
+} from './silence';
 
 const at = (msAgo: number, now = 1_700_000_000_000) => new Date(now - msAgo).toISOString();
 const NOW = 1_700_000_000_000;
@@ -51,6 +58,28 @@ describe('a product that declares how often it reports', () => {
     expect(freshness({ online: true, last_seen_at: at(20 * 60_000, NOW), report_interval_secs: 10 }, NOW)).toBe(
       'stale',
     );
+  });
+});
+
+describe('the promise behind the silence', () => {
+  it('says nothing when the product never declared one', () => {
+    expect(expectedReportWords({})).toBeNull();
+    expect(expectedReportWords({ report_interval_secs: 0 })).toBeNull();
+  });
+
+  it('names the interval in the unit a person would use', () => {
+    // Phrased as a habit, not a form field: "Reports hourly" rather than "every 1 hour".
+    expect(expectedReportWords({ report_interval_secs: 30 })).toBe('Reports every 30 seconds');
+    expect(expectedReportWords({ report_interval_secs: 60 })).toBe('Reports every minute');
+    expect(expectedReportWords({ report_interval_secs: 600 })).toBe('Reports every 10 minutes');
+    expect(expectedReportWords({ report_interval_secs: 3600 })).toBe('Reports hourly');
+    expect(expectedReportWords({ report_interval_secs: 86_400 })).toBe('Reports daily');
+  });
+
+  it('says how late is too late, from the same threshold', () => {
+    expect(quietAfterWords({})).toBe('15m');
+    expect(quietAfterWords({ report_interval_secs: 3600 })).toBe('3h');
+    expect(quietAfterWords({ report_interval_secs: 86_400 })).toBe('72h');
   });
 });
 

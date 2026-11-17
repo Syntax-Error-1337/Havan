@@ -300,7 +300,7 @@ export function PointControl({
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: tokens.space.md }}>
         <View style={{ flex: 1 }}>
           <AppText variant="subhead" numberOfLines={1}>
-            {humanise(point.slot || point.code)}
+            {titleFor(point)}
           </AppText>
           <AppText variant="caption" tone="muted" numberOfLines={1}>
             {point.code}
@@ -378,6 +378,40 @@ export function PointControl({
       ) : null}
     </View>
   );
+}
+
+/**
+ * Capabilities that name a *kind of device* rather than a reading.
+ *
+ * A humidity sensor's capability is `humidity` and its slot is `value`; a bulb's capability is `switch`
+ * and its slot is `power`. Taking the capability first names the first correctly and the second
+ * uselessly, so the generic ones defer to the slot.
+ */
+const DEVICE_KIND_CAPABILITIES = new Set([
+  'switch',
+  'sensor',
+  'plug',
+  'light',
+  'cover',
+  'lock',
+  'climate',
+  'camera',
+  'speaker',
+  'vacuum',
+  'energy',
+]);
+
+/**
+ * The heading a person reads above a control: "Temperature", not "Value".
+ *
+ * It used to prefer the slot, so a humidity sensor and a temperature sensor both appeared as "Value" —
+ * two cards on the same screen with the same heading and different numbers, which is the sort of thing
+ * that makes an app feel unfinished without anyone being able to say why.
+ */
+export function titleFor(point: { capability?: string; slot?: string; code: string }): string {
+  const capability = point.capability;
+  if (capability && !DEVICE_KIND_CAPABILITIES.has(capability)) return humanise(capability);
+  return humanise(point.slot || capability || point.code);
 }
 
 /** `brightness.level` → `Level`, `switch.power` → `Power`. Labels are for people, codes are for the wire. */

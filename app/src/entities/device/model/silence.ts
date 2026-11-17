@@ -46,6 +46,39 @@ export function freshness(device: Seen, now: number = Date.now()): Freshness {
 }
 
 /**
+ * What the product said it would do, in words — or `null` when it never said.
+ *
+ * A customer reading "Silent for 4h" has no way to know whether that is a fault or the schedule. Naming
+ * the promise turns a mystery into a fact: "expects a report every hour" explains why four hours is late
+ * for one device and normal for another.
+ */
+export function expectedReportWords(device: {
+  report_interval_secs?: number | null;
+}): string | null {
+  const secs = device.report_interval_secs;
+  if (!secs || !Number.isFinite(secs) || secs <= 0) return null;
+
+  // Capitalised and phrased as a habit rather than a schedule entry: "Reports hourly" is how a person
+  // describes it, and "every 1 hour" is how a form does.
+  if (secs < 60) return `Reports every ${secs} seconds`;
+  const minutes = Math.round(secs / 60);
+  if (minutes === 1) return 'Reports every minute';
+  if (minutes < 60) return `Reports every ${minutes} minutes`;
+  const hours = Math.round(minutes / 60);
+  if (hours === 1) return 'Reports hourly';
+  if (hours < 24) return `Reports every ${hours} hours`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'Reports daily' : `Reports every ${days} days`;
+}
+
+/** The threshold in words, for the screen that explains it: "3h", "15m". */
+export function quietAfterWords(device: { report_interval_secs?: number | null }): string {
+  const minutes = Math.round(silenceThresholdMs(device) / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.round(minutes / 60)}h`;
+}
+
+/**
  * How long it has been quiet, in words: "Silent for 4h".
  *
  * Returns `null` when there is nothing worth saying — a device heard from a minute ago is not news, and

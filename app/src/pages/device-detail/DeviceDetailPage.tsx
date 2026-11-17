@@ -7,7 +7,9 @@ import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
   RANGES,
   describeUpdate,
+  expectedReportWords,
   freshness,
+  quietAfterWords,
   silenceWords,
   useDevice,
   useDeviceUpdate,
@@ -28,6 +30,9 @@ export function DeviceDetailPage() {
   const glow = glowFor(device?.category, color.glow);
   const { data: update } = useDeviceUpdate(id);
   const firmware = describeUpdate(update);
+  // Only shown when the product declared an expectation; a device that never promised anything has
+  // nothing to be late for, and inventing a schedule for it would be a lie with a number on it.
+  const expectedReport = device ? expectedReportWords(device) : null;
   const setPoint = useSetPoint(id ?? '');
   const setRoom = useSetRoom();
   const { data: rooms } = useRooms(device?.home_id ?? undefined);
@@ -86,6 +91,14 @@ export function DeviceDetailPage() {
                 : 'Offline'}
             {device.room_name ? ` · ${device.room_name}` : ''}
           </AppText>
+          {/* What the product promised, so "Silent for 4h" reads as a fact rather than a mystery: an
+              hourly sensor is late at four hours, a plug that reports every ten seconds is late at one
+              minute, and the customer can only judge the number if they know the promise behind it. */}
+          {expectedReport ? (
+            <AppText variant="tiny" tone="muted">
+              {expectedReport} · quiet after {quietAfterWords(device)} without a report
+            </AppText>
+          ) : null}
           </Box>
         </Box>
           {/* Firmware is the one thing about a device a customer cannot fix by
