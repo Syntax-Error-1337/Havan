@@ -11,6 +11,8 @@ export type TeamMember = {
   display_name: string;
   role: Role;
   last_login_at: string | null;
+  /** Whether an identity-provider subject is bound; what blocks SSO enforcement. */
+  sso_bound: boolean;
 };
 
 export type PendingInvite = {

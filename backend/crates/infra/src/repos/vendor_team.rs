@@ -182,9 +182,10 @@ impl VendorTeamRepo for PgVendorTeam {
     async fn team(&self, vendor_id: Uuid) -> Result<Team, AppError> {
         let mut tx = self.vendor_tx(vendor_id).await?;
 
-        let members: Vec<(Uuid, String, String, String, Option<time::OffsetDateTime>)> =
+        let members: Vec<(Uuid, String, String, String, Option<time::OffsetDateTime>, bool)> =
             sqlx::query_as(
-                r#"SELECT id, email, display_name, role, last_login_at
+                r#"SELECT id, email, display_name, role, last_login_at,
+                          sso_subject IS NOT NULL AS sso_bound
                      FROM vendor_users WHERE vendor_id = $1
                     ORDER BY created_at"#,
             )
@@ -210,12 +211,13 @@ impl VendorTeamRepo for PgVendorTeam {
             members: members
                 .into_iter()
                 .map(
-                    |(user_id, email, display_name, role, last_login_at)| TeamMember {
+                    |(user_id, email, display_name, role, last_login_at, sso_bound)| TeamMember {
                         user_id,
                         email,
                         display_name,
                         role,
                         last_login_at,
+                        sso_bound,
                     },
                 )
                 .collect(),

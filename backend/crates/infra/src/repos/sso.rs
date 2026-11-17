@@ -121,6 +121,30 @@ impl SsoRepo for PgSso {
         subject: &str,
     ) -> Result<(), AppError> {
         let subject = subject.trim();
+
+        // An empty subject is how a binding is removed — the screen offers "clear" beside "bind",
+        // and a flow with no way back is a flow that traps somebody's identifier in a table. It is
+        // refused while SSO is required, for the same reason the TOTP policy cannot be satisfied
+        // by locking its own author out: the person who enabled enforcement has to switch it off
+        // before anybody can leave the identity they signed in with.
+        if subject.is_empty() {
+            if self.config(vendor_id).await?.required {
+                return Err(AppError::code(
+                    kernel::ErrorCode::Conflict,
+                    "SSO is required for this vendor; an owner has to turn it off before unbinding an identity",
+                ));
+            }
+            let mut tx = self.vendor_tx(vendor_id).await?;
+            sqlx::query("UPDATE vendor_users SET sso_subject = NULL WHERE vendor_id = $1 AND id = $2")
+                .bind(vendor_id)
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(db)?;
+            tx.commit().await.map_err(db)?;
+            return Ok(());
+        }
+
         if subject.len() < 3 || subject.len() > 256 {
             return Err(AppError::validation(
                 "an identity-provider subject is between 3 and 256 characters",

@@ -90,3 +90,25 @@ export function useSetSso() {
     onSuccess: () => qc.invalidateQueries({ queryKey: [...qk.security, 'sso'] }),
   });
 }
+
+/**
+ * Bind (or clear) a member's identity-provider subject.
+ *
+ * The route existed from the first day of SSO and no screen called it, so `enforced` could never
+ * become true: the guard refuses enforcement while anybody is unbound, and nobody could bind. An
+ * empty subject is the unbind — which the server refuses while SSO is required.
+ */
+export function useBindSso() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { userId: string; subject: string }) =>
+      request<{ bound: string }>(`/vendor/team/${input.userId}/sso`, {
+        method: 'POST',
+        body: JSON.stringify({ subject: input.subject }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.team });
+      qc.invalidateQueries({ queryKey: [...qk.security, 'sso'] });
+    },
+  });
+}

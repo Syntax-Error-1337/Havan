@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
+import { useTeam } from '../../entities/team';
 import {
+  useBindSso,
   useConfirmTotp,
   useDisableTotp,
   useEnrolTotp,
@@ -25,6 +27,9 @@ export function SecurityPage() {
   const confirm = useConfirmTotp();
   const disable = useDisableTotp();
   const setSso = useSetSso();
+  const team = useTeam();
+  const bindSso = useBindSso();
+  const [subjects, setSubjects] = useState<Record<string, string>>({});
 
   const [secret, setSecret] = useState<string | null>(null);
   const [uri, setUri] = useState<string | null>(null);
@@ -169,6 +174,74 @@ export function SecurityPage() {
           </button>
         </div>
         {setSso.error ? <p className="error">{setSso.error.message}</p> : null}
+
+        <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '16px 0' }} />
+
+        {/*
+          The step that was missing: enforcement is refused until every member is bound, and nothing
+          in the product could bind one. A screen that offers the switch but not the way to satisfy
+          it is a dead end, not a policy.
+        */}
+        <strong>Identities</strong>
+        <p className="muted" style={{ margin: '4px 0 8px' }}>
+          The subject is the stable identifier your identity provider issues for a person — not their
+          email, which changes. {ssoConfig.bound_members} of {ssoConfig.total_members} bound.
+        </p>
+        <table className="table" data-testid="sso-members">
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Role</th>
+              <th>Identity</th>
+              <th>Subject</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(team.data?.members ?? []).map((m) => (
+              <tr key={m.user_id} data-testid={`sso-member-${m.email}`}>
+                <td>{m.email}</td>
+                <td className="muted">{m.role}</td>
+                <td>{m.sso_bound ? 'bound' : <span className="muted">not bound</span>}</td>
+                <td>
+                  <div className="row">
+                    <input
+                      className="input"
+                      aria-label={`Subject for ${m.email}`}
+                      placeholder={m.sso_bound ? 'replace…' : 'idp subject'}
+                      value={subjects[m.user_id] ?? ''}
+                      onChange={(e) =>
+                        setSubjects((prev) => ({ ...prev, [m.user_id]: e.target.value }))
+                      }
+                    />
+                    <button
+                      className="btn"
+                      disabled={!subjects[m.user_id]?.trim() || bindSso.isPending}
+                      onClick={async () => {
+                        await bindSso.mutateAsync({
+                          userId: m.user_id,
+                          subject: (subjects[m.user_id] ?? '').trim(),
+                        });
+                        setSubjects((prev) => ({ ...prev, [m.user_id]: '' }));
+                      }}
+                    >
+                      Bind
+                    </button>
+                    {m.sso_bound ? (
+                      <button
+                        className="btn"
+                        disabled={bindSso.isPending}
+                        onClick={() => bindSso.mutate({ userId: m.user_id, subject: '' })}
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {bindSso.error ? <p className="error">{bindSso.error.message}</p> : null}
       </section>
     </>
   );

@@ -105,6 +105,12 @@ pub struct TeamMember {
     // tuple, and the screen silently renders "Invalid Date".
     #[serde(with = "time::serde::rfc3339::option")]
     pub last_login_at: Option<time::OffsetDateTime>,
+    /// Whether an identity-provider subject is bound to this account.
+    ///
+    /// A boolean rather than the subject itself: the screen needs to know who is *missing* — that is
+    /// what blocks SSO enforcement — and the identifier belongs to the IdP, not to a table a vendor
+    /// admin reads.
+    pub sso_bound: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -210,6 +216,7 @@ mod tests {
             display_name: "A".into(),
             role: "owner".into(),
             last_login_at: Some(at),
+            sso_bound: false,
         };
         let json = serde_json::to_string(&member).unwrap();
         assert!(

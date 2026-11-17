@@ -15,6 +15,7 @@ const team: Team = {
       display_name: 'Owner',
       role: 'owner',
       last_login_at: '2026-11-10T09:00:00Z',
+      sso_bound: true,
     },
     {
       user_id: 'u-dev',
@@ -22,6 +23,7 @@ const team: Team = {
       display_name: 'Dev',
       role: 'developer',
       last_login_at: null,
+      sso_bound: false,
     },
   ],
   invites: [

@@ -104,6 +104,55 @@ async fn an_owner_can_record_the_intent_and_bind_identities() {
     assert!(!after.enforced);
 }
 
+/// A binding can be taken back — unless taking it back would break the policy it satisfies.
+///
+/// The screen offers "clear" beside "bind"; before this, the route only ever wrote a subject, so an
+/// identifier bound by mistake had no way out, and `required` could never be switched off by
+/// unbinding because nothing could unbind.
+#[tokio::test]
+async fn an_identity_can_be_cleared_unless_sso_requires_it() {
+    let Some(f) = fixture().await else { return };
+    let sso = infra::PgSso::new(f.pg.clone());
+
+    sso.bind_subject(f.vendor_id, f.owner_id, "idp|owner-1")
+        .await
+        .expect("bind owner");
+    sso.bind_subject(f.vendor_id, f.developer_id, "idp|dev-1")
+        .await
+        .expect("bind dev");
+    sso.configure(f.vendor_id, f.owner_id, true, Some("vendor.test"))
+        .await
+        .expect("require sso");
+
+    // Required: clearing is refused, because the next sign-in would have no identity to match.
+    let err = sso
+        .bind_subject(f.vendor_id, f.developer_id, "")
+        .await
+        .unwrap_err();
+    assert_eq!(err.code_kind(), ErrorCode::Conflict);
+    let still = sso.config(f.vendor_id).await.expect("config");
+    assert_eq!(still.bound_members, 2, "the refusal changed nothing");
+
+    // Not required: clearing works, and the count the guard reads goes down with it.
+    sso.configure(f.vendor_id, f.owner_id, false, Some("vendor.test"))
+        .await
+        .expect("stop requiring");
+    sso.bind_subject(f.vendor_id, f.developer_id, "")
+        .await
+        .expect("clear dev");
+
+    let after = sso.config(f.vendor_id).await.expect("config");
+    assert_eq!(after.bound_members, 1);
+    assert!(!after.required);
+
+    // And a re-bind still works: clearing is not a one-way door.
+    sso.bind_subject(f.vendor_id, f.developer_id, "idp|dev-2")
+        .await
+        .expect("re-bind");
+    let rebound = sso.config(f.vendor_id).await.expect("config");
+    assert_eq!(rebound.bound_members, 2);
+}
+
 #[tokio::test]
 async fn a_developer_cannot_change_how_the_company_signs_in() {
     let Some(f) = fixture().await else { return };
