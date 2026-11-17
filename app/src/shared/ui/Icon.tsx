@@ -35,6 +35,7 @@ export type IconName =
   | 'radar'
   | 'alert'
   | 'bell'
+  | 'phone'
   | 'gear'
   | 'chevron-right'
   | 'lightning';
@@ -171,6 +172,12 @@ export function Icon({
         <>
           <Path d="M12 4 2.8 20h18.4L12 4Z" {...common} fill="none" />
           <Path d="M12 10v4.5M12 17.2v.1" {...common} fill="none" />
+        </>
+      )}
+      {name === 'phone' && (
+        <>
+          <Rect x="7" y="2.6" width="10" height="18.8" rx="2.6" {...common} fill="none" />
+          <Path d="M10.6 18.4h2.8" {...common} fill="none" />
         </>
       )}
       {name === 'bell' && (

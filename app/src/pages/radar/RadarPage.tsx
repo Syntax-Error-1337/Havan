@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, TextInput } from 'react-native';
+import { Animated, Easing, Platform, Pressable, ScrollView, TextInput } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 
-import { Box, AppText, Button, Screen } from '../../shared/ui';
+import { Box, AppText, Button, Glass, Icon, Screen } from '../../shared/ui';
 import { useTheme, tokens } from '../../app-shell/theme';
+import { withAlpha } from '../../shared/config/tokens';
 import { request } from '../../shared/api/client';
 import { serialTailMatches, signalBars, type NearbyDevice } from '../../shared/lib/ble';
 import { useHomes } from '../../entities/home';
@@ -51,7 +53,9 @@ export function RadarPage() {
           </AppText>
         </Box>
 
-        {phase === 'scan' ? (
+        {phase === 'scan' && state === 'unsupported' ? (
+          <PhoneHandoff />
+        ) : phase === 'scan' ? (
           <ScanView
             state={state}
             devices={devices}
@@ -111,6 +115,112 @@ export function RadarPage() {
   );
 }
 
+/**
+ * The browser cannot scan for Bluetooth, so this screen is a handoff rather than a failure.
+ *
+ * It used to say "No radio here — this build cannot scan for Bluetooth devices", which is a developer's
+ * sentence about a limitation the customer cannot act on, followed by empty space. A first-run screen that
+ * stops dead is the worst screen in the app, because it is the one the customer sees first.
+ *
+ * So: what is happening, the three things to do about it, the link to carry over, and a way out. The primary
+ * action copies `haven://add-device` — a deep link the phone app already answers — because the honest next
+ * step from a laptop is "open this on your phone", not "try again".
+ */
+export function PhoneHandoff() {
+  const { color } = useTheme();
+  const router = useRouter();
+  const [copied, setCopied] = useState(false);
+  const canCopy = Platform.OS === 'web' && typeof navigator !== 'undefined' && Boolean(navigator.clipboard);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText('haven://add-device');
+      setCopied(true);
+    } catch {
+      // A browser that refuses the clipboard still shows the link below, so the person can type it.
+      setCopied(false);
+    }
+  };
+
+  const steps = [
+    'Open Haven on the phone that will pair the device.',
+    'Keep the device powered on and close to that phone.',
+    'Tap Add a device there — it will appear within a few seconds.',
+  ];
+
+  // Scrolls, because a handoff is four blocks of text on a screen that might be 667 points tall with the
+  // customer's text size turned up. A dead end that is also cut off is worse than the dead end it replaced.
+  return (
+    <ScrollView contentContainerStyle={{ gap: 20, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+      <Glass style={{ padding: 16, alignItems: 'center', gap: 8 }} accent={color.accent}>
+        <Box
+          center
+          style={{
+            width: 54,
+            height: 54,
+            borderRadius: 27,
+            backgroundColor: withAlpha(color.accent, 0.16),
+          }}
+        >
+          <Icon name="phone" size={28} color={color.accent} />
+        </Box>
+        <AppText variant="title" weight="700" style={{ textAlign: 'center' }}>
+          Pair from your phone
+        </AppText>
+        <AppText variant="caption" tone="muted" style={{ textAlign: 'center' }}>
+          A browser cannot scan for Bluetooth, so pairing happens in the app. Everything else works here.
+        </AppText>
+      </Glass>
+
+      <Box gap="sm">
+        {steps.map((step, index) => (
+          <Box key={step} row gap="md" style={{ alignItems: 'flex-start' }}>
+            <Box
+              center
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: withAlpha(color.accent, 0.2),
+                marginTop: 1,
+              }}
+            >
+              <AppText variant="tiny" weight="700" style={{ color: color.accent }}>
+                {index + 1}
+              </AppText>
+            </Box>
+            <AppText variant="caption" style={{ flex: 1, color: color.text }}>
+              {step}
+            </AppText>
+          </Box>
+        ))}
+      </Box>
+
+      <Box gap="xs">
+        {canCopy ? (
+          <Button label={copied ? 'Link copied' : 'Copy the phone link'} onPress={copy} />
+        ) : null}
+        <AppText variant="tiny" tone="muted" style={{ textAlign: 'center' }}>
+          {copied
+            ? 'Open it on your phone to finish pairing.'
+            : 'Copies a link you can send to yourself and open on the phone.'}
+        </AppText>
+      </Box>
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back to your home"
+        onPress={() => router.replace('/')}
+        style={{ alignItems: 'center', paddingVertical: 10 }}
+      >
+        <AppText weight="600" tone="muted">
+          Back to your home
+        </AppText>
+      </Pressable>
+    </ScrollView>
+  );
+}
+
 function ScanView({
   state,
   devices,
@@ -136,17 +246,6 @@ function ScanView({
     loop.start();
     return () => loop.stop();
   }, [pulse]);
-
-  if (state === 'unsupported') {
-    return (
-      <Box gap="sm" p="lg">
-        <AppText variant="title">No radio here</AppText>
-        <AppText tone="muted">
-          This build cannot scan for Bluetooth devices. Pairing needs the phone app.
-        </AppText>
-      </Box>
-    );
-  }
 
   return (
     <Box flex={1} gap="md">

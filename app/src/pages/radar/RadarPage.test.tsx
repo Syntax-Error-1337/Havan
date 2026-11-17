@@ -2,7 +2,7 @@ import { render, fireEvent } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { testQueryClient } from '../../test/query';
 
-import { RadarPage } from './RadarPage';
+import { PhoneHandoff, RadarPage } from './RadarPage';
 import { ThemeProvider } from '../../app-shell/theme';
 import { useSession } from '../../entities/session';
 
@@ -67,6 +67,34 @@ beforeEach(() => {
 });
 
 jest.setTimeout(15_000);
+
+/**
+ * The screen a customer without a radio in their browser meets first. It used to be two lines — "No radio
+ * here / This build cannot scan for Bluetooth devices" — under a heading promising an add-device flow, on
+ * an otherwise empty page. It is a handoff now, and this test holds the parts that make it one.
+ */
+describe('a browser with no Bluetooth', () => {
+  it('hands off to the phone instead of stopping dead', async () => {
+    const client = testQueryClient();
+    const view = await render(
+      <QueryClientProvider client={client}>
+        <ThemeProvider>
+          <PhoneHandoff />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(view.getByText('Pair from your phone')).toBeTruthy();
+    // The reason, in the customer's language — not "this build cannot scan".
+    expect(view.getByText(/cannot scan for Bluetooth/)).toBeTruthy();
+    expect(view.queryByText('No radio here')).toBeNull();
+    // Three steps, and a way out that does not depend on the phone being in the room.
+    expect(view.getByText(/Open Haven on the phone/)).toBeTruthy();
+    expect(view.getByText(/powered on and close/)).toBeTruthy();
+    expect(view.getByText(/it will appear within a few seconds/)).toBeTruthy();
+    expect(view.getByText('Back to your home')).toBeTruthy();
+  });
+});
 
 describe('radar', () => {
   it('names the devices it hears from the catalogue', async () => {

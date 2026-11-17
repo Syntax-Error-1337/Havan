@@ -696,6 +696,27 @@ because the internal `withAlpha` could not parse the string it was given and fel
 Staleness is now expressed by dropping the halo and stepping the card's opacity back, with the accent left
 opaque for the component to fade in its own way.
 
+### The first screen is not allowed to be a dead end
+
+`/add-device` in a browser rendered a heading — "Add a device" — and, under it, `No radio here / This build
+cannot scan for Bluetooth devices. Pairing needs the phone app.` Then nothing. The first screen a new
+customer sees was a developer's sentence about a limitation they could not act on, on an empty page, with no
+button, no link and no way back. Scored **4/10**.
+
+It is a handoff now: a card with a phone glyph, `Pair from your phone`, one line of why (a browser cannot
+scan for Bluetooth; everything else works here), three numbered steps ending in what will happen
+("it will appear within a few seconds"), a `Copy the phone link` button that copies `haven://add-device`,
+and `Back to your home`. Scored **8/10**.
+
+Two rules came out of it that apply to every screen still to be reviewed:
+
+- **A limitation the customer cannot fix is not the message.** Say what to do instead, in their words.
+- **Every state needs an exit.** The old screen's only affordance was the browser's back button; a state
+  that cannot be left is a bug even when it is honest.
+
+The content scrolls (`ScrollView`) rather than clipping: four blocks of text on a 667-point phone with the
+text size turned up is exactly where a fixed layout loses its last button.
+
 ### One button, and it asks
 
 Three creates lived in three places: the centre button went straight to a device scan, `New room` was a chip
