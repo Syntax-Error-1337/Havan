@@ -62,9 +62,15 @@ export function FleetPage() {
 
   return (
     <div>
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+      {/* The controls wrap rather than widen the page: a 220 px search box beside a select beside an
+          <h1> is wider than a 420 px phone, and the layout suite measured exactly that — a sideways
+          scrollbar on a screen that had none before the search box arrived. */}
+      <div
+        className="row"
+        style={{ justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}
+      >
         <h1>Fleet</h1>
-        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* The first thing anyone does with a fleet is find one device: a serial from a customer's
               photo, or a name they remember. Without this, a vendor with 1 909 devices paged through a
               table to do it, and a vendor with a million could not do it at all. */}
@@ -76,7 +82,7 @@ export function FleetPage() {
             data-testid="fleet-search"
             value={typed}
             onChange={(e) => setTyped(e.target.value)}
-            style={{ minWidth: 220 }}
+            style={{ minWidth: 0, flex: '1 1 160px', maxWidth: 260 }}
           />
           <span className="field-label">State</span>
           <select

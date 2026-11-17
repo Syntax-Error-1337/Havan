@@ -14,18 +14,24 @@ test('the fleet lists devices with a state a vendor can act on', async ({ app })
 test('fleet filters narrow the list rather than reloading the page', async ({ app }) => {
   await app.goto('/fleet');
   const rows = app.locator('tbody tr');
-  const before = await rows.count();
+  await expect(rows.first()).toBeVisible();
 
-  const search = app.getByPlaceholder(/search|serial|device/i).first();
-  if (await search.count()) {
-    await search.fill('CONF-');
-    // Either fewer rows or an explicit empty state — never the old list with no indication.
-    await expect(async () => {
-      const after = await rows.count();
-      const empty = await app.getByText(/no devices|nothing matches/i).count();
-      expect(after < before || empty > 0).toBe(true);
-    }).toPass();
-  }
+  // A prefix is not a narrowing: the seed has hundreds of CONF- serials, so filtering by "CONF-"
+  // legitimately fills the page again. What a support engineer actually does is paste one serial and
+  // expect that one device, so the test does the same.
+  const serial = (await rows.first().locator('td').first().innerText()).trim();
+  const search = app.getByTestId('fleet-search');
+  await search.fill(serial);
+
+  // Either exactly that row, or an explicit empty state — never the old list with no indication.
+  await expect(async () => {
+    const after = await rows.count();
+    const empty = await app.getByText(/no devices|no device matches/i).count();
+    expect(after === 1 || empty > 0).toBe(true);
+  }).toPass();
+
+  // The count line names what was searched for, so the page cannot look like the whole fleet.
+  await expect(app.getByText(new RegExp(`matching “?${serial}`))).toBeVisible();
 });
 
 test('analytics reports totals the vendor can quote to their own board', async ({ app }) => {

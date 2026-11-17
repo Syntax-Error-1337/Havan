@@ -152,6 +152,25 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The regression the suite caught
+
+Thirty-two iterations of changes, then a full run of the portal's Playwright suite — which had not been run as a
+suite since the fleet search landed. **4 failures, all mine**, both viewports:
+
+- `08-layout.spec.ts` — *every page fits the viewport: 420 px must not produce a sideways scrollbar*. A 220-pixel
+  search box beside a select beside an `<h1>` is wider than a 420-pixel phone. The controls now wrap, and the
+  input is `flex: 1 1 160px; max-width: 260px` instead of a fixed minimum.
+- `03-fleet.spec.ts` — *fleet filters narrow the list*. The spec filled the box with `CONF-` and expected **fewer
+  rows**; the seed has hundreds of `CONF-` serials, so a prefix legitimately fills the page again. The spec now
+  does what a support engineer does — reads a serial off the first row, pastes it, expects that one device — and
+  additionally asserts the count line names the search.
+
+The layout failure is the more valuable of the two: nothing in the component tests or the vision review could see
+it, because it only exists at a specific viewport. The e2e suite earned its keep on the day it was finally run as
+a suite.
+
+After the fixes: **82/82 across desktop and phone**.
+
 ### "Run now" — the button that needed a column
 
 `docs/05-API.md` carried this note for a year:
