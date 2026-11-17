@@ -1,4 +1,4 @@
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText, Glass, Icon, type IconName } from '../../shared/ui';
@@ -21,6 +21,8 @@ export function HomeHeader({
   online,
   total,
   silent,
+  unread = 0,
+  onOpenAlerts,
   onOpenHomes,
 }: {
   name: string;
@@ -31,6 +33,9 @@ export function HomeHeader({
   total: number;
   /** Devices not reporting: the pill turns amber and says so, instead of printing a green number it doubts. */
   silent: number;
+  /** Unread alerts. A status belongs in the header; as a pill beside "New room" it read as a filter. */
+  unread?: number;
+  onOpenAlerts?: () => void;
   /** Opens the home switcher. An account with one home still needs the way to add a second. */
   onOpenHomes?: () => void;
 }) {
@@ -78,6 +83,49 @@ export function HomeHeader({
             <Icon name="chevron-right" size={16} color={color.muted} />
           </View>
         </Pressable>
+
+        {onOpenAlerts ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={unread > 0 ? `Alerts, ${unread} unread` : 'Alerts'}
+            onPress={onOpenAlerts}
+            hitSlop={8}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: color.glass,
+              borderWidth: StyleSheet.hairlineWidth,
+              // One orange thing on the right, not two. An orange ring around an orange badge beside an
+              // amber pill made the corner a clump; the badge is enough to say "there is something here".
+              borderColor: color.border,
+            }}
+          >
+            <Icon name="bell" size={19} color={color.text} />
+            {unread > 0 ? (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  right: 2,
+                  minWidth: 15,
+                  height: 15,
+                  borderRadius: 8,
+                  paddingHorizontal: 3,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: color.warning,
+                }}
+              >
+                <AppText style={{ fontSize: 9, lineHeight: 11, fontWeight: '700', color: color.bg }}>
+                  {unread > 9 ? '9+' : unread}
+                </AppText>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
 
         {/* This pill was a clock with a lightning bolt beside it: a redundant time (the OS draws one in the
             status bar) under a glyph that means power, in warning orange, on a healthy house. It is now the

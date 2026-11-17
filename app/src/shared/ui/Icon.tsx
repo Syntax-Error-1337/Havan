@@ -34,6 +34,7 @@ export type IconName =
   | 'check'
   | 'radar'
   | 'alert'
+  | 'bell'
   | 'gear'
   | 'chevron-right'
   | 'lightning';
@@ -170,6 +171,18 @@ export function Icon({
         <>
           <Path d="M12 4 2.8 20h18.4L12 4Z" {...common} fill="none" />
           <Path d="M12 10v4.5M12 17.2v.1" {...common} fill="none" />
+        </>
+      )}
+      {name === 'bell' && (
+        <>
+          {/* A bell, not the warning triangle: an unread count is an inbox, and a triangle above a home
+              where nothing is wrong is a false alarm in icon form. */}
+          <Path
+            d="M18 9a6 6 0 1 0-12 0c0 4.2-1.6 5.6-1.6 5.6h15.2S18 13.2 18 9Z"
+            {...common}
+            fill="none"
+          />
+          <Path d="M10.2 18.4a2 2 0 0 0 3.6 0" {...common} fill="none" />
         </>
       )}
       {name === 'gear' && (

@@ -696,6 +696,24 @@ because the internal `withAlpha` could not parse the string it was given and fel
 Staleness is now expressed by dropping the halo and stepping the card's opacity back, with the accent left
 opaque for the component to fade in its own way.
 
+### Three jobs were stacked as three identical pills
+
+Under the hero card sat `Alerts · 2` beside `New room` — a status and a create action, drawn the same
+way — and below them a search field, a filter row, and a dashed `+ Add a scene`. Five controls of four
+different kinds in one column, all competing with the devices they were supposed to help you find.
+
+- **The alerts count is a bell in the header.** A notification is a status, and it belongs where the
+  presence pill is; as a pill next to a create action it read as a filter. One orange thing in that corner,
+  not two: the badge is enough.
+- **`+ Room` sits at the end of the filter row**, which is the row that filters the rooms it makes. A create
+  action in a row of filters is still a compromise, but a smaller one than floating above the search box.
+- **`+ Add a scene` stayed with the scenes** — it is the empty state of that strip, not a control on the
+  device list.
+- The search field kept the full width and the filters stayed directly under it, because that pair is the
+  one grouping here that never confused anybody.
+
+Measured: header 6 → 9/10, control area 7 → 8/10 across the two reviews.
+
 ### The heartbeat is not the reading
 
 A sensor with a healthy socket and a twelve-hour-old temperature satisfied every check: `online` was true,

@@ -216,6 +216,8 @@ export function DashboardPage() {
                 online={summary.online}
                 total={totalDevices}
                 silent={summary.silent}
+                unread={unread}
+                onOpenAlerts={() => router.push('/alerts')}
                 onOpenHomes={() => router.push('/homes')}
               />
 
@@ -283,21 +285,9 @@ export function DashboardPage() {
                 </>
               )}
 
-              {/* Two actions, not three. "Automations" was a third chip pointing at a screen the tab bar
-                  already owns permanently, so it read as a third kind of thing when it was navigation —
-                  and a row of equal chips is a row nobody scans. */}
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Chip
-                  label={unread > 0 ? `Alerts · ${unread}` : 'Alerts'}
-                  onPress={() => router.push('/alerts')}
-                  urgent={unread > 0}
-                />
-                <Chip
-                  label={addingRoom ? 'Cancel' : 'New room'}
-                  onPress={() => setAddingRoom((v) => !v)}
-                  selected={addingRoom}
-                />
-              </View>
+              {/* The alerts pill moved into the header as a bell, because a status is not a peer of a
+                  create action; and "New room" moved down into the list's own toolbar, where the rooms it
+                  makes are. Three different jobs had been stacked as three identical pills. */}
 
               {/* Search first, filters under it: a house with two hundred devices is not navigated by
                   scrolling, and the words people type are the ones on the shelf — a name, a room, a
@@ -340,19 +330,29 @@ export function DashboardPage() {
                 ) : null}
               </View>
 
-              {categories.length > 1 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  <Chip label="All" selected={category === null} onPress={() => setCategory(null)} />
-                  {categories.map((c) => (
-                    <Chip
-                      key={c}
-                      label={c.charAt(0).toUpperCase() + c.slice(1)}
-                      selected={category === c}
-                      onPress={() => setCategory(category === c ? null : c)}
-                    />
-                  ))}
-                </ScrollView>
-              ) : null}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {categories.length > 1 ? (
+                  <>
+                    <Chip label="All" selected={category === null} onPress={() => setCategory(null)} />
+                    {categories.map((c) => (
+                      <Chip
+                        key={c}
+                        label={c.charAt(0).toUpperCase() + c.slice(1)}
+                        selected={category === c}
+                        onPress={() => setCategory(category === c ? null : c)}
+                      />
+                    ))}
+                  </>
+                ) : null}
+                {/* Creating a room belongs with the rooms this row filters, not floated above the search
+                    box next to a notification count. It is also the only create action still on this
+                    screen that has nowhere else to live. */}
+                <Chip
+                  label={addingRoom ? 'Cancel' : '+ Room'}
+                  onPress={() => setAddingRoom((v) => !v)}
+                  selected={addingRoom}
+                />
+              </ScrollView>
 
               {filtering ? (
                 <AppText variant="tiny" tone="muted" testID="search-count">
