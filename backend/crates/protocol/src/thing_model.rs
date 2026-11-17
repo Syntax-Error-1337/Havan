@@ -31,6 +31,14 @@ pub struct ThingModel {
     /// catalogue, where it costs a support ticket instead of a return.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radio: Option<Radio>,
+    /// How often the product reports, in seconds, when it is behaving.
+    ///
+    /// The platform needs this to tell "asleep on schedule" from "gone". Without it the app has one
+    /// silence threshold for every device in existence, which is wrong in both directions: a sensor
+    /// that reports hourly is permanently "silent", and a plug that reports every ten seconds hides a
+    /// dropout for a quarter of an hour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_interval_secs: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -508,6 +516,7 @@ mod tests {
                 name: "T".into(),
                 category: "sensor".into(),
                 icon: None,
+                report_interval_secs: None,
                 capabilities: vec![CapabilityBinding {
                     name: cap.name.into(),
                     version: Some(cap.version),

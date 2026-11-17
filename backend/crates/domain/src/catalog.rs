@@ -179,6 +179,7 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
         // A radio declaration is checked on the way in, not only at publish: a draft that cannot
         // ever be published should say so while the vendor is still looking at the field.
         validate_radio(&model)?;
+        validate_report_interval(&model)?;
         if publish_now {
             validate_rules(&model)?;
         }
@@ -246,6 +247,7 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
 
         validate_identity(&model)?;
         validate_radio(&model)?;
+        validate_report_interval(&model)?;
         // The key is the device's identity; changing it would orphan every
         // device already claimed under the old one.
         if model.product_key != existing.product_key {
@@ -327,6 +329,7 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
         }
 
         validate_radio(&product.thing_model)?;
+        validate_report_interval(&product.thing_model)?;
         validate_rules(&product.thing_model)?;
         self.repo.publish(vendor_id, id).await?;
         Ok(Product {
@@ -377,6 +380,25 @@ fn validate_radio(model: &ThingModel) -> Result<(), AppError> {
             unknown.join(", "),
             protocol::thing_model::BANDS.join(", "),
             protocol::thing_model::SECURITY.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+/// How often a product says it reports: a minute at the fastest, a day at the slowest.
+///
+/// The number is used to decide when a device has gone quiet, so a wrong one is not cosmetic: `0`
+/// would make every device permanently silent, and a year would make a dead device look healthy until
+/// someone noticed the reading was from last spring.
+pub const MAX_REPORT_INTERVAL_SECS: u32 = 86_400;
+
+fn validate_report_interval(model: &ThingModel) -> Result<(), AppError> {
+    let Some(interval) = model.report_interval_secs else {
+        return Ok(());
+    };
+    if interval == 0 || interval > MAX_REPORT_INTERVAL_SECS {
+        return Err(AppError::validation(format!(
+            "report_interval_secs must be between 1 and {MAX_REPORT_INTERVAL_SECS}, got {interval}"
         )));
     }
     Ok(())
@@ -599,6 +621,40 @@ mod tests {
     }
 
     #[test]
+    fn a_report_interval_is_a_promise_the_platform_believes() {
+        use protocol::thing_model::ThingModel;
+
+        let with = |interval: Option<u32>| ThingModel {
+            schema_version: 1,
+            product_key: "interval_probe".into(),
+            name: "Interval probe".into(),
+            category: "sensor".into(),
+            icon: None,
+            capabilities: vec![],
+            constraints: Default::default(),
+            radio: None,
+            report_interval_secs: interval,
+        };
+
+        // Absent is fine: the platform then uses its own default and nobody has claimed anything.
+        assert!(validate_report_interval(&with(None)).is_ok());
+        assert!(validate_report_interval(&with(Some(1))).is_ok());
+        assert!(validate_report_interval(&with(Some(600))).is_ok());
+        assert!(validate_report_interval(&with(Some(MAX_REPORT_INTERVAL_SECS))).is_ok());
+
+        // Zero would make every device of this product permanently "silent"; a day and a half is the
+        // point where a dead device would keep looking healthy.
+        for bad in [0, MAX_REPORT_INTERVAL_SECS + 1] {
+            let err = validate_report_interval(&with(Some(bad))).unwrap_err();
+            assert_eq!(err.code_kind(), ErrorCode::ValidationFailed, "{bad}");
+            assert!(
+                format!("{err:?}").contains("report_interval_secs"),
+                "the error must name the field: {err:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_radio_declaration_is_checked_against_what_exists() {
         use protocol::thing_model::{Radio, ThingModel};
 
@@ -611,6 +667,7 @@ mod tests {
             capabilities: vec![],
             constraints: Default::default(),
             radio,
+            report_interval_secs: None,
         };
 
         // Absent is fine: the field is new and existing products must keep validating.

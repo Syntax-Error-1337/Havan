@@ -211,6 +211,11 @@ boolean the average is the fraction of the window it was true, which is what a
 "when is the light on" chart should draw. A bucket with no samples is drawn as a
 gap, never as zero — silence is not a reading.
 
+A device also carries `last_seen_at` (RFC 3339) and, when its product declared one,
+`report_interval_secs`. Together they are how a client tells "asleep on schedule" from "gone": the rule
+is `max(15 min, 3 × report_interval_secs)`, and the platform's own presence sweep uses the same rule, so
+a device is never marked offline before the app would call it quiet.
+
 ### Alerts
 
 | Method | Path | Notes |

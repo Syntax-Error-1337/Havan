@@ -421,6 +421,38 @@ mounting a component under jest's fake timers leaves the next mount in the file 
 is an artefact of the environment, not something a customer meets. The drop, the resume and the status
 transition are all exercised for real against the test socket.
 
+### The silence window belongs to the product, not the platform
+
+The 15-minute threshold was a guess that favoured honesty over accuracy: a sensor designed to report
+hourly would read as "Silent" most of its life, and the platform's own presence sweep would flip it
+offline every hour and back online an hour later — a device that flickers rather than one that is
+understood.
+
+So the expectation is declared data, in the product's thing model:
+
+```json
+{ "product_key": "hv_acme_sensor1", "report_interval_secs": 3600, … }
+```
+
+- **Declared**: `ThingModel.report_interval_secs`, validated 1–86 400 s (`catalog::validate_report_interval`).
+  Zero is refused because it would make every device of that product permanently silent; anything over a
+  day is refused because a dead device would keep looking healthy until someone noticed the reading was
+  from last spring. The field is set in the portal's product editor (the thing-model JSON), so no extra
+  screen was needed.
+- **Copied at claim**: `devices.report_interval_secs`, in the same INSERT that copies `category` and
+  `product_key` — `products` is vendor-scoped and a customer read carries no vendor, so the device
+  carries its product's expectation rather than joining for it. Migration `0037` backfills what the
+  catalogue already knew.
+- **Used by both halves**: the app's `silenceThresholdMs` takes `max(15 min, 3 × interval)` — three
+  intervals, because one missed report is normal and three is a pattern — and the worker's presence
+  sweep uses the same rule in SQL, so a device is never marked offline by the platform before the app
+  would call it quiet.
+
+Verified live with a sensor declared at 3 600 s and last heard 42 minutes ago: the sweep left it
+**online** past the old 90-second window, the payload carried `report_interval_secs: 3600`, and the
+dashboard read **"Living Room · online"** while a plug that declares nothing read **"Silent for 4h"** on
+the same screen.
+
 ### Silence is not presence, on screen too
 
 The worker has swept for silent devices since Phase 5 — "online, but nobody has heard from it" — and the

@@ -31,6 +31,11 @@ export type Device = {
   online: boolean;
   fw_version?: string | null;
   last_seen_at?: string | null;
+  /**
+   * Seconds between expected reports, declared by the product. Absent means the vendor never said, and
+   * the client uses the platform's default rather than inventing an expectation.
+   */
+  report_interval_secs?: number | null;
   points: DevicePoint[];
 };
 

@@ -498,15 +498,21 @@ impl PairingRepo for PgPairing {
         // The device either exists (manufactured, secret already known) or is
         // born here on trust-on-first-use for a product without a manifest.
         let device_id: Uuid = sqlx::query_scalar(
+            // The product's identity is copied onto the device here rather than joined at read time:
+            // `products` is vendor-scoped and a customer request carries no vendor. The report interval
+            // is part of that identity, and reading it from the product on every claim keeps a corrected
+            // declaration from staying wrong on devices claimed after the fix.
             r#"INSERT INTO devices
                  (id, vendor_id, product_id, product_key, category, home_id, name, serial,
-                  secret_hash, state, claimed_at, fw_version, online)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'claimed', now(), $10, false)
+                  secret_hash, state, claimed_at, fw_version, online, report_interval_secs)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'claimed', now(), $10, false,
+                       (SELECT (thing_model ->> 'report_interval_secs')::int FROM products WHERE id = $3))
                ON CONFLICT (product_id, serial) DO UPDATE
                  SET home_id = EXCLUDED.home_id,
                      state = 'claimed',
                      claimed_at = now(),
-                     fw_version = COALESCE(EXCLUDED.fw_version, devices.fw_version)
+                     fw_version = COALESCE(EXCLUDED.fw_version, devices.fw_version),
+                     report_interval_secs = COALESCE(EXCLUDED.report_interval_secs, devices.report_interval_secs)
                RETURNING id"#,
         )
         .bind(kernel::new_id())

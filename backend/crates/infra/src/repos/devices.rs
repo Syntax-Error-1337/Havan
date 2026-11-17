@@ -48,6 +48,14 @@ impl PgDevices {
     /// Returns **who** was aged out, not just how many: an app holding an open socket learns that a
     /// device went quiet because somebody publishes an event, and a count cannot be published. A
     /// device with no home is marked offline and not returned — there is nobody to tell.
+    /// A device's own expectation, when its product declared one.
+    ///
+    /// The sweep used one window for the whole fleet. A product that reports hourly was marked offline
+    /// every hour and back online an hour later, which the customer sees as a device that flickers; and
+    /// a product that reports every ten seconds was left looking healthy long after it had died. The
+    /// device carries its product's declared interval (copied at claim), so the sweep asks each device
+    /// how late it is allowed to be — never less than the platform's floor, so a chatty product does
+    /// not make the fleet twitchy.
     pub async fn age_out_stale(&self, silence_seconds: i64) -> Result<Vec<SilentDevice>, AppError> {
         let mut tx = self
             .pg
@@ -56,7 +64,14 @@ impl PgDevices {
         let rows: Vec<(Uuid, Option<Uuid>)> = sqlx::query_as(
             "UPDATE devices SET online = false
               WHERE online
-                AND (last_seen_at IS NULL OR last_seen_at < now() - make_interval(secs => $1::int))
+                AND (
+                  last_seen_at IS NULL
+                  OR last_seen_at < now() - make_interval(secs => GREATEST(
+                       $1::int,
+                       -- three of its own intervals, when the product declared one
+                       COALESCE(report_interval_secs, 0) * 3
+                     ))
+                )
           RETURNING id, home_id",
         )
         .bind(silence_seconds as i32)
@@ -95,6 +110,7 @@ type DeviceRow = (
     bool,
     Option<String>,
     Option<time::OffsetDateTime>,
+    Option<i32>,
 );
 
 type PointRow = (
@@ -119,7 +135,8 @@ type PointRow = (
 // carries no vendor. The product's identity is copied onto the device at claim.
 const DEVICE_COLUMNS: &str = r#"
     d.id, d.vendor_id, d.home_id, d.room_id, r.name AS room_name, d.name,
-    d.product_key, d.category, d.serial, d.online, d.fw_version, d.last_seen_at
+    d.product_key, d.category, d.serial, d.online, d.fw_version, d.last_seen_at,
+    d.report_interval_secs
 "#;
 
 fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
@@ -136,6 +153,7 @@ fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
         online,
         fw_version,
         last_seen_at,
+        report_interval_secs,
     ) = row;
     Device {
         id,
@@ -150,6 +168,7 @@ fn map_device(row: DeviceRow, points: Vec<Point>) -> Device {
         online,
         fw_version,
         last_seen_at,
+        report_interval_secs,
         points,
     }
 }

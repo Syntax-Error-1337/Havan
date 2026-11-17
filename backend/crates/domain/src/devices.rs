@@ -114,6 +114,12 @@ pub struct Device {
     /// amount of UI work could fix that from the client side.
     #[serde(with = "time::serde::rfc3339::option")]
     pub last_seen_at: Option<time::OffsetDateTime>,
+    /// Seconds between expected reports, as declared by the product and copied at claim.
+    ///
+    /// `None` means the product never said, and the client falls back to a platform default rather than
+    /// inventing an expectation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub report_interval_secs: Option<i32>,
     pub points: Vec<Point>,
 }
 
@@ -783,6 +789,7 @@ mod tests {
             online: true,
             fw_version: Some("1.0.0".into()),
             last_seen_at: None,
+            report_interval_secs: Some(600),
             points: vec![],
         });
 

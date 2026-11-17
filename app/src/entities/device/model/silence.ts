@@ -11,12 +11,30 @@
  * deciding for itself what "recently" means.
  */
 
-/** Long enough to cover a sleepy sensor's report interval; short enough to catch a real dropout. */
+/**
+ * The fallback threshold, for products that never declared how often they report.
+ *
+ * Long enough to cover a sleepy sensor; short enough to catch a real dropout.
+ */
 export const SILENT_AFTER_MS = 15 * 60_000;
+
+/**
+ * How late a report may be before the device counts as quiet: three of its own intervals.
+ *
+ * A product that says "I report every hour" is not silent at sixteen minutes; a product that says "every
+ * ten seconds" is, and treating it like the hourly one would hide an outage for a quarter of an hour. The
+ * platform never uses a shorter window than `SILENT_AFTER_MS`, so a chatty product does not make the app
+ * twitchy — and a product that declares nothing falls back to the default.
+ */
+export function silenceThresholdMs(device: { report_interval_secs?: number | null }): number {
+  const declared = device.report_interval_secs;
+  if (!declared || !Number.isFinite(declared) || declared <= 0) return SILENT_AFTER_MS;
+  return Math.max(SILENT_AFTER_MS, declared * 3 * 1000);
+}
 
 export type Freshness = 'live' | 'stale' | 'offline';
 
-type Seen = { online: boolean; last_seen_at?: string | null };
+type Seen = { online: boolean; last_seen_at?: string | null; report_interval_secs?: number | null };
 
 /** `offline` (the platform says so), `stale` (online but silent), or `live`. */
 export function freshness(device: Seen, now: number = Date.now()): Freshness {
@@ -24,7 +42,7 @@ export function freshness(device: Seen, now: number = Date.now()): Freshness {
   if (!device.last_seen_at) return 'live';
   const seen = new Date(device.last_seen_at).getTime();
   if (Number.isNaN(seen)) return 'live';
-  return now - seen > SILENT_AFTER_MS ? 'stale' : 'live';
+  return now - seen > silenceThresholdMs(device) ? 'stale' : 'live';
 }
 
 /**
