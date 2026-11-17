@@ -275,6 +275,19 @@ Two operational details that are not incidental:
 - **It is safe on a schedule and on three replicas.** Every step is `IF NOT EXISTS` / `IF EXISTS`, the
   spill is inside one transaction on one connection, and a second run in the same minute does nothing.
 
+Hourly rollups are deleted by the same run, in batches of 40 000 up to 25 batches a tick: `telemetry_rollup`
+is not partitioned (one row per point per hour is three orders of magnitude smaller than the readings it
+summarises), so its window is enforced with deletes rather than `DROP TABLE`. They go through the
+`haven_system` role because that table has RLS forced on and an owner is still subject to policies.
+
+### The seed that lied because the sweep was honest
+
+Seeding a 1 200-device home with `last_seen_at = now() - (g % 40) minutes` produced a dashboard reading
+*"0 of 1200 online"*. Nothing was broken: the presence sweep marks anything unheard from for 90 seconds as
+offline, and most of the seed was older than that. A fixture that depends on a background job **not**
+running is a fixture that lies the moment you start it — the online devices in `seed-huge-home.sql` now sit
+five seconds in the past, and the rest are three days old on purpose.
+
 Retention is `TELEMETRY_RETENTION_DAYS`, default **730**. It is a platform term rather than a vendor's:
 `licence_grants.retention_days` is about *people*, and letting a vendor's contract decide how long
 telemetry lives would mean one vendor's paperwork destroying another vendor's device history.

@@ -560,6 +560,21 @@ Verified live: opened the device as an admin, pressed Remove, read the sheet, co
 to `/` and the device was gone from the home. The row survived with `state = 'released'`, which is what
 keeps the licence and the history honest.
 
+### "Load more" is a cursor, not a bigger number
+
+The footer used to raise `device_limit` (`limit * 4`) and ask again. The server clamps a page at **500**, so
+on a home of 1 200 devices the second press requested 2 000, was given the same first 500, and the footer
+kept offering devices that could never arrive — the last 700 were unreachable in the app while the button
+said "Load 1 000 more". Measured, not imagined: the 420-device bench home fit under the cap, which is why it
+never showed.
+
+"More" is now a list of cursors (`useDashboardTail`). Each page is fetched with `device_limit=500` and the
+cursor of the last loaded page, added under the dashboard's own key prefix — so the live stream patches
+tail pages with the same `setQueriesData`, and a reconnect invalidates them all. The button says what it
+will do, not what is left in the home: **Load 500 more · showing 200 of 1200**.
+
+At 1 200 devices: press → 700, press → 1 200 and the footer disappears. 80 tiles mounted at 1 200.
+
 ### The rights are in the product, not in the policy
 
 `GET /v1/me/export` and `DELETE /v1/me` have existed since Phase 6, with receipts, retention windows and

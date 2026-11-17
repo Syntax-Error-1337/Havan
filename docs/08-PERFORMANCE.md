@@ -89,6 +89,33 @@ against 197k telemetry rows — so the query did not change; the endpoint's 20 m
 HTTP path around it, not a missing index. A timing that doubles without a plan to explain it is how
 people start "optimising" a thing that was never slow.
 
+## A home of 1 200 devices
+
+The bench home was 420 devices, which fits under the server's 500-device page cap — the size where paging
+bugs hide. `scripts/seed-huge-home.sql` seeds a 1 200-device home ("Plant") to get past it.
+
+Measured on the dev laptop, `GET /v1/homes/{id}/dashboard?device_limit=200` with a cursor walk to the last
+page (median of 5 runs, warm):
+
+| page | median | rows | home total |
+|---|---|---|---|
+| 1 | **34.5 ms** | 200 | 1 200 |
+| 2 | 32.2 ms | 200 | 1 200 |
+| 3 | 32.1 ms | 200 | 1 200 |
+| 4 | 37.5 ms | 200 | 1 200 |
+| 5 | 39.7 ms | 200 | 1 200 |
+| 6 | **46.2 ms** | 200 | 1 200 |
+| single device | 11.0 ms | — | — |
+| history, 1 day | 16.2 ms | — | — |
+
+It is flat because the cursor is `(name, id)` and the query is an index range scan, not `OFFSET`: page six
+costs what page one costs, which is the property that makes a 1 200-device home and a 12 000-device home the
+same problem for one screen.
+
+On the client, one pushed frame at that size patched a single tile and moved the header `100 → 99 of 1200`
+with **no additional dashboard request** (resource entries: 1 before, 1 after), and 80 tiles were mounted
+once all six pages were loaded — windowed rendering, not 1 200 mounted rows.
+
 ## The live stream: one Redis subscription per channel, not per socket
 
 `/v1/stream` gave every websocket its own Redis pub/sub connection. Readable code, and the wrong shape for

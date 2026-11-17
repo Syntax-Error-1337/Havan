@@ -55,7 +55,20 @@ pub struct MaintenanceReport {
     /// Rows still in the DEFAULT partition after the run. A non-zero number here means a device with a
     /// broken clock, which an operator should see rather than infer from a query plan.
     pub overflow_rows: i64,
+    /// Hourly rollup rows deleted. `telemetry_rollup` is not partitioned — one row per point per hour is
+    /// three orders of magnitude smaller than the readings it summarises — so it is deleted in batches
+    /// rather than dropped by partition.
+    pub rollups_deleted: i64,
 }
+
+/// How many rollup rows one statement may delete. A million-row `DELETE` holds a transaction for as long
+/// as it takes to write a million tombstones; forty thousand is a few milliseconds and still eats a day of
+/// expired history per tick, so a backlog drains without ever being visible to a reader.
+const ROLLUP_BATCH: i64 = 40_000;
+
+/// The most batches one tick will run, so a first run against a database that has never been pruned does
+/// not hold the worker for an hour. The next tick picks up where this one stopped.
+const ROLLUP_BATCHES_PER_RUN: usize = 25;
 
 /// Create the partitions the calendar is about to need, and drop the ones past the window.
 ///
@@ -79,6 +92,7 @@ pub async fn maintain(pg: &Pg, retention_days: i64) -> Result<MaintenanceReport,
         dropped: Vec::new(),
         rescued: 0,
         overflow_rows: 0,
+        rollups_deleted: 0,
     };
 
     // One month back as well. A worker that first runs at 00:05 on the 1st must not leave the month it is
@@ -182,7 +196,49 @@ pub async fn maintain(pg: &Pg, retention_days: i64) -> Result<MaintenanceReport,
         .map_err(db)?;
 
     tx.commit().await.map_err(db)?;
+
+    // Rollups are a different problem with a different shape: no partitions to drop, so the window has to
+    // be enforced with deletes. They run through the system context rather than the owner connection,
+    // because `telemetry_rollup` has RLS forced on and `haven_system` is the role that may cross tenants.
+    report.rollups_deleted = purge_rollups(pg, retention_days).await?;
+
     Ok(report)
+}
+
+/// Delete hourly rollups whose bucket is past the retention window, a batch at a time.
+async fn purge_rollups(pg: &Pg, retention_days: i64) -> Result<i64, AppError> {
+    let cutoff = OffsetDateTime::now_utc() - Duration::days(retention_days);
+    let mut deleted = 0;
+
+    for _ in 0..ROLLUP_BATCHES_PER_RUN {
+        let mut tx = pg
+            .scoped(&kernel::TenantCtx::system("telemetry-rollup-retention"))
+            .await?;
+
+        let batch = sqlx::query(
+            "DELETE FROM telemetry_rollup
+              WHERE (point_id, bucket) IN (
+                    SELECT point_id, bucket FROM telemetry_rollup
+                     WHERE bucket < $1
+                     LIMIT $2
+              )",
+        )
+        .bind(cutoff)
+        .bind(ROLLUP_BATCH)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        tx.commit().await.map_err(db)?;
+
+        deleted += i64::try_from(batch).unwrap_or(i64::MAX);
+        if batch < u64::try_from(ROLLUP_BATCH).unwrap_or(u64::MAX) {
+            break;
+        }
+    }
+
+    Ok(deleted)
 }
 
 /// The pool a maintenance job needs, with the schema owner's rights: partitions are DDL, not tenant data.

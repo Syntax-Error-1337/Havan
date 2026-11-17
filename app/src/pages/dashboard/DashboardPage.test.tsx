@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { DashboardPage } from './DashboardPage';
@@ -113,6 +113,63 @@ describe('dashboard', () => {
     expect(view.getByText(/431 online/)).toBeTruthy();
     expect(view.getByText(/Load 430 more/)).toBeTruthy();
     expect(view.getByText(/showing 1 of 431/)).toBeTruthy();
+  });
+
+  // The bug this test is for: "more" used to be a growing `device_limit`, and the server clamps a page
+  // at 500. On a 1,200-device home the first press asked for 800, was given the same first 500 again,
+  // and the cursor never moved — the last 700 devices were unreachable while the footer kept offering
+  // them. A cursor is the only thing that advances.
+  it('walks past the server’s page cap a cursor at a time', async () => {
+    const tile = (n: number) => ({
+      id: `d${n}`,
+      name: `Device ${n}`,
+      room_id: null,
+      serial: `S${n}`,
+      product_key: 'k',
+      category: 'plug',
+      online: true,
+      points: [],
+    });
+
+    stubApi((url) => {
+      if (url.includes('/dashboard') && url.includes('device_cursor=')) {
+        // Second page: 500 devices, and a cursor for the rest.
+        return {
+          home: { id: 'home-1', name: 'Plant', timezone: 'UTC' },
+          rooms: [],
+          devices: Array.from({ length: 500 }, (_, i) => tile(201 + i)),
+          scenes: [],
+          unread_count: 0,
+          devices_total: 1200,
+          devices_next_cursor: 'cursor-2',
+        };
+      }
+      if (url.includes('/dashboard')) {
+        return {
+          home: { id: 'home-1', name: 'Plant', timezone: 'UTC' },
+          rooms: [],
+          devices: Array.from({ length: 200 }, (_, i) => tile(i + 1)),
+          scenes: [],
+          unread_count: 0,
+          devices_total: 1200,
+          devices_next_cursor: 'cursor-1',
+        };
+      }
+      return [{ id: 'home-1', name: 'Plant', timezone: 'UTC', role: 'owner', device_count: 1200, member_count: 1, created_at: '', owner_id: 'u' }];
+    });
+
+    const view = await renderDashboard();
+    await view.findByText('Device 1');
+
+    // The press says what it will do, not what is left in the home: the server will not give more.
+    expect(view.getByText(/Load 500 more/)).toBeTruthy();
+    expect(view.getByText(/showing 200 of 1200/)).toBeTruthy();
+
+    fireEvent.press(view.getByTestId('load-all-devices'));
+
+    // 200 from the first page and 500 from the tail, deduped by id, and the footer now offers the rest.
+    await waitFor(() => expect(view.getByText(/showing 700 of 1200/)).toBeTruthy());
+    expect(view.getByText(/Load 500 more/)).toBeTruthy();
   });
 
   it('says so plainly when there are no devices', async () => {

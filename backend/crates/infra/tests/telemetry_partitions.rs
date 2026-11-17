@@ -113,6 +113,36 @@ async fn a_month_with_no_partition_is_created_and_its_rows_rescued() {
     );
     assert_eq!(again.rescued, 0);
 
+    // Hourly rollups have no partitions to drop, so the same window is enforced with batched deletes.
+    let stale_bucket =
+        OffsetDateTime::now_utc() - time::Duration::days(DEFAULT_RETENTION_DAYS + 30);
+    let stale_point = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO telemetry_rollup (point_id, bucket, vendor_id, min_num, max_num, avg_num, sum_num, samples)
+         VALUES ($1, $2, $3, 1, 2, 1.5, 3, 2)",
+    )
+    .bind(stale_point)
+    .bind(stale_bucket)
+    .bind(vendor)
+    .execute(pg.pool())
+    .await
+    .expect("a rollup older than the window");
+
+    let pruned = maintain(&pg, DEFAULT_RETENTION_DAYS)
+        .await
+        .expect("maintain again");
+    assert!(
+        pruned.rollups_deleted >= 1,
+        "the expired rollup is deleted: {pruned:?}"
+    );
+
+    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM telemetry_rollup WHERE point_id = $1")
+        .bind(stale_point)
+        .fetch_one(pg.pool())
+        .await
+        .expect("count rollups");
+    assert_eq!(left, 0);
+
     // Leave the database as it was found: a partition for next month, and no probe rows.
     sqlx::query("DELETE FROM telemetry WHERE device_id = $1")
         .bind(device)

@@ -7,12 +7,14 @@ import { Box, Button, Screen, AppText, HomeSkeleton, Icon, TabBar } from '../../
 import { DeviceTile } from '../../entities/device';
 import { summarise } from '../../entities/device/model/summary';
 import {
-  DEVICE_PAGE,
+  DEVICE_PAGE_MAX,
   useCreateHome,
   useCreateRoom,
   useDashboard,
+  useDashboardTail,
   useHomes,
 } from '../../entities/home';
+import type { Dashboard } from '../../entities/home';
 import { qk } from '../../shared/api/keys';
 import { useMe, useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
@@ -73,11 +75,13 @@ export function DashboardPage() {
 
   // A page at a time. The footer offers the rest: with a thousand devices the payload is ~3 MB, and
   // that should be a decision the person makes, not a cost every cold start pays.
-  const [deviceLimit, setDeviceLimit] = useState(DEVICE_PAGE);
-  const { data: dashboard, isPending, refetch, isRefetching } = useDashboard(
-    homeId ?? null,
-    deviceLimit,
-  );
+  //
+  // "More" is a list of cursors, not a growing `device_limit`. The server clamps a page at 500, so a
+  // limit that keeps doubling stops moving after the second press — on a 1,200-device home the first
+  // version re-fetched the same 500 devices and left the other 700 unreachable.
+  const [tailCursors, setTailCursors] = useState<string[]>([]);
+  const { data: dashboard, isPending, refetch, isRefetching } = useDashboard(homeId ?? null);
+  const tails = useDashboardTail(homeId ?? null, tailCursors);
 
   // Seed the per-entity caches from the aggregate: the widgets below were written
   // against those keys, and this keeps one request for the whole screen.
@@ -89,7 +93,28 @@ export function DashboardPage() {
     qc.setQueryData([...qk.home(homeId), 'rooms'], dashboard.rooms);
   }, [dashboard, homeId, qc]);
 
-  const devices = useMemo(() => dashboard?.devices ?? [], [dashboard]);
+  // The first page, then every page the person asked for, deduped by id: a device that moves between
+  // pages between two requests must not appear twice.
+  const devices = useMemo(() => {
+    const seen = new Set<string>();
+    const all: NonNullable<typeof dashboard>['devices'] = [];
+    for (const device of [
+      ...(dashboard?.devices ?? []),
+      ...tails.flatMap((tail: { data?: Dashboard }) => tail.data?.devices ?? []),
+    ]) {
+      if (seen.has(device.id)) continue;
+      seen.add(device.id);
+      all.push(device);
+    }
+    return all;
+  }, [dashboard, tails]);
+
+  // Where the next press starts, and how many it will bring. The last loaded page owns the answer:
+  // the first page's cursor points at devices the tail has already fetched.
+  const nextCursor = useMemo(() => {
+    const last = tails.length > 0 ? tails[tails.length - 1] : undefined;
+    return (last ? last.data?.devices_next_cursor : dashboard?.devices_next_cursor) ?? undefined;
+  }, [tails, dashboard]);
   const rooms = dashboard?.rooms;
   const unread = dashboard?.unread_count ?? 0;
   const createRoom = useCreateRoom(homeId ?? undefined);
@@ -423,12 +448,16 @@ export function DashboardPage() {
           )
         }
         ListFooterComponent={
-          dashboard?.devices_next_cursor ? (
+          nextCursor ? (
             <View style={{ paddingHorizontal: tokens.space.lg, paddingTop: tokens.space.md }}>
               <Pressable
                 accessibilityRole="button"
                 testID="load-all-devices"
-                onPress={() => setDeviceLimit((limit: number) => Math.min(limit * 4, 2000))}
+                disabled={!nextCursor}
+                onPress={() => {
+                  if (!nextCursor) return;
+                  setTailCursors((cursors) => [...cursors, nextCursor]);
+                }}
                 style={({ pressed }) => ({
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -444,11 +473,10 @@ export function DashboardPage() {
                 })}
               >
                 <AppText variant="caption" weight="600" style={{ color: color.accent }}>
-                  Load{' '}
-                  {(dashboard.devices_total ?? devices.length) - devices.length} more
+                  Load {Math.min(DEVICE_PAGE_MAX, totalDevices - devices.length)} more
                 </AppText>
                 <AppText variant="tiny" tone="muted">
-                  showing {devices.length} of {dashboard.devices_total ?? devices.length}
+                  showing {devices.length} of {totalDevices}
                 </AppText>
               </Pressable>
             </View>

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 
 import { request } from '../../../shared/api/client';
 import { qk } from '../../../shared/api/keys';
@@ -23,6 +23,14 @@ export type Dashboard = {
 export const DEVICE_PAGE = 200;
 
 /**
+ * The most the server will return in one page. `device_limit` is clamped to this on the way in, so a
+ * client that asks for more is not refused — it is silently given 500, which is how the first version of
+ * the paging footer ended up requesting 800, receiving the same first 500 twice, and making every device
+ * past 500 unreachable on a 1,200-device home.
+ */
+export const DEVICE_PAGE_MAX = 500;
+
+/**
  * The home screen, in one request.
  *
  * It used to be five — homes, devices, rooms, scenes, unread — and every one of them
@@ -41,5 +49,28 @@ export function useDashboard(homeId: string | null, deviceLimit = DEVICE_PAGE) {
     queryFn: () =>
       request<Dashboard>(`/homes/${homeId}/dashboard?device_limit=${deviceLimit}`),
     enabled: Boolean(homeId),
+  });
+}
+
+/**
+ * The pages after the first, one request each, by cursor.
+ *
+ * The first page has a fixed size, so "show me more" cannot be an ever-larger `device_limit`: the server
+ * clamps at `DEVICE_PAGE_MAX`, and past that every press re-fetched the same first page while the footer
+ * kept promising the rest. A cursor is the only thing that moves forward.
+ *
+ * Each page keeps its own cache entry under the dashboard's key prefix, so the live stream patches them
+ * with the same `setQueriesData` it uses for the first page, and a reconnect invalidates all of them.
+ */
+export function useDashboardTail(homeId: string | null, cursors: string[]) {
+  return useQueries({
+    queries: cursors.map((cursor) => ({
+      queryKey: [...qk.dashboard(homeId ?? 'none'), 'page', cursor] as const,
+      queryFn: () =>
+        request<Dashboard>(
+          `/homes/${homeId}/dashboard?device_limit=${DEVICE_PAGE_MAX}&device_cursor=${encodeURIComponent(cursor)}`,
+        ),
+      enabled: Boolean(homeId),
+    })),
   });
 }
