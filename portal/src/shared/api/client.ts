@@ -94,3 +94,36 @@ function safeParse(text: string): unknown {
     return undefined;
   }
 }
+
+/**
+ * Fetch a document that is not JSON — the support bundle — and hand it to the browser.
+ *
+ * `request` parses JSON, so a screen that needs the raw body would otherwise re-implement the token
+ * header, and a second copy of auth is a second place to get it wrong. Saved with the name the
+ * server suggests when it sends one.
+ */
+export async function download(path: string, fallbackName: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let message = `download failed (${res.status})`;
+    try {
+      const body = (await res.json()) as ApiErrorBody;
+      message = body.error.message;
+    } catch {
+      /* not JSON; the status is all we have */
+    }
+    throw new ApiError(res.status, 'download_failed', message);
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const named = /filename="?([^";]+)"?/.exec(disposition)?.[1];
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = named ?? fallbackName;
+  link.click();
+  URL.revokeObjectURL(url);
+}

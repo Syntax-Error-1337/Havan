@@ -7,6 +7,7 @@ import { ProductEditorPage } from '../pages/product-editor/ProductEditorPage';
 import { FirmwarePage } from '../pages/firmware/FirmwarePage';
 import { CampaignsPage } from '../pages/campaigns/CampaignsPage';
 import { ApiKeysPage } from '../pages/api-keys/ApiKeysPage';
+import { SupportPage } from '../pages/support/SupportPage';
 import { LicencesPage } from '../pages/licences/LicencesPage';
 import { TeamPage } from '../pages/team/TeamPage';
 import { FleetPage } from '../pages/fleet/FleetPage';
@@ -77,6 +78,9 @@ export function AppShell() {
           <Link to="/api-keys" className="muted">
             API keys
           </Link>
+          <Link to="/support" className="muted">
+            Support
+          </Link>
         </nav>
       </header>
       <main className="content">
@@ -93,6 +97,7 @@ export function AppShell() {
               explanation. */}
           <Route path="/rollouts" element={<Navigate to="/campaigns" replace />} />
           <Route path="/api-keys" element={<ApiKeysPage />} />
+          <Route path="/support" element={<SupportPage />} />
           <Route path="/licences" element={<LicencesPage />} />
           <Route path="/team" element={<TeamPage />} />
           <Route path="/invoices" element={<InvoicesPage />} />

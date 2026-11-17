@@ -248,3 +248,28 @@ export function invoiceCsvUrl(vendorId: string, period: string): string {
   const base = import.meta.env.VITE_API_URL ?? '/v1';
   return `${base}/ops/invoices.csv?vendor_id=${encodeURIComponent(vendorId)}&period=${encodeURIComponent(period)}`;
 }
+
+export type PurgeReport = { purged: string[] };
+
+/**
+ * Erased accounts past their retention window.
+ *
+ * `POST /ops/privacy/purge` had a route and no screen, so the only way to run a data-deletion purge
+ * was curl. The number comes first: "purge" with nothing in front of it is a command nobody can
+ * sanity-check, and a number that is not zero is itself the finding — the hourly worker should keep
+ * it at zero.
+ */
+export function usePrivacyDue() {
+  return useQuery({
+    queryKey: ['admin', 'privacy', 'due'] as const,
+    queryFn: () => adminRequest<{ due: number }>('/ops/privacy/due'),
+  });
+}
+
+export function usePurge() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => adminRequest<PurgeReport>('/ops/privacy/purge', { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'privacy'] }),
+  });
+}
