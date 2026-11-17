@@ -30,6 +30,13 @@ export type Palette = {
   success: string;
   warning: string;
   danger: string;
+  /** The canvas gradient. Two stops are enough to read as depth without a blur pass. */
+  bgTop: string;
+  bgBottom: string;
+  /** A card that sits on the gradient: translucent, so the canvas shows through it. */
+  glass: string;
+  /** Accent at low alpha, for the halo behind an icon and the fill under a chart. */
+  glow: string;
 };
 
 /** iOS light appearance. */
@@ -51,6 +58,10 @@ export const light: Palette = {
   success: '#34C759',
   warning: '#FF9500',
   danger: '#FF3B30',
+  bgTop: '#F7F8FC',
+  bgBottom: '#E8ECF6',
+  glass: 'rgba(255,255,255,0.78)',
+  glow: 'rgba(0,122,255,0.14)',
 };
 
 /** iOS dark appearance. Not a dimmed light theme: different values by design. */
@@ -66,6 +77,12 @@ export const dark: Palette = {
   success: '#30D158',
   warning: '#FF9F0A',
   danger: '#FF453A',
+  // A night sky rather than a black rectangle: the canvas is what makes a translucent card read as
+  // glass instead of as a grey box, and it is the only thing on screen that is allowed to be quiet.
+  bgTop: '#0B1020',
+  bgBottom: '#05070F',
+  glass: 'rgba(255,255,255,0.06)',
+  glow: 'rgba(10,132,255,0.22)',
 };
 
 export const tokens = {
@@ -94,6 +111,39 @@ export const tokens = {
   /** A finger, not a mouse: 44 pt is the smallest reliable target. */
   touch: { min: 44 },
 } as const;
+
+/**
+ * One accent per category, so a bulb and a camera are told apart by colour before a word is read.
+ *
+ * This is the part that makes a *vendor's* product look designed without the vendor designing
+ * anything: a product declares `category`, and the whole card — icon halo, control tint, chart fill —
+ * takes that colour. An unknown category falls back to the palette accent rather than to grey, so a
+ * new kind of device is never the one that looks broken.
+ */
+export const categoryAccent: Record<string, { accent: string; glow: string }> = {
+  light: { accent: '#8B5CF6', glow: 'rgba(139,92,246,0.28)' },
+  switch: { accent: '#38BDF8', glow: 'rgba(56,189,248,0.28)' },
+  plug: { accent: '#38BDF8', glow: 'rgba(56,189,248,0.24)' },
+  sensor: { accent: '#22D3EE', glow: 'rgba(34,211,238,0.24)' },
+  climate: { accent: '#FB923C', glow: 'rgba(251,146,60,0.26)' },
+  cover: { accent: '#34D399', glow: 'rgba(52,211,153,0.24)' },
+  lock: { accent: '#F472B6', glow: 'rgba(244,114,182,0.26)' },
+  camera: { accent: '#60A5FA', glow: 'rgba(96,165,250,0.26)' },
+  speaker: { accent: '#A78BFA', glow: 'rgba(167,139,250,0.26)' },
+  vacuum: { accent: '#FACC15', glow: 'rgba(250,204,21,0.22)' },
+  energy: { accent: '#FBBF24', glow: 'rgba(251,191,36,0.24)' },
+};
+
+/** The accent for a category, or the theme's own when the category is one nobody planned for. */
+export function accentFor(category: string | undefined, fallback: string): string {
+  if (!category) return fallback;
+  return categoryAccent[category.toLowerCase()]?.accent ?? fallback;
+}
+
+export function glowFor(category: string | undefined, fallback: string): string {
+  if (!category) return fallback;
+  return categoryAccent[category.toLowerCase()]?.glow ?? fallback;
+}
 
 export type Tokens = typeof tokens;
 export type Theme = { color: Palette; dark: boolean };

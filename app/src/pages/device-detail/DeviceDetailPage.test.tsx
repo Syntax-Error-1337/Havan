@@ -104,7 +104,9 @@ describe('device detail', () => {
     const view = await renderPage();
     await view.findByText('Desk lamp');
 
-    fireEvent(view.getByRole('switch'), 'onValueChange', true);
+    // The control is a press, not a native Switch's onValueChange: it is one component for every
+    // platform, and on web the native switch does not exist.
+    fireEvent.press(view.getAllByRole('switch')[0]!);
 
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true));
     const post = calls.find((c) => c.method === 'POST');
@@ -155,7 +157,11 @@ describe('device detail', () => {
     const view = await renderPage();
     await view.findByText('Desk lamp');
 
-    fireEvent(view.getByRole('switch'), 'onValueChange', true);
+    // An offline device cannot act on a command, so the control says so rather than swallowing the
+    // tap: a switch that looks live and does nothing is the worse of the two lies.
+    const control = view.getAllByRole('switch')[0]!;
+    expect(control.props.accessibilityState?.disabled).toBe(true);
+    fireEvent.press(control);
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
 

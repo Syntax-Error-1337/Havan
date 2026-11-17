@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, TextInput } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { Box, Button, Screen, AppText, Section } from '../../shared/ui';
-import { DeviceCard } from '../../entities/device';
+import { DeviceTile } from '../../entities/device';
 import { useCreateHome, useCreateRoom, useDashboard, useHomes } from '../../entities/home';
 import { qk } from '../../shared/api/keys';
 import { useSession } from '../../entities/session';
@@ -104,30 +104,92 @@ export function DashboardPage() {
 
   return (
     <Screen>
-      <Box px="lg" py="md" row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box gap="xs">
-          <AppText variant="display" weight="700">
-            {homeName}
-          </AppText>
-          <AppText variant="caption" tone="muted">
-            {devices.length} device{devices.length === 1 ? '' : 's'}
-          </AppText>
+      <Box px="lg" py="md" gap="md">
+        <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <Box gap="xs" style={{ flex: 1 }}>
+            <AppText variant="title" weight="700">
+              {homeName}
+            </AppText>
+            <AppText variant="caption" tone="muted">
+              {devices.length} device{devices.length === 1 ? '' : 's'} ·{' '}
+              {devices.filter((d) => d.online).length} online
+            </AppText>
+          </Box>
+
+          {/* The one primary action, in reach of a thumb and never clipped: the rest of the
+              navigation lives in the chip row below, which scrolls. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add a device"
+            onPress={() => router.push('/add-device')}
+            style={({ pressed }) => ({
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: color.accent,
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <AppText variant="title" weight="700" style={{ color: color.onAccent, lineHeight: 26 }}>
+              +
+            </AppText>
+          </Pressable>
         </Box>
-        <Box row gap="sm" style={{ alignItems: 'center' }}>
-          <Button
-            label={unread > 0 ? `Alerts (${unread})` : 'Alerts'}
-            variant="ghost"
-            onPress={() => router.push('/alerts')}
-          />
-          <Button label="Room" variant="ghost" onPress={() => setAddingRoom((v) => !v)} />
-          <Button
-            label="Automatic"
-            variant="ghost"
-            onPress={() => router.push('/automations')}
-          />
-          <Button label="Settings" variant="ghost" onPress={() => router.push('/settings')} />
-          <Button label="Add" onPress={() => router.push('/add-device')} />
-        </Box>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          {[
+            { label: unread > 0 ? `Alerts · ${unread}` : 'Alerts', to: '/alerts' as const, on: false, urgent: unread > 0 },
+            { label: 'Rooms', on: addingRoom, onPress: () => setAddingRoom((v) => !v) },
+            { label: 'Automations', to: '/automations' as const, on: false },
+            { label: 'Settings', to: '/settings' as const, on: false },
+          ].map((chip) =>
+            chip.to ? (
+              <Pressable
+                key={chip.label}
+                accessibilityRole="button"
+                onPress={() => router.push(chip.to as never)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 999,
+                  backgroundColor: chip.on ? color.accent : color.glass,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: chip.on ? color.accent : (chip as { urgent?: boolean }).urgent ? color.accent : color.border,
+                }}
+              >
+                <AppText
+                  variant="caption"
+                  style={{
+                    color: chip.on ? color.onAccent : (chip as { urgent?: boolean }).urgent ? color.accent : color.muted,
+                  }}
+                >
+                  {chip.label}
+                </AppText>
+              </Pressable>
+            ) : (
+              <Pressable
+                key={chip.label}
+                accessibilityRole="button"
+                accessibilityState={{ selected: chip.on }}
+                onPress={chip.onPress}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 999,
+                  backgroundColor: chip.on ? color.accent : color.glass,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: chip.on ? color.accent : color.border,
+                }}
+              >
+                <AppText variant="caption" tone={chip.on ? 'text' : 'muted'}>
+                  {chip.label}
+                </AppText>
+              </Pressable>
+            ),
+          )}
+        </ScrollView>
       </Box>
 
       {homeId ? (
@@ -198,15 +260,34 @@ export function DashboardPage() {
           contentContainerStyle={{ paddingTop: tokens.space.sm, paddingBottom: tokens.space.xxl }}
         >
           {sections.map((section) => (
-            <Section key={section.title} title={section.title}>
+            /* A room is a heading over a grid, not a card around one: nesting a tile inside the
+               grouped-section card is what made the first version look like a card in a card. */
+            <Box key={section.title} style={{ marginBottom: tokens.space.xl }}>
+              <AppText
+                variant="caption"
+                tone="muted"
+                style={{
+                  paddingHorizontal: tokens.space.lg,
+                  paddingBottom: tokens.space.sm,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                }}
+              >
+                {section.title}
+              </AppText>
+              {/* Two columns: a tile is a summary, and a list of summaries wants to be seen at once. */}
+              <Box px="lg" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space.md }}>
               {section.data.map((device) => (
-                <DeviceCard
-                  key={device.id}
-                  device={device}
-                  onPress={() => router.push(`/device/${device.id}`)}
-                />
+                <Box key={device.id} style={{ width: section.data.length === 1 ? '100%' : '47%' }}>
+                  <DeviceTile
+                    device={device}
+                    onPress={() => router.push(`/device/${device.id}`)}
+                    wide={section.data.length === 1}
+                  />
+                </Box>
               ))}
-            </Section>
+              </Box>
+            </Box>
           ))}
         </ScrollView>
       )}

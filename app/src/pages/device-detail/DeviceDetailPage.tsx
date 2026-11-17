@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, Switch } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Box, Screen, AppText, Sparkline } from '../../shared/ui';
+import { Box, Screen, AppText, Glass, Icon, Sparkline, iconForCategory } from '../../shared/ui';
+import { PointControl } from '../../entities/device';
+import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
   RANGES,
   describeUpdate,
@@ -20,6 +22,8 @@ export function DeviceDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { color } = useTheme();
   const { data: device, isPending, isError } = useDevice(id);
+  const accent = accentFor(device?.category, color.accent);
+  const glow = glowFor(device?.category, color.glow);
   const { data: update } = useDeviceUpdate(id);
   const firmware = describeUpdate(update);
   const setPoint = useSetPoint(id ?? '');
@@ -52,28 +56,58 @@ export function DeviceDetailPage() {
   return (
     <Screen>
       <Box p="lg" gap="lg">
-        <Box gap="xs">
-          <AppText variant="display" weight="700">
+        {/* The hero is the device's own category: a bulb glows violet, a lock pink, a camera blue —
+            chosen from data, so a product we have never seen still looks deliberate. */}
+        <Glass accent={accent} glow={glow} style={{ padding: 20 }}>
+        <Box gap="xs" style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <Box
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 28,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: accent + '33',
+            }}
+          >
+            <Icon name={iconForCategory(device.category)} size={28} color={accent} />
+          </Box>
+          <Box gap="xs" style={{ flex: 1 }}>
+          <AppText variant="title" weight="700">
             {device.name}
           </AppText>
           <AppText variant="caption" tone="muted">
-            {device.online ? 'Online' : 'Offline'} · {device.product_key}
+            {device.online ? 'Online' : 'Offline'}
+            {device.room_name ? ` · ${device.room_name}` : ''}
           </AppText>
+          </Box>
+        </Box>
           {/* Firmware is the one thing about a device a customer cannot fix by
               themselves, so a failure says why rather than only that it failed. */}
           {firmware ? (
-            <AppText variant="caption" tone={firmware.bad ? 'danger' : 'muted'}>
+            <AppText variant="caption" tone={firmware.bad ? 'danger' : 'muted'} style={{ marginTop: 10 }}>
               {firmware.text}
             </AppText>
           ) : null}
-        </Box>
+        </Glass>
 
-        <Box gap="sm">
-          <AppText variant="caption" tone="muted">
-            Room
-          </AppText>
+        {/* Values below are the last ones this device reported. Saying so is the difference between
+            "this is broken" and "this is what the house looked like when it went quiet". */}
+        {!device.online ? (
+          <Glass accent={color.warning}>
+            <Box row gap="sm" style={{ alignItems: 'center' }}>
+              <Icon name="alert" size={16} color={color.warning} />
+              <AppText variant="caption" tone="muted" style={{ flex: 1 }}>
+                Offline — showing the last values this device reported.
+              </AppText>
+            </Box>
+          </Glass>
+        ) : null}
+
+        <Box gap="xs">
+          <AppText variant="caption" tone="muted">Room</AppText>
           <Box row gap="sm" style={{ flexWrap: 'wrap' }}>
-            {[{ id: null as string | null, name: 'None' }, ...(rooms ?? [])].map((room) => {
+            {[{ id: null as string | null, name: 'No room' }, ...(rooms ?? [])].map((room) => {
               const active = (device.room_id ?? null) === room.id;
               return (
                 <Pressable
@@ -83,8 +117,17 @@ export function DeviceDetailPage() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
                 >
-                  <Box px="md" py="sm" radius="pill" bg={active ? 'accent' : 'surface'} border>
-                    <AppText variant="caption" tone={active ? 'text' : 'muted'}>
+                  <Box
+                    px="md"
+                    py="sm"
+                    radius="pill"
+                    style={{
+                      backgroundColor: active ? color.accent : color.glass,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: active ? color.accent : color.border,
+                    }}
+                  >
+                    <AppText variant="caption" style={{ color: active ? color.onAccent : color.muted }}>
                       {room.name}
                     </AppText>
                   </Box>
@@ -101,27 +144,20 @@ export function DeviceDetailPage() {
 
         <HistoryChart deviceId={device.id} points={device.points} />
 
-        {device.points.map((point) => (
-          <Box
-            key={point.code}
-            row
-            style={{ justifyContent: 'space-between', alignItems: 'center', minHeight: 56 }}
-          >
-            <Box gap="xs" style={{ flexShrink: 1 }}>
-              <AppText weight="500">{point.code}</AppText>
-              <AppText variant="caption" tone="muted">
-                {point.capability}
-                {point.unit ? ` · ${point.unit}` : ''}
-              </AppText>
-            </Box>
-
-            <Control
-              point={point}
-              disabled={!device.online || setPoint.isPending}
-              onChange={(value) => setPoint.mutate({ code: point.code, value })}
-            />
-          </Box>
-        ))}
+        {/*
+          Controls come from the device's own data: a bool is a switch, a bounded number is a level,
+          a temperature is a stepper, and a sensor is a reading. That is what makes an unfamiliar
+          product usable on the day its vendor ships it.
+        */}
+        {/* One place decides that a silent device's controls are inert, rather than each control
+            remembering to dim itself. */}
+        <Box gap="md" style={{ opacity: device.online ? 1 : 0.6 }}>
+          {device.points.map((point) => (
+            <Glass key={point.code} accent={point.writable ? accent : undefined}>
+              <PointControl device={device} point={point} accent={accent} />
+            </Glass>
+          ))}
+        </Box>
 
         {setPoint.error ? (
           <AppText tone="danger" variant="caption">

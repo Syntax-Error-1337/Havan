@@ -316,15 +316,34 @@ than from taste:
   size *and* its leading, because a 17 pt body with the wrong line height is what
   makes text look "off" on iOS. `allowFontScaling` stays on: a person who raised
   the system text size gets larger text and the layout copes.
-- **Colour** — system colours and the label hierarchy, one palette per appearance,
-  and the app **follows the system setting** (`useColorScheme`) instead of forcing
-  dark. Light is `#F2F2F7` grouped background with white cards; dark is pure black
-  with `#1C1C1E` cards and `#0A84FF` tint. Secondary text is label at 60%.
+- **Colour** — one palette per appearance, and **night is the default**: the app
+  ships dark unless a real preference says otherwise, because a home interface is
+  used in the evening next to a lamp it just turned on. The canvas is a two-stop
+  gradient (`bgTop → bgBottom`, `#0B1020 → #05070F`) rather than a flat black, so a
+  translucent card reads as glass; every surface above it is `glass`
+  (`rgba(255,255,255,0.06)`) rather than a solid grey. The light palette is still
+  maintained and still tested — it is a second appearance, not a leftover.
+- **Category colour** — a product declares a `category`, and that alone decides its
+  accent: bulbs violet, locks pink, cameras blue, climate orange, sensors cyan
+  (`categoryAccent` in `tokens.ts`). An unknown category falls back to the theme
+  accent, never to grey, because a new kind of device must not be the one that looks
+  broken. The same accent tints the icon halo, the border, the control and the chart
+  fill, which is what makes a vendor's product look designed without the vendor
+  designing anything.
 - **Layout** — 4 pt grid, 16 pt margins, and a **44 pt minimum hit target**, which
   is the smallest a finger hits reliably.
-- **Structure** — `Section` is a grouped list (inset card, hairlines inset to the
-  text, 13 pt uppercase header) and `Row` is a cell with a title, a secondary line
-  and exactly one trailing control. This is the shape iOS users already know.
+- **Structure** — `Section` + `Row` is still the shape for settings (grouped list,
+  hairlines inset to the text, one trailing control). Devices are **tiles**: a
+  two-column grid inside a room, with `Glass` drawing the halo as a second offset
+  layer rather than a shadow, so iOS, Android and web render the same card. A room
+  holding a single device gives it the full row — a half-width card alone reads as a
+  tile that failed to load.
+- **Controls come from data** — `controlFor(point)` reads the thing model and picks
+  the control: `bool` → switch, bounded number → slider, temperature → stepper,
+  read-only → readout, with `code` as the address on the wire. There is no
+  per-product code path, so a product shipped tomorrow already has controls today.
+  `brightness.level` is a slider because it is bounded; `color_temp.kelvin` is a
+  stepper because a person says "2700", not "2694".
 - **State** — a control that cannot act is disabled and visibly so: an offline
   device's switch is dimmed, because a live-looking switch promises a command the
   platform cannot deliver.

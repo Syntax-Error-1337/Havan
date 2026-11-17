@@ -20,7 +20,10 @@ export function ThemeProvider({
   mode?: 'light' | 'dark';
 }) {
   const system = useColorScheme();
-  const isDark = (mode ?? system ?? 'light') === 'dark';
+  // When the platform reports no preference — which is what a browser often does — the app's own
+  // look is the dark one. It is not a violation of "follow the system": there is no system answer to
+  // follow, and defaulting a night-sky interface to white is the one choice nobody asked for.
+  const isDark = (mode ?? system ?? 'dark') === 'dark';
   const theme = useMemo<Theme>(() => ({ color: isDark ? dark : light, dark: isDark }), [isDark]);
 
   return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
