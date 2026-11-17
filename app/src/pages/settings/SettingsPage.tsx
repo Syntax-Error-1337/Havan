@@ -2,7 +2,17 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Box, AppText, Row, Screen, Section, Toggle, useConfirm } from '../../shared/ui';
+import { canManage } from '../../entities/home';
+import {
+  Box,
+  AppText,
+  Row,
+  Screen,
+  ScreenHeader,
+  Section,
+  Toggle,
+  useConfirm,
+} from '../../shared/ui';
 import {
   useCreateRoom,
   useDashboard,
@@ -30,7 +40,7 @@ import { useInlineEdit } from '../../shared/lib/useInlineEdit';
  */
 export function SettingsPage() {
   const router = useRouter();
-  const { brand } = useTheme();
+  const { brand, color } = useTheme();
 
   const homeId = useSession((s) => s.homeId);
   const signOut = useSession((s) => s.signOut);
@@ -45,8 +55,28 @@ export function SettingsPage() {
   const setPresence = useSetPresence(homeId ?? undefined);
   // Local until the server confirms; the switch must move when the finger does.
   const [atHome, setAtHome] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [roomName, setRoomName] = useState('');
+
+  const create = () => {
+    const name = roomName.trim();
+    if (!name) return;
+    createRoom.mutate(
+      { name },
+      {
+        onSuccess: () => {
+          setRoomName('');
+          setAdding(false);
+        },
+      },
+    );
+  };
 
   const home = dashboard?.home ?? homes?.find((h) => h.id === homeId);
+  // A member cannot add, rename or delete rooms: the server answers 403 and these rows used to fail
+  // silently. The role ships with the homes list, so a control is drawn only when it will work.
+  const role = homes?.find((h) => h.id === homeId)?.role;
+  const mayManage = role ? canManage(role) : false;
 
   return (
     <Screen>
@@ -56,11 +86,7 @@ export function SettingsPage() {
           paddingBottom: tokens.layout.tabBarClearance,
         }}
       >
-        <Box px="lg" style={{ paddingBottom: tokens.space.md }}>
-          <AppText variant="display" weight="700">
-            Settings
-          </AppText>
-        </Box>
+        <ScreenHeader title="Settings" />
 
         <Section title="Account">
           <Row title="Email" value={me?.email ?? '—'} />
@@ -90,7 +116,20 @@ export function SettingsPage() {
             }}
           />
           <Row title="Time zone" value={home?.timezone ?? 'UTC'} />
-          <Row title="Devices" value={String(dashboard?.devices.length ?? 0)} />
+          {/* `home.role` is not in the payload, so the rule comes from the homes list. */}
+          {/* `devices.length` is a *page* of the dashboard's cursor, and on this screen the query often
+              answers with none of it — so a six-device home said "Devices 0". The total is the only count
+              that is true regardless of how much of the list was fetched. */}
+          {/* An em dash while the count is in flight: "Devices 0" for the half-second before the answer
+              arrives is the same lie as "Devices 0" on a home that has them, and just as believable. */}
+          <Row
+            title="Devices"
+            value={
+              dashboard?.devices_total !== undefined || home?.device_count !== undefined
+                ? String(dashboard?.devices_total ?? home?.device_count)
+                : '—'
+            }
+          />
           <Row
             title="At home"
             subtitle="Automations that ask “is anyone home” use this"
@@ -108,19 +147,83 @@ export function SettingsPage() {
           />
         </Section>
 
-        <Section title="Rooms" footnote="A device belongs to the room you put it in.">
+        <Section
+          title="Rooms"
+          footnote={
+            mayManage
+              ? 'A device belongs to the room you put it in.'
+              : 'Only an owner or admin can change the rooms in this home.'
+          }
+        >
           {(rooms ?? []).map((room) => (
-            <RoomRow key={room.id} id={room.id} name={room.name} homeId={homeId ?? undefined} />
+            <RoomRow
+              key={room.id}
+              id={room.id}
+              name={room.name}
+              homeId={homeId ?? undefined}
+              canManage={mayManage}
+            />
           ))}
-          <Row
-            title={rooms && rooms.length === 0 ? 'Add the first room' : 'Add a room'}
-            onPress={() => createRoom.mutate({ name: 'New room' })}
-          />
+          {/* This row used to POST a room called "New room" the instant it was touched — no name, no
+              confirmation, and a chevron on a row that navigates nowhere. It asks for the name first. */}
+          {!mayManage ? null : adding ? (
+            <Box row gap="sm" p="md" style={{ alignItems: 'center' }}>
+              <TextInput
+                value={roomName}
+                onChangeText={setRoomName}
+                autoFocus
+                placeholder="Room name"
+                placeholderTextColor={color.muted}
+                onSubmitEditing={create}
+                style={{
+                  flex: 1,
+                  color: color.text,
+                  borderBottomWidth: 1,
+                  borderBottomColor: color.border,
+                  paddingVertical: 8,
+                }}
+              />
+              {/* Pressable, not a text with an onPress: a word is a 15-point tap target, and the only
+                  way to finish the only form on the screen should not be one you can miss. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add the room"
+                disabled={!roomName.trim()}
+                onPress={create}
+                hitSlop={10}
+              >
+                <AppText weight="600" style={{ color: roomName.trim() ? color.accent : color.muted }}>
+                  Add
+                </AppText>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                onPress={() => {
+                  setAdding(false);
+                  setRoomName('');
+                }}
+                hitSlop={10}
+              >
+                <AppText tone="muted">Cancel</AppText>
+              </Pressable>
+            </Box>
+          ) : (
+            <Row
+              title={rooms && rooms.length === 0 ? 'Add the first room' : 'Add a room'}
+              onPress={() => setAdding(true)}
+              chevron={false}
+            />
+          )}
+          {createRoom.isError ? (
+            <AppText variant="tiny" tone="danger" style={{ paddingHorizontal: tokens.space.lg }}>
+              Only an owner or admin can add a room to this home.
+            </AppText>
+          ) : null}
         </Section>
 
         <Section title="About">
           <Row title="App" value={brand.productName} />
-          <Row title="Back to home" onPress={() => router.push('/')} />
         </Section>
 
         <AppText variant="caption" tone="muted" style={{ textAlign: 'center' }}>
@@ -188,7 +291,18 @@ function EditableRow({
 }
 
 /** One room: tap the name to rename it, Delete to remove it (with a confirmation). */
-function RoomRow({ id, name, homeId }: { id: string; name: string; homeId?: string }) {
+function RoomRow({
+  id,
+  name,
+  homeId,
+  canManage: mayManage,
+}: {
+  id: string;
+  name: string;
+  homeId?: string;
+  /** A member sees the room, not the controls that would 403. */
+  canManage: boolean;
+}) {
   const renameRoom = useRenameRoom(homeId);
   const deleteRoom = useDeleteRoom(homeId);
   const { ask, sheet } = useConfirm();
@@ -207,26 +321,34 @@ function RoomRow({ id, name, homeId }: { id: string; name: string; homeId?: stri
     });
   };
 
+  // A member gets the fact, not a control that would refuse: the row is not an editor and wears no
+  // chevron, because there is nowhere for it to go.
+  if (!mayManage) return <Row title={name} chevron={false} />;
+
   return (
     <>
       {sheet}
       <EditableRow
         title={name}
-        value={name}
+        value=""
         placeholder="Room name"
-      onSave={(next) => renameRoom.mutate({ id, name: next })}
+      onSave={(next) => {
+        if (mayManage) renameRoom.mutate({ id, name: next });
+      }}
       right={
-        <Pressable
-          onPress={confirmDelete}
-          accessibilityRole="button"
-          accessibilityLabel={`Delete ${name}`}
-          hitSlop={12}
-        >
-          <AppText tone="danger" variant="subhead">
-            Delete
-          </AppText>
-        </Pressable>
-        }
+        mayManage ? (
+          <Pressable
+            onPress={confirmDelete}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${name}`}
+            hitSlop={12}
+          >
+            <AppText tone="danger" variant="subhead">
+              Delete
+            </AppText>
+          </Pressable>
+        ) : null
+      }
       />
     </>
   );

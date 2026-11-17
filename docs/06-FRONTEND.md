@@ -696,6 +696,26 @@ because the internal `withAlpha` could not parse the string it was given and fel
 Staleness is now expressed by dropping the halo and stepping the card's opacity back, with the accent left
 opaque for the component to fade in its own way.
 
+### A count is a fact about the home, not about the page you fetched
+
+Settings said `Devices 0` on a home with six devices. The row printed `dashboard.devices.length` — one page
+of a cursor, and on this screen usually none of it — and then printed `0` for the half-second before the
+answer arrived, which is the same lie with a shorter lifetime. It now reads the home's `devices_total`, and
+an em dash while that is in flight.
+
+Two other rows were lying in the same way:
+
+- **`Add a room` created a room called "New room"** the moment it was touched — no name, no confirmation, and
+  a chevron on a row that navigated nowhere. It asks for the name first, and `Row` learned `chevron={false}`
+  for rows that expand in place instead of going somewhere.
+- **`Back to home` sat under ABOUT.** Navigation is not information about the app; it is the header's job, so
+  the screen uses `ScreenHeader` like every other pushed screen and ABOUT holds the product name and version.
+
+**A member was offered three controls that answered 403.** `Delete`, the room editor and `Add a room` were
+drawn for anyone, and the refusals were silent — the demo account *was* a member of its own seeded home,
+which is how a screen looks broken when the server is behaving correctly. The role ships with the homes list,
+so the controls are drawn only when `canManage(role)` allows them, with the reason in the section footnote.
+
 ### A feed needs a day, not a count of hours
 
 `/alerts` had three alerts and no way back — it is pushed from the bell, and the only exit was the browser's

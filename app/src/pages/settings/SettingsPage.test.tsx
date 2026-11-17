@@ -30,8 +30,9 @@ function stubApi() {
     const body = (() => {
       if (url.endsWith('/me')) return { id: 'u1', email: 'demo@haven.dev', display_name: 'Demo', locale: 'en' };
       if (url.endsWith('/homes')) return [home];
-      if (url.endsWith('/dashboard'))
-        return { home, rooms: [room], devices: [], scenes: [], unread_count: 0 };
+      // An empty page with a real total: the shape that made this screen say "Devices 0".
+      if (url.includes('/dashboard'))
+        return { home, rooms: [room], devices: [], devices_total: 1, scenes: [], unread_count: 0 };
       if (url.endsWith('/rooms')) return [room];
       return null;
     })();
@@ -67,6 +68,19 @@ describe('settings', () => {
     const view = await renderPage();
     expect(await view.findByText('demo@haven.dev', {}, { timeout: 5000 })).toBeTruthy();
     expect(await view.findByText('Demo flat', {}, { timeout: 5000 })).toBeTruthy();
+  });
+
+  // The row said "Devices 0" on a six-device home: it counted `dashboard.devices`, which is one page of a
+  // cursor and often none of it. The total is the only count that is true however much was fetched.
+  it('counts every device in the home, not the page it happened to load', async () => {
+    // The dashboard here answers with no devices and a total of one — the shape that produced
+    // "Devices 0" on a home that had them. The count has to come from the total.
+    const view = await renderPage();
+
+    expect(await view.findByText('Devices')).toBeTruthy();
+    // The count lands after the row draws (it waits for one of two answers), so this waits for it too.
+    expect(await view.findByText('1')).toBeTruthy();
+    expect(view.queryByText('0')).toBeNull();
   });
 
   it('renames a room in place, with the name it was given', async () => {

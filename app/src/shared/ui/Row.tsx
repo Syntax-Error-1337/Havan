@@ -25,6 +25,7 @@ export function Row({
   right,
   disabled,
   destructive,
+  chevron = true,
 }: {
   title: string;
   subtitle?: string;
@@ -35,6 +36,11 @@ export function Row({
   disabled?: boolean;
   /** A row that ends something (sign out, delete) — red, as iOS does it. */
   destructive?: boolean;
+  /**
+   * Whether the row leads somewhere. A row that expands in place — "Add a room" revealing its name field —
+   * must not wear one: a chevron promises another screen, and the promise is the tap's whole meaning.
+   */
+  chevron?: boolean;
 }) {
   const { color } = useTheme();
 
@@ -89,7 +95,7 @@ export function Row({
               {value}
             </AppText>
           ) : null}
-          {!right && !destructive ? (
+          {chevron && !right && !destructive ? (
             // A chevron, drawn rather than shipped as an icon font: one glyph is not
             // worth a dependency. A destructive row has none — a chevron says "this
             // goes somewhere", and signing out does not.
