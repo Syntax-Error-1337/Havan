@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { Box, Button, Screen, AppText, HomeSkeleton, TabBar } from '../../shared/ui';
+import { Box, Button, Screen, AppText, HomeSkeleton, Icon, TabBar } from '../../shared/ui';
 import { DeviceTile } from '../../entities/device';
 import { summarise } from '../../entities/device/model/summary';
 import { useCreateHome, useCreateRoom, useDashboard, useHomes } from '../../entities/home';
@@ -14,6 +14,7 @@ import { tokens } from '../../shared/config/tokens';
 import { useTheme } from '../../app-shell/theme';
 import { groupByRoom } from './sections';
 import { buildRows } from './rows';
+import { categoriesOf, filterDevices } from './search';
 import { SceneStrip } from '../../widgets/scene-strip/SceneStrip';
 import { HomeHeader, StatRail } from '../../widgets/home/HomeHeader';
 import { HeroCard, pickHero } from '../../widgets/home/HeroCard';
@@ -82,7 +83,16 @@ export function DashboardPage() {
   const [addingRoom, setAddingRoom] = useState(false);
   const [roomName, setRoomName] = useState('');
 
-  const sections = useMemo(() => groupByRoom(devices, rooms), [devices, rooms]);
+  // Search is local: the dashboard already holds every device, so asking the network again would be
+  // slower and would flicker the grid. The rail and the hero keep showing the *home* — a filter is a
+  // question about the list, not a claim that the other devices stopped existing.
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
+  const categories = useMemo(() => categoriesOf(devices), [devices]);
+  const filtered = useMemo(() => filterDevices(devices, query, category), [devices, query, category]);
+  const filtering = query.trim().length > 0 || category !== null;
+
+  const sections = useMemo(() => groupByRoom(filtered, rooms), [filtered, rooms]);
   const summary = useMemo(() => summarise(devices), [devices]);
   const hero = useMemo(() => pickHero(devices), [devices]);
 
@@ -152,17 +162,24 @@ export function DashboardPage() {
             <Box px="lg" py="md" gap="lg">
               <HomeHeader name={homeName} person={person} subtitle={onlineText} clock={clock} />
 
-              <StatRail
-                summary={summary}
-                rooms={sections.filter((s) => s.title !== 'Unassigned').length}
-                showTemperature={Boolean(
-                  hero?.points.some(
-                    (p) => p.capability === 'temperature' && typeof p.value === 'number',
-                  ),
-                )}
-              />
+              {/* Searching is a question about the list. While it is being asked, the rail, the hero
+                  and the scenes step aside: they are the home's state, not the answer, and leaving
+                  them on screen pushes the result the person is looking for below the fold. */}
+              {filtering ? null : (
+                <>
+                  <StatRail
+                    summary={summary}
+                    rooms={sections.filter((s) => s.title !== 'Unassigned').length}
+                    showTemperature={Boolean(
+                      hero?.points.some(
+                        (p) => p.capability === 'temperature' && typeof p.value === 'number',
+                      ),
+                    )}
+                  />
 
-              {hero ? <HeroCard device={hero} /> : null}
+                  {hero ? <HeroCard device={hero} /> : null}
+                </>
+              )}
 
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Chip
@@ -177,6 +194,67 @@ export function DashboardPage() {
                 />
                 <Chip label="Automations" onPress={() => router.push('/automations')} />
               </View>
+
+              {/* Search first, filters under it: a house with two hundred devices is not navigated by
+                  scrolling, and the words people type are the ones on the shelf — a name, a room, a
+                  kind of thing. */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  backgroundColor: color.glass,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: color.border,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                }}
+              >
+                <Icon name="search" size={16} color={color.muted} />
+                <TextInput
+                  testID="device-search"
+                  accessibilityLabel="Search devices"
+                  placeholder="Search a device or room"
+                  placeholderTextColor={color.muted}
+                  value={query}
+                  onChangeText={setQuery}
+                  autoCorrect={false}
+                  style={{ flex: 1, paddingVertical: 11, color: color.text, fontSize: 15 }}
+                />
+                {filtering ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear search"
+                    onPress={() => {
+                      setQuery('');
+                      setCategory(null);
+                    }}
+                    hitSlop={10}
+                  >
+                    <Icon name="close" size={14} color={color.muted} />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {categories.length > 1 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  <Chip label="All" selected={category === null} onPress={() => setCategory(null)} />
+                  {categories.map((c) => (
+                    <Chip
+                      key={c}
+                      label={c.charAt(0).toUpperCase() + c.slice(1)}
+                      selected={category === c}
+                      onPress={() => setCategory(category === c ? null : c)}
+                    />
+                  ))}
+                </ScrollView>
+              ) : null}
+
+              {filtering ? (
+                <AppText variant="tiny" tone="muted" testID="search-count">
+                  {filtered.length} of {devices.length} device{devices.length === 1 ? '' : 's'}
+                </AppText>
+              ) : null}
 
               {addingRoom ? (
                 <Box row gap="sm" style={{ alignItems: 'center' }}>
@@ -215,14 +293,38 @@ export function DashboardPage() {
               ) : null}
             </Box>
 
-            <Box style={{ marginTop: tokens.space.lg, marginBottom: tokens.space.lg }}>
-              <SceneStrip homeId={homeId} scenes={dashboard?.scenes} pending={!dashboard} />
-            </Box>
+            {filtering ? null : (
+              <Box style={{ marginTop: tokens.space.lg, marginBottom: tokens.space.lg }}>
+                <SceneStrip homeId={homeId} scenes={dashboard?.scenes} pending={!dashboard} />
+              </Box>
+            )}
           </>
         }
         ListEmptyComponent={
           isPending ? (
             <HomeSkeleton />
+          ) : filtering ? (
+            // "No devices" would be a lie: the house is full of them, the question was too narrow.
+            <Box p="xl" gap="md" center>
+              <AppText variant="title" weight="600">
+                Nothing matches
+              </AppText>
+              <AppText tone="muted" style={{ textAlign: 'center' }}>
+                {devices.length} device{devices.length === 1 ? '' : 's'} in this home. Try a room, a
+                name, or a kind of device.
+              </AppText>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setQuery('');
+                  setCategory(null);
+                }}
+              >
+                <AppText variant="body" tone="accent">
+                  Clear the search
+                </AppText>
+              </Pressable>
+            </Box>
           ) : (
             <Box p="xl" gap="md" center>
               <AppText variant="title" weight="600">

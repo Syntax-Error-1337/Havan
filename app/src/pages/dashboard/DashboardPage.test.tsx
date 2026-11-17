@@ -76,7 +76,9 @@ describe('dashboard', () => {
     // reach the list. The old `{data}` read left this screen empty forever.
     // `findByText` retries inside act(); `waitFor` + `getByText` raced the query.
     expect(await view.findByText('Lamp')).toBeTruthy();
-    expect(view.getByText('Plug')).toBeTruthy();
+    // "Plug" is now both the device's name and a category chip, which is the point of the chip row —
+    // so the assertion is that the device itself rendered, by the tile's own test id.
+    expect(view.getByTestId('device-tile-S2')).toBeTruthy();
     expect(view.getByText('Living room')).toBeTruthy();
     expect(view.getByText('Unassigned')).toBeTruthy();
   });

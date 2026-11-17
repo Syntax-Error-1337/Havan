@@ -29,6 +29,8 @@ export type IconName =
   | 'minus'
   | 'sparkle'
   | 'drop'
+  | 'close'
+  | 'search'
   | 'radar'
   | 'alert'
   | 'gear'
@@ -142,6 +144,13 @@ export function Icon({
         <>
           <Path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" {...common} />
           <Path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z" {...common} fill="none" />
+        </>
+      )}
+      {name === 'close' && <Path d="M6 6l12 12M18 6 6 18" {...common} fill="none" />}
+      {name === 'search' && (
+        <>
+          <Circle cx="11" cy="11" r="6.4" {...common} fill="none" />
+          <Path d="M16 16l4.2 4.2" {...common} fill="none" />
         </>
       )}
       {name === 'drop' && (
