@@ -20,9 +20,9 @@ import { useTheme, tokens } from '../../app-shell/theme';
 
 export function DeviceDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { color } = useTheme();
+  const { color, dark } = useTheme();
   const { data: device, isPending, isError } = useDevice(id);
-  const accent = accentFor(device?.category, color.accent);
+  const accent = accentFor(device?.category, color.accent, dark);
   const glow = glowFor(device?.category, color.glow);
   const { data: update } = useDeviceUpdate(id);
   const firmware = describeUpdate(update);

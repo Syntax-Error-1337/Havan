@@ -15,7 +15,8 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | Read performance | `make bench` | timings against `docs/08-PERFORMANCE.md` |
 | Ingest | `make load RATE=600 SECONDS=20` | zero loss at whatever the host's generator reaches (~330/s single, 522/s with two); the loss column is the assertion, not the rate |
 | Degradation | `make chaos` | 20/20: `503` not `500`, no driver text, recovery without a restart, refused commands redelivered, `/ops/health` refuses rather than showing an empty platform |
-| App | `cd app && npx tsc --noEmit && npm test` | 81 tests, 17 suites (the script passes `--forceExit`; see the note below) |
+| App | `cd app && npx tsc --noEmit && npm test` | 94 tests, 19 suites (the script passes `--forceExit`; see the note below) |
+| Palette contrast | `make contrast` (inside `make check`) | every text pair ≥ 4.5:1, every glyph and category accent ≥ 3:1, in both appearances |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 63 tests |
 | Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 40 tests per project (80 total) against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
 | Vendor surfaces | `make vendor-smoke` | 25 assertions live: two-factor enrol → confirm → enforced sign-in → disabled, webhook shown once then removed, SSO refused while nobody is bound, an empty invoice period that is a document and not an error |

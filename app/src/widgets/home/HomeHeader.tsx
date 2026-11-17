@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText, Glass, Icon, type IconName } from '../../shared/ui';
 import { withAlpha } from '../../shared/ui/Glass';
+import { accentFor } from '../../shared/config/tokens';
 import type { HomeSummary } from '../../entities/device/model/summary';
 
 /**
@@ -89,7 +90,10 @@ export function StatRail({
   /** True when the hero card is already showing the room reading. */
   showTemperature?: boolean;
 }) {
-  const { color } = useTheme();
+  const { color, dark } = useTheme();
+  // The rail used to hard-code its hues, which in daylight put a 1.6:1 cyan on a white card. It asks
+  // the same category palette every tile does now, so a colour change lands everywhere at once.
+  const tint = (category: string, fallback: string) => accentFor(category, fallback, dark);
 
   const chips: { icon: IconName; label: string; value: string; accent: string }[] = [];
 
@@ -98,7 +102,7 @@ export function StatRail({
       icon: 'bulb',
       label: 'Lights',
       value: `${summary.lightsOn} on`,
-      accent: '#8B5CF6',
+      accent: tint('light', '#8B5CF6'),
     });
   }
   // "Inside" only appears when the hero is not already showing that same reading: two places on one
@@ -108,7 +112,7 @@ export function StatRail({
       icon: 'climate',
       label: 'Inside',
       value: `${summary.temperature.value}${summary.temperature.unit || '°'}`,
-      accent: '#FB923C',
+      accent: tint('climate', '#FB923C'),
     });
   }
   if (summary.humidity) {
@@ -116,7 +120,7 @@ export function StatRail({
       icon: 'drop',
       label: 'Humidity',
       value: `${summary.humidity.value}${summary.humidity.unit || '%'}`,
-      accent: '#22D3EE',
+      accent: tint('sensor', '#22D3EE'),
     });
   }
   if (rooms > 0) {
@@ -127,7 +131,7 @@ export function StatRail({
       icon: 'lock',
       label: 'Unlocked',
       value: String(summary.unlocked),
-      accent: '#F472B6',
+      accent: tint('lock', '#F472B6'),
     });
   }
 

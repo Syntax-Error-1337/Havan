@@ -361,6 +361,18 @@ than from taste:
 - **State** — a control that cannot act is disabled and visibly so: an offline
   device's switch is dimmed, because a live-looking switch promises a command the
   platform cannot deliver.
+- **Contrast is a gate, not a review.** `app/scripts/check-contrast.mjs` reads
+  `tokens.ts` and fails `make check` when a pair that ships as text drops under
+  WCAG 2.1: 4.5:1 for body and small text, 3:1 for glyphs and category accents.
+  It exists because every visual review of this app found the same defect — a grey
+  on a dark card, an amber "Offline" that only worked at arm's length — and neither
+  a screenshot nor a reviewer settles that. The first run found **eleven** failures
+  in the shipped palette, including white on system blue at 3.65:1 and Apple's
+  system green at 1.99:1 as text. The fixes: the dark accent moved to `#146EF5`
+  (4.59:1), the light accent to `#0062CC` (5.8:1), light-theme status colours to
+  their 600–700 weights, secondary label from 60 % to 76 % alpha, and the category
+  accents gained a daylight set (`categoryAccentLight`) because cyan at 1.6:1 on a
+  white card is not an icon.
 
 ### The brand is data, not a constant
 

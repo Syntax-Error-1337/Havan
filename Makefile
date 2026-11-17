@@ -70,6 +70,10 @@ down: ## stop the stack (keeps volumes)
 reset: ## stop the stack and delete its volumes
 	docker compose -f deploy/docker-compose.yml down -v
 
+.PHONY: contrast
+contrast: ## every text pair in the app palette meets its WCAG threshold
+	@cd app && node scripts/check-contrast.mjs
+
 .PHONY: testdb
 testdb: ## create, migrate and grant the test database
 	@docker exec haven-db psql -U haven -d postgres -tc \
@@ -123,10 +127,11 @@ sdk: ## build and test the C component (host compiler, no board needed)
 	@$(MAKE) -s -C sdk/c test
 
 .PHONY: check
-check: testdb ## fmt + clippy + tests + no secrets in the index + routes match their handlers
+check: testdb ## fmt + clippy + tests + no secrets + routes match handlers + readable palette
 	$(CARGO) fmt --all --check
 	bash scripts/no-secrets.sh
 	python3 scripts/route-arity.py --self-test
+	$(MAKE) contrast
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	$(CARGO_TEST) test --workspace
 

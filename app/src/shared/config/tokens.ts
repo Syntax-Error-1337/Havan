@@ -53,13 +53,19 @@ export const light: Palette = {
   border: 'rgba(60,60,67,0.29)',
   text: '#000000',
   // secondaryLabel: black at 60%.
-  muted: 'rgba(60,60,67,0.6)',
-  accent: '#007AFF',
+  // secondaryLabel at 72%, not Apple's 60%: at 60% it measures 3.3:1 on the grouped background,
+  // which is below the 4.5:1 floor the contrast gate enforces. Slightly darker, still secondary.
+  muted: 'rgba(60,60,67,0.76)',
+  // The system blue is 4.02:1 against white text — a button label nobody could pass AA with. This is
+  // the same hue two steps deeper, 5.8:1.
+  accent: '#0062CC',
   // A filled iOS button puts white on the tint, not black.
   onAccent: '#FFFFFF',
-  success: '#34C759',
-  warning: '#FF9500',
-  danger: '#FF3B30',
+  // Apple's system green/amber/red are *tints*, not text: 1.99, 1.97 and 3.18:1 on the background.
+  // These are the same signals at text weight (4.6–5.2:1), used for the offline pill and refusals.
+  success: '#157F3C',
+  warning: '#A15200',
+  danger: '#C81E11',
   bgTop: '#F7F8FC',
   bgBottom: '#E8ECF6',
   glass: 'rgba(255,255,255,0.78)',
@@ -75,7 +81,9 @@ export const dark: Palette = {
   border: 'rgba(84,84,88,0.65)',
   text: '#FFFFFF',
   muted: 'rgba(235,235,245,0.6)',
-  accent: '#0A84FF',
+  // 4.59:1 against white (the system blue is 3.65) and still 4.1:1 on the night background, so a
+  // filled button is readable without the accent disappearing into the canvas.
+  accent: '#146EF5',
   onAccent: '#FFFFFF',
   success: '#30D158',
   warning: '#FF9F0A',
@@ -139,9 +147,36 @@ export const categoryAccent: Record<string, { accent: string; glow: string }> = 
 };
 
 /** The accent for a category, or the theme's own when the category is one nobody planned for. */
-export function accentFor(category: string | undefined, fallback: string): string {
+/**
+ * The same idea in daylight.
+ *
+ * The night accents are chosen to glow on near-black; on a white card the same cyan measures 1.6:1
+ * and stops being an icon at all. These are the 600–700 weights of the same hues, which keep the
+ * category recognisable and still clear 3:1 against the surface — the gate in `make contrast` checks
+ * every one of them.
+ */
+export const categoryAccentLight: Record<string, { accent: string; glow: string }> = {
+  light: { accent: '#7C3AED', glow: 'rgba(124,58,237,0.14)' },
+  switch: { accent: '#0284C7', glow: 'rgba(2,132,199,0.14)' },
+  plug: { accent: '#0284C7', glow: 'rgba(2,132,199,0.14)' },
+  sensor: { accent: '#0E7490', glow: 'rgba(14,116,144,0.14)' },
+  climate: { accent: '#C2410C', glow: 'rgba(194,65,12,0.14)' },
+  cover: { accent: '#047857', glow: 'rgba(4,120,87,0.14)' },
+  lock: { accent: '#BE185D', glow: 'rgba(190,24,93,0.14)' },
+  camera: { accent: '#1D4ED8', glow: 'rgba(29,78,216,0.14)' },
+  speaker: { accent: '#6D28D9', glow: 'rgba(109,40,217,0.14)' },
+  vacuum: { accent: '#A16207', glow: 'rgba(161,98,7,0.14)' },
+  energy: { accent: '#B45309', glow: 'rgba(180,83,9,0.14)' },
+};
+
+export function accentFor(
+  category: string | undefined,
+  fallback: string,
+  dark = true,
+): string {
   if (!category) return fallback;
-  return categoryAccent[category.toLowerCase()]?.accent ?? fallback;
+  const map = dark ? categoryAccent : categoryAccentLight;
+  return map[category.toLowerCase()]?.accent ?? fallback;
 }
 
 export function glowFor(category: string | undefined, fallback: string): string {

@@ -32,7 +32,7 @@ export function DeviceTile({
   wide?: boolean;
 }) {
   const { color, dark } = useTheme();
-  const accent = accentFor(device.category, color.accent);
+  const accent = accentFor(device.category, color.accent, dark);
   const glow = glowFor(device.category, color.glow);
 
   const point = primaryPoint(device);

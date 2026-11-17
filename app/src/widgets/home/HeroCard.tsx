@@ -19,7 +19,7 @@ import { useHistory, useSetPoint, type Device } from '../../entities/device';
  */
 export function HeroCard({ device }: { device: Device }) {
   const { color, dark } = useTheme();
-  const accent = accentFor(device.category, color.accent);
+  const accent = accentFor(device.category, color.accent, dark);
   const glow = glowFor(device.category, color.glow);
 
   // Points arrive sorted by code, so "first numeric" is `battery.level` — a percentage nobody

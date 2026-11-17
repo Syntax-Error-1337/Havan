@@ -57,13 +57,16 @@ describe('scene strip', () => {
     expect(view.getByText('2 devices')).toBeTruthy();
   });
 
-  it('renders nothing at all when a home has no scenes', async () => {
+  it('offers one way to make a scene when the home has none', async () => {
     stubApi(() => []);
     const view = await renderStrip();
 
-    // Not an empty strip: nothing at all. A row of nothing above the dashboard
-    // is a promise the user has not made.
-    await waitFor(() => expect(view.toJSON()).toBeNull());
+    // This used to assert `toJSON()` was null, which passed only when the assertion won a race
+    // against the query resolving — the strip renders one dashed affordance once it knows the home
+    // is empty. The test now says what the component actually promises: no empty strip, one action.
+    const action = await view.findByText('+ Add a scene');
+    expect(action).toBeTruthy();
+    expect(view.queryByText('Good night')).toBeNull();
   });
 
   it('says sent, not done — a dispatched command is not a settled one', async () => {

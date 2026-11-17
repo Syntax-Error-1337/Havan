@@ -106,14 +106,16 @@ export function TabBar({
               </View>
             ) : (
               <>
+                {/* 0.55 alpha on the bar measured 3.0:1 in daylight — an icon you can see but not
+                    identify. 0.64 clears 4.5:1 and still reads as inactive. */}
                 <Icon
                   name={item.icon}
                   size={21}
-                  color={selected ? color.accent : withAlpha(color.text, 0.55)}
+                  color={selected ? color.accent : withAlpha(color.text, 0.64)}
                 />
                 <AppText
                   variant="tiny"
-                  style={{ color: selected ? color.accent : withAlpha(color.text, 0.55) }}
+                  style={{ color: selected ? color.accent : withAlpha(color.text, 0.64) }}
                 >
                   {item.label}
                 </AppText>
