@@ -6,6 +6,6 @@ export {
   useDeleteRoom,
   type Room,
 } from './model/rooms';
-export { useDashboard, type Dashboard } from './model/dashboard';
+export { DEVICE_PAGE, useDashboard, type Dashboard } from './model/dashboard';
 export { useSetPresence } from './model/presence';
 export { canManage, type Home, type Role } from './model/types';

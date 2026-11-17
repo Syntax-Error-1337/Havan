@@ -25,6 +25,30 @@ Every mutating request accepts `Idempotency-Key`.
 
 ## Customer (app)
 
+### Paging the dashboard
+
+`GET /homes/{id}/dashboard` is unpaged by default and answers with every device — that is the
+contract every installed build was written against. A client that may face a large home asks for a
+page instead:
+
+```
+GET /homes/{id}/dashboard?device_limit=200
+→ { …, devices: [...200], devices_total: 431, devices_next_cursor: "0:4c616d70…:01a1…" }
+
+GET /homes/{id}/dashboard?device_limit=200&device_cursor=0:4c616d70…:01a1…
+→ { …, devices: [...], devices_next_cursor: null }
+```
+
+The cursor is **keyset**, not an offset: it names the last row of the previous page in the home
+screen's ordering `(room sort, name, id)`, so a device claimed between two requests cannot make the
+next page skip one or repeat one. It is opaque by design — the server may change the ordering without
+the client shipping a change — and a cursor this server did not issue is refused with `422` and
+`details.field = device_cursor`.
+
+`devices_total` is the home's count, not the page's: a phone showing "200 of 431" needs the 431. Only
+the page's points are read, which is half of what paging is for — the payload was 322 kB for a
+hundred devices.
+
 ### Appearance (no session needed)
 
 | Method | Path | Notes |
@@ -212,7 +236,7 @@ aborting the burst.
 
 | Method | Path |
 |---|---|
-| GET | `/homes/{id}/dashboard` | one call: home, rooms, devices+points, scenes, unread count |
+| GET | `/homes/{id}/dashboard` | one call: home, rooms, devices+points, scenes, unread count. Add `device_limit` (1–500) for a page, and `device_cursor` for the next one; a paged answer also carries `devices_total` and, when there is more, `devices_next_cursor` |
 | PATCH | `/homes/{id}` | `{name?, geo_lat?, geo_lon?}` — coordinates together, `null` clears |
 | POST | `/homes/{id}/presence` | `{present}` — this member is home / away |
 | PATCH/DELETE | `/rooms/{room_id}?home_id=` | rename; delete leaves its devices unassigned |

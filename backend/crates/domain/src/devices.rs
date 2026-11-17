@@ -110,6 +110,71 @@ pub struct Device {
     pub points: Vec<Point>,
 }
 
+/// A page of a home's devices, plus what it takes to ask for the next one.
+///
+/// `next_cursor` is opaque to the client on purpose: it names a position in an ordering the server
+/// owns, so the server can change the ordering without the app shipping a matching change.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DevicePage {
+    pub devices: Vec<Device>,
+    pub next_cursor: Option<String>,
+    /// The home's device count, not the page's. A phone that shows "200 of 431" needs the 431, and a
+    /// `COUNT(*)` on an indexed home is cheaper than a second round trip.
+    pub total: i64,
+}
+
+/// The cursor for `list_page`, in the ordering the home screen uses: room order, then name, then id.
+///
+/// Encoded rather than signed because it grants nothing: it is a position in a list the caller is
+/// already allowed to read, and a wrong one is refused rather than trusted.
+pub fn encode_cursor(room_sort: i32, name: &str, id: Uuid) -> String {
+    format!("{room_sort}:{}:{id}", hex_encode(name))
+}
+
+pub fn decode_cursor(raw: &str) -> Result<(i32, String, Uuid), AppError> {
+    let mut parts = raw.split(':');
+    let (Some(sort), Some(name), Some(id), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err(
+            AppError::validation("that cursor is not one this server issued")
+                .with_detail("field", "device_cursor"),
+        );
+    };
+
+    let sort = sort.parse::<i32>().map_err(|_| {
+        AppError::validation("that cursor is not one this server issued")
+            .with_detail("field", "device_cursor")
+    })?;
+    let name = hex_decode(name).ok_or_else(|| {
+        AppError::validation("that cursor is not one this server issued")
+            .with_detail("field", "device_cursor")
+    })?;
+    let id = Uuid::parse_str(id).map_err(|_| {
+        AppError::validation("that cursor is not one this server issued")
+            .with_detail("field", "device_cursor")
+    })?;
+
+    Ok((sort, name, id))
+}
+
+/// Hex, not base64: the cursor travels in a URL and a device name can contain anything. Hex has no
+/// padding, no alphabet of its own, and cannot be mistaken for a path segment.
+fn hex_encode(value: &str) -> String {
+    value.bytes().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn hex_decode(value: &str) -> Option<String> {
+    if !value.len().is_multiple_of(2) {
+        return None;
+    }
+    let bytes = (0..value.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&value[i..i + 2], 16).ok())
+        .collect::<Option<Vec<u8>>>()?;
+    String::from_utf8(bytes).ok()
+}
+
 /// Every method takes the acting user: the repository runs inside a
 /// transaction that carries `haven.user_id`, and the database's policy decides
 /// what that user may see. A method without a user cannot be written.
@@ -119,6 +184,50 @@ pub trait DeviceRepo {
         home_id: Uuid,
         user_id: Uuid,
     ) -> impl Future<Output = Result<Vec<Device>, AppError>> + Send;
+
+    /// One page of a home's devices, in the order the home screen draws them.
+    ///
+    /// Defaulted so an in-memory repo in a test does not have to grow a cursor: it slices the full
+    /// list, which is exactly right for three devices and is never used in production.
+    fn list_page(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        limit: i64,
+        after: Option<(i32, String, Uuid)>,
+    ) -> impl Future<Output = Result<DevicePage, AppError>> + Send
+    where
+        Self: Sync,
+    {
+        async move {
+            let all = self.list_for_home(home_id, user_id).await?;
+            let total = all.len() as i64;
+            let start = after
+                .as_ref()
+                .and_then(|(_, _, id)| all.iter().position(|device| device.id == *id))
+                .map(|index| index + 1)
+                .unwrap_or(0);
+
+            let devices: Vec<Device> = all
+                .into_iter()
+                .skip(start)
+                .take(limit.max(1) as usize)
+                .collect();
+            let next_cursor = if (start as i64) + (devices.len() as i64) < total {
+                devices
+                    .last()
+                    .map(|device| encode_cursor(0, &device.name, device.id))
+            } else {
+                None
+            };
+
+            Ok(DevicePage {
+                devices,
+                next_cursor,
+                total,
+            })
+        }
+    }
 
     fn get(
         &self,
@@ -255,6 +364,28 @@ where
     pub async fn list(&self, home_id: Uuid, user_id: Uuid) -> Result<Vec<Device>, AppError> {
         self.homes.require(home_id, user_id).await?;
         self.devices.list_for_home(home_id, user_id).await
+    }
+
+    /// One page, with the home check first so a stranger learns nothing about the page size.
+    pub async fn list_page(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        limit: i64,
+        cursor: Option<&str>,
+    ) -> Result<DevicePage, AppError> {
+        self.homes.require(home_id, user_id).await?;
+
+        let after = match cursor.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(raw) => Some(decode_cursor(raw)?),
+            None => None,
+        };
+
+        // A caller asking for a million rows is asking for an outage; 500 fills any phone screen
+        // several times over and bounds the work a single request can cause.
+        self.devices
+            .list_page(home_id, user_id, limit.clamp(1, 500), after)
+            .await
     }
 
     pub async fn get(&self, device_id: Uuid, user_id: Uuid) -> Result<Device, AppError> {

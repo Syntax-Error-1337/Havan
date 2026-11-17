@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::pg::Pg;
 use domain::devices::{
-    Command, CommandRepo, Device, DeviceRepo, Point, PointValue, Redelivery, Settled,
+    Command, CommandRepo, Device, DevicePage, DeviceRepo, Point, PointValue, Redelivery, Settled,
+    encode_cursor,
 };
 use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
@@ -245,6 +246,115 @@ impl DeviceRepo for PgDevices {
                 map_device(row, points.remove(&id).unwrap_or_default())
             })
             .collect())
+    }
+
+    /// One page, by keyset.
+    ///
+    /// Keyset rather than `OFFSET`: an offset page re-walks everything before it, so the fiftieth page
+    /// of a large home costs fifty pages of work, and a device claimed between two requests shifts
+    /// every later row — the classic page that skips an item or shows one twice. The ordering is
+    /// `(room sort, name, id)`, and `id` is there because two devices in one room can share a name.
+    async fn list_page(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        limit: i64,
+        after: Option<(i32, String, Uuid)>,
+    ) -> Result<DevicePage, AppError> {
+        let mut tx = self.pg.scoped(&ctx_for(user_id)).await?;
+
+        // One extra row is the cheapest way to know whether there is a next page: asking for a count
+        // of the remainder is a second scan for a boolean.
+        let fetch = limit.clamp(1, 500) + 1;
+        let (after_sort, after_name, after_id) = match &after {
+            Some((sort, name, id)) => (Some(*sort), Some(name.clone()), Some(*id)),
+            None => (None, None, None),
+        };
+
+        let mut rows = sqlx::query_as::<_, DeviceRow>(&format!(
+            r#"SELECT {DEVICE_COLUMNS}
+               FROM devices d
+               LEFT JOIN rooms r ON r.id = d.room_id
+               WHERE d.home_id = $1
+                 AND ($2::int IS NULL
+                      OR (COALESCE(r.sort, -1), d.name, d.id) > ($2, $3, $4))
+               ORDER BY COALESCE(r.sort, -1), d.name, d.id
+               LIMIT $5"#
+        ))
+        .bind(home_id)
+        .bind(after_sort)
+        .bind(after_name)
+        .bind(after_id)
+        .bind(fetch)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let has_more = rows.len() as i64 > limit;
+        if has_more {
+            rows.truncate(limit as usize);
+        }
+        let ids: Vec<Uuid> = rows.iter().map(|row| row.0).collect();
+
+        // Points for this page only. Fetching the home's points and filtering in memory is exactly
+        // the cost paging exists to remove.
+        let point_rows = sqlx::query_as::<_, PointRow>(
+            r#"SELECT dp.device_id, dp.id, dp.code, dp.dp, dp.capability, dp.slot, dp.kind,
+                      dp.writable, dp.unit, dp.min_val, dp.max_val,
+                      dp.value_num, dp.value_bool, dp.value_text, dp.history
+               FROM device_points dp
+               WHERE dp.device_id = ANY($1)
+               ORDER BY dp.code"#,
+        )
+        .bind(&ids)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let total: i64 = sqlx::query_scalar(r#"SELECT count(*) FROM devices WHERE home_id = $1"#)
+            .bind(home_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(db)?;
+
+        let mut points: HashMap<Uuid, Vec<Point>> = HashMap::new();
+        for row in point_rows {
+            let (device_id, point) = map_point(row);
+            points.entry(device_id).or_default().push(point);
+        }
+
+        let devices: Vec<Device> = rows
+            .into_iter()
+            .map(|row| {
+                let id = row.0;
+                map_device(row, points.remove(&id).unwrap_or_default())
+            })
+            .collect();
+
+        let next_cursor = match (has_more, devices.last()) {
+            (true, Some(last)) => {
+                // The room's sort key is not part of a `Device` — it is an ordering detail, not a
+                // property of the device — so it is read back for the one row the cursor names.
+                let sort: i32 = sqlx::query_scalar(
+                    r#"SELECT COALESCE(r.sort, -1) FROM devices d
+                         LEFT JOIN rooms r ON r.id = d.room_id WHERE d.id = $1"#,
+                )
+                .bind(last.id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(db)?;
+                Some(encode_cursor(sort, &last.name, last.id))
+            }
+            _ => None,
+        };
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(DevicePage {
+            devices,
+            next_cursor,
+            total,
+        })
     }
 
     async fn get(&self, device_id: Uuid, user_id: Uuid) -> Result<Option<Device>, AppError> {

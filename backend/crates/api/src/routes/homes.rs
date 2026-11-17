@@ -290,12 +290,25 @@ struct Dashboard {
     devices: Vec<domain::devices::Device>,
     scenes: Vec<domain::scenes::Scene>,
     unread_count: i64,
+    /// Present only when the caller asked for a page. Absent means "this is the whole home", which is
+    /// what every client that does not pass `device_limit` gets — including old builds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    devices_total: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    devices_next_cursor: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct DashboardQuery {
+    device_limit: Option<i64>,
+    device_cursor: Option<String>,
 }
 
 async fn dashboard(
     State(state): State<AppState>,
     auth: Auth,
     Path(id): Path<Uuid>,
+    axum::extract::Query(query): axum::extract::Query<DashboardQuery>,
 ) -> ApiResult<Json<Dashboard>> {
     // The home check comes first and fails with 404 for a stranger, so the rest
     // can assume membership.
@@ -310,11 +323,27 @@ async fn dashboard(
         .rooms(id, auth.user.id)
         .await
         .map_err(ApiError)?;
-    let devices = state
-        .devices
-        .list(id, auth.user.id)
-        .await
-        .map_err(ApiError)?;
+    // Paged only when asked. A phone with a big home opts in and gets a cursor; everything else —
+    // including every build already installed — keeps the single-call behaviour it was written for.
+    let (devices, devices_total, devices_next_cursor) = match query.device_limit {
+        Some(limit) => {
+            let page = state
+                .devices
+                .list_page(id, auth.user.id, limit, query.device_cursor.as_deref())
+                .await
+                .map_err(ApiError)?;
+            (page.devices, Some(page.total), page.next_cursor)
+        }
+        None => (
+            state
+                .devices
+                .list(id, auth.user.id)
+                .await
+                .map_err(ApiError)?,
+            None,
+            None,
+        ),
+    };
     let scenes = state
         .scenes
         .list(id, auth.user.id)
@@ -332,6 +361,8 @@ async fn dashboard(
         devices,
         scenes,
         unread_count,
+        devices_total,
+        devices_next_cursor,
     }))
 }
 

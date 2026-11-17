@@ -6,7 +6,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Box, Button, Screen, AppText, HomeSkeleton, Icon, TabBar } from '../../shared/ui';
 import { DeviceTile } from '../../entities/device';
 import { summarise } from '../../entities/device/model/summary';
-import { useCreateHome, useCreateRoom, useDashboard, useHomes } from '../../entities/home';
+import {
+  DEVICE_PAGE,
+  useCreateHome,
+  useCreateRoom,
+  useDashboard,
+  useHomes,
+} from '../../entities/home';
 import { qk } from '../../shared/api/keys';
 import { useMe, useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
@@ -64,7 +70,13 @@ export function DashboardPage() {
   // Live state for whichever home is open.
   useHomeStream(homeId);
 
-  const { data: dashboard, isPending, refetch, isRefetching } = useDashboard(homeId ?? null);
+  // A page at a time. The footer offers the rest: with a thousand devices the payload is ~3 MB, and
+  // that should be a decision the person makes, not a cost every cold start pays.
+  const [deviceLimit, setDeviceLimit] = useState(DEVICE_PAGE);
+  const { data: dashboard, isPending, refetch, isRefetching } = useDashboard(
+    homeId ?? null,
+    deviceLimit,
+  );
 
   // Seed the per-entity caches from the aggregate: the widgets below were written
   // against those keys, and this keeps one request for the whole screen.
@@ -379,6 +391,32 @@ export function DashboardPage() {
                 </View>
               ))}
             </View>
+          )
+        }
+        ListFooterComponent={
+          dashboard?.devices_next_cursor ? (
+            <View style={{ paddingHorizontal: tokens.space.lg, paddingTop: tokens.space.md }}>
+              <Pressable
+                accessibilityRole="button"
+                testID="load-all-devices"
+                onPress={() => setDeviceLimit((limit: number) => Math.min(limit * 4, 2000))}
+                style={{
+                  alignItems: 'center',
+                  paddingVertical: 14,
+                  borderRadius: 14,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: color.border,
+                  backgroundColor: color.glass,
+                }}
+              >
+                <AppText variant="caption" tone="muted">
+                  Showing {devices.length} of {dashboard.devices_total ?? devices.length} — load the
+                  rest
+                </AppText>
+              </Pressable>
+            </View>
+          ) : (
+            <View />
           )
         }
         // A handful of rows fills the screen; the rest wait their turn instead of mounting.

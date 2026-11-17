@@ -54,9 +54,16 @@ Two consequences, one shipped and one still open:
   three-year customer with 200 devices paid for 200 cards on first paint. The pairing rule — a room
   of one takes the whole row, everything else pairs — is unit-tested, because that is the part that
   breaks on an odd number.
-- **Open:** the dashboard payload itself is still unbounded. Past a few hundred devices the answer is
-  a paged device list kept warm by the socket, not one aggregate — that is a contract change, not a
-  query tweak, and it has not been done silently.
+- **Also shipped:** the payload is paged. `GET /homes/{id}/dashboard?device_limit=` returns a page of
+  devices with `devices_total` and, when there is more, `devices_next_cursor`; the app asks for 200
+  and offers a footer to load the rest. The cursor is keyset over `(room sort, name, id)` — an offset
+  page re-walks everything before it and shifts when a device is claimed mid-paging — and the point
+  query reads only the page's device ids, which is the other half of the cost.
+
+  Unpaged stays the default, so every installed build keeps the behaviour it was written against. One
+  test pages a five-device home two at a time and asserts each device appears exactly once. The app's
+  footer is not exercised by the demo home (six devices, one page) — that is stated rather than
+  claimed.
 
 ### Re-measured after two weeks of change
 
