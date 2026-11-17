@@ -152,6 +152,38 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### An empty home said "Try again"
+
+A new account that had just named its home landed on:
+
+> **No devices yet** — *Tap Add and we will look for devices nearby.* — **Try again**
+
+Three defects in one small block. `Try again` retried a request that had **succeeded**: the empty home and the
+failed home had been separated last week, and the retry stayed behind in the wrong branch. "Tap Add" pointed at a
+`+` the copy never described. And the only guidance on offer was one grey line.
+
+The empty home is the first screen a paying customer sees, so it now says what to do **in the order people
+actually do it**:
+
+1. **Power the device on** — plug in or batteries; it makes itself findable in a few seconds.
+2. **Pair it from your phone** — *tap “Pair a device” below*; Bluetooth on, permission granted.
+3. **Give it a room** — *optional, and changeable later*.
+
+The order was wrong in the first draft of this screen too: it led with *Add a room*, which is administrative work
+for somebody who wants their new bulb to turn on. Rooms are how you find a device **afterwards**, and the list
+says so.
+
+Three things went with it, all found by looking at the screenshot rather than the code:
+
+- **The presence pill is gone on an empty home.** `no devices` sat beside `0 devices · 0 rooms` and the heading
+  `Flat 3 is empty` — the same fact three times, and a pill is the most expensive of the three.
+- **Its green dot was a lie.** The dot was green whenever `silent === 0`, and zero devices means zero silent
+  devices: an empty home reported as healthy. It is muted when there is nothing to report.
+- **The search box and category chips are hidden** when there are no devices. A control that can only fail is
+  not a feature.
+
+Empty home **6 → 9/10**.
+
 ### The first sixty seconds of a new account
 
 Signing up with a fresh address lands on **`Create your first home`** with one button, which posts:

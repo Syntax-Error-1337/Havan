@@ -106,6 +106,40 @@ describe('a brand-new account', () => {
   });
 });
 
+describe('an empty home', () => {
+  it('tells a new customer what to do, in the order people actually do it', async () => {
+    stubApi((url) => {
+      if (url.endsWith('/homes')) {
+        return [{ id: 'home-1', name: 'Flat 3', role: 'owner', member_count: 1 }];
+      }
+      if (url.includes('/dashboard')) {
+        return {
+          home: { id: 'home-1', name: 'Flat 3' },
+          rooms: [],
+          devices: [],
+          scenes: [],
+          unread_count: 0,
+          presence: { total: 0, online: 0, silent: 0 },
+        };
+      }
+      return [];
+    });
+    useSession.setState({ access: 'token', homeId: 'home-1', refresh: null });
+
+    const view = await renderDashboard();
+
+    expect(await view.findByTestId('first-run-home')).toBeTruthy();
+    // Pairing first: nobody unboxes a bulb and then wants to name an empty room.
+    expect(view.getByText('Power the device on')).toBeTruthy();
+    expect(view.getByText('Pair it from your phone')).toBeTruthy();
+    expect(view.getByText('Give it a room')).toBeTruthy();
+    // A search box on a home with nothing in it is a control that can only fail.
+    expect(view.queryByTestId('device-search')).toBeNull();
+    // And no "Try again" — nothing failed.
+    expect(view.queryByText('Try again')).toBeNull();
+  });
+});
+
 describe('dashboard', () => {
   it('says the home could not be loaded instead of pretending it is empty', async () => {
     // Measured with the dashboard request blocked: a home with six devices told the customer "No devices
@@ -296,7 +330,9 @@ describe('dashboard', () => {
 
     const view = await renderDashboard();
 
-    expect(await view.findByText('No devices yet')).toBeTruthy();
+    // The empty home is now a three-step list rather than one grey line, and its heading names the home.
+    expect(await view.findByText('Flat is empty')).toBeTruthy();
+    expect(view.getByText('Pair a device')).toBeTruthy();
   });
 
   // Three creates used to live in three places: the centre button went straight to a device scan, "New

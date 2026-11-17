@@ -136,6 +136,9 @@ export function HomeHeader({
         {/* This pill was a clock with a lightning bolt beside it: a redundant time (the OS draws one in the
             status bar) under a glyph that means power, in warning orange, on a healthy house. It is now the
             one question the header can answer that the clock could not — is anything not reporting? */}
+        {/* Nothing to be present. "no devices" beside "0 devices · 0 rooms" and an empty-state heading
+            is the same fact three times, and a pill is the most expensive of the three. */}
+        {total === 0 || unknown ? null : (
         <Glass
           padded={false}
           style={{ paddingHorizontal: 12, paddingVertical: 8 }}
@@ -147,12 +150,16 @@ export function HomeHeader({
                 width: 7,
                 height: 7,
                 borderRadius: 4,
+                // Green means "everything is reporting". A home with nothing in it is not healthy — it is
+                // empty, and a green dot beside "no devices" reads as a device that is fine.
                 backgroundColor:
-                  silent === 0
-                    ? color.success
-                    : online === 0
-                      ? color.danger
-                      : color.warning,
+                  total === 0 || unknown
+                    ? color.muted
+                    : silent === 0
+                      ? color.success
+                      : online === 0
+                        ? color.danger
+                        : color.warning,
               }}
             />
             {/* The number lives here and the *explanation* lives in the banner below, so the same count is
@@ -170,6 +177,7 @@ export function HomeHeader({
             </AppText>
           </View>
         </Glass>
+        )}
       </View>
 
       <AppText variant="caption" tone="muted">

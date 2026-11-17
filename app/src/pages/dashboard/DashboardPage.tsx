@@ -140,6 +140,42 @@ export function DashboardPage() {
   const createRoom = useCreateRoom(homeId ?? undefined);
   const [addingRoom, setAddingRoom] = useState(false);
   const addSheet = useActionSheet();
+
+  /// The centre "+" and the empty home's "or pair a device now" are the same question, so they open the
+  /// same sheet: one list, built once.
+  const openAddSheet = () =>
+    addSheet.open({
+      // The home's name, not "add something": a sheet that says where the thing will land is a sheet
+      // you do not have to think about.
+      title: `Add to ${homeName}`,
+      items: [
+        {
+          key: 'device',
+          label: 'Add a device',
+          hint: 'Scan for a nearby bulb, plug or sensor',
+          icon: 'radar',
+          onPress: () => router.push('/add-device'),
+        },
+        ...(mayManage
+          ? [
+              {
+                key: 'room',
+                label: 'Add a room',
+                hint: 'Group devices by where they are',
+                icon: 'home' as const,
+                onPress: () => setAddingRoom(true),
+              },
+            ]
+          : []),
+        {
+          key: 'scene',
+          label: 'Add a scene',
+          hint: 'One tap that sets several devices',
+          icon: 'sparkle',
+          onPress: () => router.push('/scenes'),
+        },
+      ],
+    });
   const [roomName, setRoomName] = useState('');
 
   // Search is local: the dashboard already holds every device, so asking the network again would be
@@ -151,6 +187,8 @@ export function DashboardPage() {
   const categories = useMemo(() => categoriesOf(devices), [devices]);
   const filtered = useMemo(() => filterDevices(devices, query, category), [devices, query, category]);
   const filtering = query.trim().length > 0 || category !== null;
+  /// A search box and category chips on a home with nothing in it are controls that can only fail.
+  const filterable = devices.length > 0;
 
   const sections = useMemo(() => groupByRoom(filtered, rooms), [filtered, rooms]);
   const summary = useMemo(() => summarise(devices), [devices]);
@@ -374,8 +412,10 @@ export function DashboardPage() {
 
               {/* Search first, filters under it: a house with two hundred devices is not navigated by
                   scrolling, and the words people type are the ones on the shelf — a name, a room, a
-                  kind of thing. */}
-              <View
+                  kind of thing.
+
+                  Not offered on an empty home, where it is a control that can only fail. */}
+              {filterable ? (<View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -411,9 +451,9 @@ export function DashboardPage() {
                     <Icon name="close" size={14} color={color.muted} />
                   </Pressable>
                 ) : null}
-              </View>
+              </View>) : null}
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {filterable ? (<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                 {categories.length > 1 ? (
                   <>
                     <Chip label="All" selected={category === null} onPress={() => setCategory(null)} />
@@ -427,7 +467,7 @@ export function DashboardPage() {
                     ))}
                   </>
                 ) : null}
-              </ScrollView>
+              </ScrollView>) : null}
 
               {filtering ? (
                 <AppText variant="tiny" tone="muted" testID="search-count">
@@ -535,16 +575,48 @@ export function DashboardPage() {
               testID="home-unreachable"
             />
           ) : (
-            <Box p="xl" gap="md" center>
+            /* An empty home is the first thing a new customer sees after naming it, and it used to say
+               "No devices yet — Tap Add" next to a **Try again** button that retried a request that had
+               succeeded. There was nothing to try again: nothing had failed. What was missing was the
+               order to do things in. */
+            <Box p="xl" gap="lg" center testID="first-run-home">
               <AppText variant="title" weight="600">
-                No devices yet
+                {homeName} is empty
               </AppText>
-              <AppText tone="muted" style={{ textAlign: 'center' }}>
-                Tap Add and we will look for devices nearby.
-              </AppText>
-              <Pressable onPress={() => refetch()} accessibilityRole="button">
-                <AppText variant="body" tone="accent">
-                  Try again
+              {/* Pairing first, rooms second: nobody unboxes a bulb and then wants to name an empty room.
+                  A room is how you find the device *afterwards*, and the list says it is optional. */}
+              <Box gap="md" style={{ alignSelf: 'stretch' }}>
+                <FirstRunStep
+                  n={1}
+                  title="Power the device on"
+                  body="Plug it in, or put the batteries in. It makes itself findable within a few seconds."
+                  done={false}
+                />
+                <FirstRunStep
+                  n={2}
+                  title="Pair it from your phone"
+                  body="Tap “Pair a device” below. Bluetooth needs to be on, and the app needs permission to use it."
+                  done={devices.length > 0}
+                />
+                <FirstRunStep
+                  n={3}
+                  title="Give it a room"
+                  body="Optional, and changeable later — the kitchen, the hall, the study."
+                  done={(dashboard?.rooms ?? []).length > 0}
+                  action={() => setAddingRoom(true)}
+                />
+              </Box>
+              <Button
+                label="Pair a device"
+                onPress={() => router.push('/add-device')}
+              />
+              <Pressable
+                onPress={openAddSheet}
+                accessibilityRole="button"
+                hitSlop={10}
+              >
+                <AppText variant="caption" style={{ color: color.accentInk }}>
+                  Add a room instead
                 </AppText>
               </Pressable>
             </Box>
@@ -639,44 +711,88 @@ export function DashboardPage() {
         active="home"
         onSelect={(key) => {
           if (key === 'automations') router.push('/automations');
-          if (key === 'add') {
-            addSheet.open({
-              // The home's name, not "add something": a sheet that says where the thing will land is a
-              // sheet you do not have to think about.
-              title: `Add to ${homeName}`,
-              items: [
-                {
-                  key: 'device',
-                  label: 'Add a device',
-                  hint: 'Scan for a nearby bulb, plug or sensor',
-                  icon: 'radar',
-                  onPress: () => router.push('/add-device'),
-                },
-                ...(mayManage
-                  ? [
-                      {
-                        key: 'room',
-                        label: 'Add a room',
-                        hint: 'Group devices by where they are',
-                        icon: 'home' as const,
-                        onPress: () => setAddingRoom(true),
-                      },
-                    ]
-                  : []),
-                {
-                  key: 'scene',
-                  label: 'Add a scene',
-                  hint: 'One tap that sets several devices',
-                  icon: 'sparkle',
-                  onPress: () => router.push('/scenes'),
-                },
-              ],
-            });
-          }
+          if (key === 'add') openAddSheet();
           if (key === 'settings') router.push('/settings');
         }}
       />
     </Screen>
+  );
+}
+
+/**
+ * One numbered line of the first-run list.
+ *
+ * A new customer's home is empty for a reason, and the order matters: a room first (so the device has an
+ * address), then the device powered on, then the pair. The list says which of those is done, because "done"
+ * is the only part of an onboarding list that is worth looking at twice.
+ */
+function FirstRunStep({
+  n,
+  title,
+  body,
+  done,
+  action,
+}: {
+  n: number;
+  title: string;
+  body: string;
+  done: boolean;
+  action?: () => void;
+}) {
+  const { color } = useTheme();
+  const mark = (
+    <View
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: done ? color.success : withAlpha(color.text, 0.08),
+        borderWidth: done ? 0 : 1,
+        borderColor: color.border,
+      }}
+    >
+      {done ? (
+        <Icon name="check" size={13} color={color.onAccent} />
+      ) : (
+        <AppText variant="tiny" tone="muted">
+          {n}
+        </AppText>
+      )}
+    </View>
+  );
+
+  const text = (
+    <View style={{ flex: 1, gap: 2 }}>
+      <AppText weight="600" tone={done ? 'muted' : 'text'}>
+        {title}
+      </AppText>
+      {done ? null : (
+        <AppText variant="caption" tone="muted">
+          {body}
+        </AppText>
+      )}
+    </View>
+  );
+
+  if (!action || done) {
+    return (
+      <View style={{ flexDirection: 'row', gap: tokens.space.md, alignItems: 'flex-start' }}>
+        {mark}
+        {text}
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      onPress={action}
+      accessibilityRole="button"
+      style={{ flexDirection: 'row', gap: tokens.space.md, alignItems: 'flex-start' }}
+    >
+      {mark}
+      {text}
+    </Pressable>
   );
 }
 
