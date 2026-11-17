@@ -46,7 +46,15 @@ export function ChipPicker({
             {/* An unselected chip said its label in muted grey on a surface that is nearly the same grey: the
                 choice was there and unreadable. `elevated` is a step up from the card, and the label keeps the
                 text tone — selection is carried by the fill, not by hiding the other options. */}
-            <Box px="md" py="sm" radius="pill" bg={value === option.id ? 'accent' : 'surface'} border>
+            {/* 44 tall, not 36: a chip is a button, and a row of 36-point buttons is a row of near-misses for
+                anybody with a thumb rather than a mouse. The text stays 13-point; the padding grows. */}
+            <Box
+              px="md"
+              radius="pill"
+              bg={value === option.id ? 'accent' : 'surface'}
+              border
+              style={{ minHeight: 44, justifyContent: 'center' }}
+            >
               <AppText
                 variant="caption"
                 style={{ opacity: value === option.id ? 1 : 0.9 }}

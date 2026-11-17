@@ -77,7 +77,8 @@ export function HomeHeader({
           accessibilityRole="button"
           accessibilityLabel={`${name} — switch home`}
           onPress={onOpenHomes}
-          style={{ flex: 1, gap: 1 }}
+          // The block is 42 points tall (an 11-point eyebrow over a 22-point title), and 42 is not 44.
+          style={{ flex: 1, gap: 1, minHeight: 44, justifyContent: 'center' }}
         >
           <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.2 }}>
             DASHBOARD
@@ -95,11 +96,12 @@ export function HomeHeader({
             accessibilityRole="button"
             accessibilityLabel={unread > 0 ? `Alerts, ${unread} unread` : 'Alerts'}
             onPress={onOpenAlerts}
-            hitSlop={8}
             style={{
-              width: 38,
-              height: 38,
-              borderRadius: 19,
+              // 44, not 38: a 38-point circle is 6 points under the minimum a thumb can reliably hit, and
+              // the bell is the one control in this corner.
+              width: 44,
+              height: 44,
+              borderRadius: 22,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: color.glass,

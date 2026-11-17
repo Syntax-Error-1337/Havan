@@ -830,7 +830,10 @@ function Chip({
       onPress={onPress}
       style={{
         paddingHorizontal: 14,
-        paddingVertical: 9,
+        // 44 high, like the shared `ChipPicker`: the two chips in this app are the same control and used to
+        // be 38 and 36 — both under the minimum, and neither noticed until an audit measured them.
+        minHeight: 44,
+        justifyContent: 'center',
         borderRadius: 999,
         backgroundColor: selected ? color.accent : color.glass,
         borderWidth: StyleSheet.hairlineWidth,

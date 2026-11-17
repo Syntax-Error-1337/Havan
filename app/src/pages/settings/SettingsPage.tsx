@@ -397,7 +397,8 @@ function RoomRow({
             onPress={confirmDelete}
             accessibilityRole="button"
             accessibilityLabel={`Delete ${name}`}
-            hitSlop={12}
+            // A word 20 points tall is not a target a thumb finds. The row is the frame; this is the hit.
+            style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}
           >
             <AppText tone="danger" variant="subhead">
               Delete

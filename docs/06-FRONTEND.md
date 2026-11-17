@@ -152,6 +152,41 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### Accessibility, measured
+
+The design system had a contrast gate, a token gate and a screenshot review. What it never had was a check on
+the things somebody who cannot see the screen depends on. `app/e2e/a11y.spec.ts` walks seven screens and applies
+three rules written by hand:
+
+- **every control has an accessible name** — the label a screen reader announces and a voice-control user says;
+- **every field has a label** — `aria-label`, `aria-labelledby`, a placeholder, or a real `<label for>`;
+- **every button or link is at least 44 × 44** — Apple's minimum, with a 1-px rounding allowance.
+
+No `axe-core`: it is MPL-2.0, and ADR-002 permits Apache/MIT/BSD/ISC/PostgreSQL/0BSD only. Three rules somebody
+can argue with beat four hundred nobody read.
+
+The first run found **31 violations**, all of them touch targets, and none of them visible in any screenshot:
+
+| Control | Was | Now |
+|---|---|---|
+| the **Back** chevron on five screens | 20 × 20 | 44 × 44 (glyph unchanged) |
+| the alerts **bell** | 38 × 38 | 44 × 44 |
+| the home switcher in the header | 42 tall | 44 |
+| **`ChipPicker`** chips (scenes, settings, editors) | 36 | 44 |
+| the dashboard's filter chips | 38 | 44 |
+| **Delete** on a room row | 20 tall | 44 |
+
+The Back chevron is the one that matters: it is the only way out of five screens, and it was a 20-point target
+with a `hitSlop` that the web build — and any automated audit — cannot see. A `hitSlop` is a native gesture
+area; a frame is a target.
+
+`role="switch"` is deliberately exempt, with the reason in the code: iOS's own switch is 51 × 31, and a
+44-point pill would stop looking like a switch. The platform control is the platform control; a bespoke button
+is not.
+
+The audit is now part of `make e2e-app` and reports in one line per finding — *"settings: target smaller than
+44px — Back — 20×20"* — because a failure that says which control and by how much is a failure somebody fixes.
+
 ### The customer app had no end-to-end tests
 
 The portal has had a Playwright suite for months; the app — the product the customer actually holds — was

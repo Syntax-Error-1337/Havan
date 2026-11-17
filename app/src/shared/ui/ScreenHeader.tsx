@@ -41,7 +41,15 @@ export function ScreenHeader({
         paddingVertical: tokens.space.md,
       }}
     >
-      <Pressable accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} onPress={leave}>
+      {/* A 44 × 44 frame around a 20-point glyph, rather than a hit slop around a 20-point box: the slop
+          is a native gesture area, and the web build — and an automated audit — can only see the box. The
+          glyph is the same size it always was. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        onPress={leave}
+        style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+      >
         <View style={{ transform: [{ rotate: '180deg' }] }}>
           <Icon name="chevron-right" size={20} color={color.muted} />
         </View>
