@@ -353,6 +353,35 @@ failed six tests on the default 5 s timeout that pass in a second locally, so
 
 ## Design language
 
+### A confirmation form that cannot succeed is not a confirmation
+
+The privacy screen scored well on separation — the dangerous card is red, bordered, and below the safe one — and
+badly on one thing: it offered a button the server would refuse.
+
+`erase` answers **409** when the person still owns a home that somebody else lives in, because deleting the
+account would either evict them or leave them with a home whose owner no longer exists. That is the correct
+server behaviour, and it is also the refusal a real customer hits. The screen now reads the homes list it
+already has, and when a shared owned home exists it **turns the button off and says why**:
+
+> *You still own Workshop, and somebody else lives in it. Deleting your account would take their home away, so
+> it is refused until the home is handed over or they have left it.*
+> *Nothing has been deleted. The button is off for the reason above, not because it failed.*
+
+The last line matters more than it looks: a disabled control with no explanation reads as a bug, and a person who
+thinks the app is broken tries again rather than going to fix the actual blocker.
+
+Two smaller additions to the destructive card, both facts a person needs *before* the confirm sheet rather than
+after it:
+
+- **What is kept.** `DELETE /me` tombstones the person and keeps a receipt: *"A receipt of the request is kept
+  for the retention window and then purged. It records that the account was erased; it holds none of its
+  readings."*
+- **What happens to other people.** The card already said homes you are a *member* of stay; it now also covers
+  the inverse — an owned home takes its members' access with it, which is exactly the reason for the 409 above.
+
+Verified live for the non-blocked path (the demo account owns nothing shared, so the button stays live), and by
+test for the blocked one — including that no `DELETE` is ever sent when it is off.
+
 ### A bar chart was answering the wrong question
 
 The device screen had its own chart — a bar sparkline — and `heights()` scaled every series from **zero**:

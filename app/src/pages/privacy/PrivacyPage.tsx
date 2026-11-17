@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { AppText, Box, Button, Glass, Icon, Screen, ScreenHeader, useConfirm } from '../../shared/ui';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useSession } from '../../entities/session';
+import { useHomes } from '../../entities/home';
 import {
   describeErasure,
   describeExport,
@@ -30,6 +31,21 @@ export function PrivacyPage() {
   const [saved, setSaved] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [erasing, setErasing] = useState(false);
+
+  /**
+   * The refusal the server would give, before the button is pressed.
+   *
+   * `erase` answers 409 when the person still owns a home that somebody else lives in — it will not
+   * evict them or leave them with a home whose owner no longer exists. That is right, and it is also
+   * the one refusal a real customer hits. A screen that lets them press the button to find out is a
+   * screen that made them type a confirmation for nothing.
+   */
+  const homes = useHomes();
+  // `Array.isArray`, because this line runs before the homes query resolves and a screen that crashes on
+  // an unloaded list would take the export button with it.
+  const list = Array.isArray(homes.data) ? homes.data : [];
+  const sharedOwned = list.filter((h) => h.role === 'owner' && h.member_count > 1);
+  const blocked = sharedOwned.length > 0;
 
   const download = async () => {
     setProblem(null);
@@ -131,13 +147,33 @@ export function PrivacyPage() {
               alerts are removed, and you are signed out everywhere. Homes you are a member of but do
               not own stay — only your membership is removed.
             </AppText>
+            <AppText variant="caption" tone="muted">
+              A receipt of the request is kept for the retention window and then purged. It records that
+              the account was erased; it holds none of its readings.
+            </AppText>
+            {blocked ? (
+              // Not a warning about a risk: a statement that the request will be refused, and what to
+              // do instead. Without it the confirmation below is a form that cannot succeed.
+              <AppText variant="caption" tone="danger" testID="erase-blocked">
+                {sharedOwned.length === 1
+                  ? `You still own ${sharedOwned[0]!.name}, and somebody else lives in it.`
+                  : `You still own ${sharedOwned.length} homes that other people live in.`}{' '}
+                Deleting your account would take their home away, so it is refused until the home is
+                handed over or they have left it.
+              </AppText>
+            ) : null}
             <Button
               label={erasing ? 'Deleting…' : 'Delete my account'}
               variant="danger"
               onPress={confirmErase}
-              disabled={erasing}
+              disabled={erasing || blocked}
               testID="delete-account"
             />
+            {blocked ? (
+              <AppText variant="tiny" tone="muted">
+                Nothing has been deleted. The button is off for the reason above, not because it failed.
+              </AppText>
+            ) : null}
           </Box>
         </Glass>
 

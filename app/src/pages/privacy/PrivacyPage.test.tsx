@@ -98,6 +98,28 @@ describe('privacy', () => {
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
   });
 
+  it('refuses the button, before it is pressed, when a shared home would be taken from someone', async () => {
+    // The server answers 409 in this case — it will not evict the people who live in a home you own. A
+    // screen that lets you type a confirmation and then refuses you is a screen that wasted the one
+    // action it exists for.
+    const calls = stubApi((url) =>
+      url.includes('/homes')
+        ? [
+            { id: 'home-1', name: 'Workshop', role: 'owner', member_count: 3 },
+            { id: 'home-2', name: 'Flat', role: 'admin', member_count: 1 },
+          ]
+        : null,
+    );
+    const view = await renderPage();
+
+    const warning = await view.findByTestId('erase-blocked');
+    expect(warning).toBeTruthy();
+    expect(view.getByText(/You still own Workshop, and somebody else lives in it/)).toBeTruthy();
+    // The button is off, and says so rather than looking like it failed.
+    expect(view.getByText(/The button is off for the reason above, not because it failed/)).toBeTruthy();
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+  });
+
   it('deletes the account, then signs out and shows the receipt', async () => {
     const calls = stubApi((url, init) =>
       init?.method === 'DELETE' ? receipt : bundle,
