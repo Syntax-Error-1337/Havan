@@ -40,10 +40,21 @@ pub async fn metrics(State(state): State<AppState>, headers: HeaderMap, peer: Pe
         return refusal.into_response();
     }
 
+    // The theme is the one read on every cold start of every install, so its cache is worth a
+    // number: if this stays at zero the cache is not working, and if it climbs the database is not
+    // being asked for an answer that has not changed.
+    let theme_hits = state.theme.cache_hits();
+    let body = format!(
+        "{}# HELP haven_theme_cache_hits_total Theme reads answered without a database query.\n\
+         # TYPE haven_theme_cache_hits_total counter\n\
+         haven_theme_cache_hits_total {theme_hits}\n",
+        kernel::metrics::render()
+    );
+
     (
         StatusCode::OK,
         [("content-type", "text/plain; version=0.0.4")],
-        kernel::metrics::render(),
+        body,
     )
         .into_response()
 }

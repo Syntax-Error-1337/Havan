@@ -1,6 +1,11 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
 use domain::theme::{AppTheme, ThemeMode};
 use kernel::{AppError, TenantCtx};
 use time::OffsetDateTime;
+use tokio::sync::Mutex;
 
 use crate::pg::Pg;
 
@@ -27,7 +32,18 @@ type Row = (
 #[derive(Clone)]
 pub struct PgTheme {
     pg: Pg,
+    /// The last answer, held in this process for a moment.
+    ///
+    /// The theme is read on every cold start of every install and changes when one person presses
+    /// Save. A million launches is a million single-row reads for an answer that has not moved, and
+    /// the HTTP cache already says so to the client — this says it to the database. Thirty seconds is
+    /// short enough that an operator's change is live before they can reload the app twice.
+    cache: Arc<Mutex<Option<(AppTheme, Instant)>>>,
+    hits: Arc<AtomicU64>,
 }
+
+/// How long a loaded theme is trusted without asking the database again.
+const CACHE_TTL: Duration = Duration::from_secs(30);
 
 /// One entry of the change log, as the console shows it.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -40,10 +56,25 @@ pub struct ThemeChange {
 
 impl PgTheme {
     pub fn new(pg: Pg) -> Self {
-        Self { pg }
+        Self {
+            pg,
+            cache: Arc::new(Mutex::new(None)),
+            hits: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// How many reads were answered without touching the database. Exposed so `/metrics` can show the
+    /// cache doing its job — a cache nobody can see is a cache nobody knows is working.
+    pub fn cache_hits(&self) -> u64 {
+        self.hits.load(Ordering::Relaxed)
     }
 
     pub async fn load(&self) -> Result<AppTheme, AppError> {
+        if let Some(theme) = self.fresh_from_cache().await {
+            self.hits.fetch_add(1, Ordering::Relaxed);
+            return Ok(theme);
+        }
+
         let mut tx = self.pg.scoped(&TenantCtx::system("theme-read")).await?;
 
         let row: Option<Row> = sqlx::query_as(
@@ -56,7 +87,22 @@ impl PgTheme {
 
         // A missing row is the built-in theme, not an error: a fresh database serves the product's
         // own colours until an operator chooses otherwise.
-        Ok(row.map(from_row).unwrap_or_default())
+        let theme = row.map(from_row).unwrap_or_default();
+        self.remember(&theme).await;
+        Ok(theme)
+    }
+
+    /// The cached theme, if it is still young enough to trust.
+    async fn fresh_from_cache(&self) -> Option<AppTheme> {
+        let guard = self.cache.lock().await;
+        match guard.as_ref() {
+            Some((theme, at)) if at.elapsed() < CACHE_TTL => Some(theme.clone()),
+            _ => None,
+        }
+    }
+
+    async fn remember(&self, theme: &AppTheme) {
+        *self.cache.lock().await = Some((theme.clone(), Instant::now()));
     }
 
     /// Save, and keep what it was.
@@ -118,7 +164,12 @@ impl PgTheme {
         }
 
         tx.commit().await.map_err(db)?;
-        Ok(from_row(row))
+
+        // The writer replaces the cache rather than dropping it: the next read — the operator's own
+        // rerender, most likely — gets what they just saved, not what a TTL remembered.
+        let saved = from_row(row);
+        self.remember(&saved).await;
+        Ok(saved)
     }
 
     pub async fn history(&self, limit: i64) -> Result<Vec<ThemeChange>, AppError> {

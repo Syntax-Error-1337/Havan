@@ -78,6 +78,7 @@ function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
   // An alert that names a device can be opened on that device. The automation's trigger writes the
   // id into `data`; older rows carry `{}` and simply do not offer the jump.
   const deviceId = typeof alert.data?.device_id === 'string' ? alert.data.device_id : null;
+  const deviceName = typeof alert.data?.device_name === 'string' ? alert.data.device_name : null;
 
   const open = () => {
     if (unread) onRead();
@@ -123,8 +124,8 @@ function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
             </AppText>
           ) : null}
           {deviceId ? (
-            <AppText variant="tiny" style={{ color: color.accent }}>
-              Open the device
+            <AppText variant="tiny" style={{ color: color.accent }} numberOfLines={1}>
+              Open {deviceName ?? 'the device'}
             </AppText>
           ) : null}
         </Box>

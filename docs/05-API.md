@@ -217,9 +217,10 @@ gap, never as zero — silence is not a reading.
 `notifications` has no vendor column and no RLS: the only thing keeping one
 person's alerts apart is the `user_id` predicate, so it is never optional.
 
-Each notification carries a free-form `data` object, and one key in it is a contract: when an
-automation is triggered by a device, `data.device_id` names that device, and the app opens it when
-the alert is tapped. An alert that says "hallway light left on" and cannot be opened is a
+Each notification carries a free-form `data` object, and two keys in it are a contract: when an
+automation is triggered by a device, `data.device_id` names that device and `data.device_name` gives
+it in words, so the app opens it when the alert is tapped and labels the action "Open Room Sensor"
+rather than "Open the device". An alert that says "hallway light left on" and cannot be opened is a
 notification the customer reads and then goes hunting for. Rows from before this existed carry `{}`
 and simply do not offer the jump, which is why the client treats the key as optional.
 
@@ -719,6 +720,11 @@ cache is unreachable the check **fails open**: a cache outage must not lock peop
 their own homes, and the request is still recorded in the audit path.
 
 ## Metrics
+
+`haven_theme_cache_hits_total` counts theme reads answered without touching the database. The endpoint
+is public and every install asks for it on cold start; the row changes when one operator presses Save,
+so a process-local cache with a 30-second TTL answers the rest, and a save primes the cache with what
+it wrote — the operator's own next render is never the old brand.
 
 `GET /metrics` renders Prometheus text (content type `text/plain; version=0.0.4`) with:
 

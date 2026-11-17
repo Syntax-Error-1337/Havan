@@ -495,6 +495,25 @@ impl PgAutomation {
             return Ok(());
         };
 
+        // If the alert names a device, it also names it in words. The app shows the action as
+        // "Open Floor Lamp" rather than "Open the device", and the name is looked up once here
+        // instead of costing a second request on the phone.
+        let data = match data.get("device_id").and_then(|id| id.as_str()) {
+            Some(raw) => match Uuid::parse_str(raw) {
+                Ok(id) => {
+                    let name: Option<String> =
+                        sqlx::query_scalar("SELECT name FROM devices WHERE id = $1")
+                            .bind(id)
+                            .fetch_optional(&mut *tx)
+                            .await
+                            .map_err(db)?;
+                    with_device_name(data, name)
+                }
+                Err(_) => data,
+            },
+            None => data,
+        };
+
         sqlx::query(
             r#"INSERT INTO notifications (id, user_id, kind, title, body, data)
                VALUES ($1, $2, 'automation', $3, $4, $5)"#,
@@ -524,4 +543,35 @@ pub struct CommandTarget {
 /// never sits in the due queue.
 pub fn is_scheduled(def: &AutomationDef) -> bool {
     matches!(def.trigger, Trigger::Schedule { .. })
+}
+
+/// Attach the device's name to an alert's context, when there is one to attach.
+///
+/// Pure so the shape is testable: the app reads `data.device_name` for the action's label and falls
+/// back to "Open the device" when it is absent.
+fn with_device_name(mut data: serde_json::Value, name: Option<String>) -> serde_json::Value {
+    if let (Some(name), Some(object)) = (name, data.as_object_mut()) {
+        object.insert("device_name".into(), serde_json::Value::String(name));
+    }
+    data
+}
+
+#[cfg(test)]
+mod alert_context_tests {
+    use super::with_device_name;
+
+    #[test]
+    fn a_known_device_is_named_in_the_alert() {
+        let data = with_device_name(
+            serde_json::json!({ "device_id": "01a1fb00-0000-7000-8000-000000000001" }),
+            Some("Floor Lamp".into()),
+        );
+        assert_eq!(data["device_name"], serde_json::json!("Floor Lamp"));
+    }
+
+    #[test]
+    fn a_missing_device_leaves_the_alert_as_it_was() {
+        let original = serde_json::json!({ "device_id": "gone" });
+        assert_eq!(with_device_name(original.clone(), None), original);
+    }
 }

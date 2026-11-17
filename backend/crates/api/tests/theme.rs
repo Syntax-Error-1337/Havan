@@ -259,6 +259,68 @@ async fn a_second_identical_save_is_not_recorded_as_a_change() {
 }
 
 #[tokio::test]
+async fn a_second_read_is_answered_without_asking_the_database() {
+    let Some((base, state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+
+    let _turn = THEME_LOCK.lock().await;
+
+    // Prime: the first read after a boot goes to the database.
+    let _ = page(&base).await;
+    let before = state.theme.cache_hits();
+
+    let again: serde_json::Value = reqwest::Client::new()
+        .get(format!("{base}/v1/theme"))
+        .send()
+        .await
+        .expect("read")
+        .json()
+        .await
+        .expect("json");
+    let after = state.theme.cache_hits();
+
+    assert!(
+        after > before,
+        "the second read must come from the process cache, not the database"
+    );
+    assert!(again["accent"].is_string());
+}
+
+#[tokio::test]
+async fn a_save_is_visible_before_the_cache_expires() {
+    let Some((base, state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+
+    let _turn = THEME_LOCK.lock().await;
+
+    // Read, save a different accent, read again: the TTL must not hand back the old brand to the
+    // operator who just changed it.
+    let _ = page(&base).await;
+    assert_eq!(put(&base, body("#22C55E", "dark")).await.status(), 200);
+
+    let fresh = state.theme.load().await.expect("load").accent;
+    assert_eq!(
+        fresh, "#22C55E",
+        "a write primes the cache with what it wrote"
+    );
+}
+
+async fn page(base: &str) -> serde_json::Value {
+    reqwest::Client::new()
+        .get(format!("{base}/v1/theme"))
+        .send()
+        .await
+        .expect("theme")
+        .json()
+        .await
+        .expect("json")
+}
+
+#[tokio::test]
 async fn the_actor_can_be_named_when_the_console_knows_who_is_signed_in() {
     let Some((base, state)) = boot().await else {
         eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
