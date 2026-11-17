@@ -91,6 +91,28 @@ export function useRenameDevice() {
 }
 
 /**
+ * Release a device from this home.
+ *
+ * The server calls it `unclaim`: the row stays (so the licence activation and the history receipts stay
+ * honest) but the device no longer belongs to anyone, and it must be paired again before it works in
+ * this or any home. Without this the app had no answer to "I gave that bulb away" — the tile sat in the
+ * list saying "Silent for 12d" forever.
+ */
+export function useRemoveDevice() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { deviceId: string; homeId: string }) =>
+      request<void>(`/devices/${input.deviceId}`, { method: 'DELETE' }),
+    onSuccess: (_result, input) => {
+      qc.removeQueries({ queryKey: qk.device(input.deviceId) });
+      void qc.invalidateQueries({ queryKey: qk.devices(input.homeId) });
+      qc.invalidateQueries({ queryKey: qk.dashboard(input.homeId) });
+    },
+  });
+}
+
+/**
  * Move a device into a room, or out of one (`roomId: null`).
  *
  * The API distinguishes "field absent" from "field null" so clearing a room is

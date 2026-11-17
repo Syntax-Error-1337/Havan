@@ -4,6 +4,7 @@ export { AreaChart } from './AreaChart';
 export { MeshBackground } from './MeshBackground';
 export { TabBar, type TabKey } from './TabBar';
 export { Glass } from './Glass';
+export { Confirm, useConfirm, type ConfirmOptions } from './Confirm';
 export { Icon, iconForCapability, iconForCategory, type IconName } from './Icon';
 export { Screen } from './Screen';
 export { Skeleton, HomeSkeleton } from './Skeleton';

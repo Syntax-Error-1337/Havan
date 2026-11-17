@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { Alert, Pressable, ScrollView, TextInput } from 'react-native';
+import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Box, AppText, Row, Screen, Section, Toggle } from '../../shared/ui';
+import { Box, AppText, Row, Screen, Section, Toggle, useConfirm } from '../../shared/ui';
 import {
   useCreateRoom,
   useDashboard,
@@ -185,21 +185,29 @@ function EditableRow({
 function RoomRow({ id, name, homeId }: { id: string; name: string; homeId?: string }) {
   const renameRoom = useRenameRoom(homeId);
   const deleteRoom = useDeleteRoom(homeId);
+  const { ask, sheet } = useConfirm();
 
   const confirmDelete = () => {
     // Deleting a room does not delete its devices — they become unassigned — but it
     // is still the one action here a person can regret, so it asks.
-    Alert.alert(`Delete ${name}?`, 'The devices in it stay, and become unassigned.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteRoom.mutate(id) },
-    ]);
+    // `Alert.alert` is a no-op under react-native-web, so this confirmation never appeared and the room
+    // was never deleted in the web build. The in-app sheet behaves the same everywhere.
+    ask({
+      title: `Delete ${name}?`,
+      message: 'The devices in it stay, and become unassigned.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => deleteRoom.mutate(id),
+    });
   };
 
   return (
-    <EditableRow
-      title={name}
-      value={name}
-      placeholder="Room name"
+    <>
+      {sheet}
+      <EditableRow
+        title={name}
+        value={name}
+        placeholder="Room name"
       onSave={(next) => renameRoom.mutate({ id, name: next })}
       right={
         <Pressable
@@ -212,7 +220,8 @@ function RoomRow({ id, name, homeId }: { id: string; name: string; homeId?: stri
             Delete
           </AppText>
         </Pressable>
-      }
-    />
+        }
+      />
+    </>
   );
 }

@@ -182,6 +182,46 @@ describe('device detail', () => {
     expect(view.getByText('Desk lamp')).toBeTruthy();
   });
 
+  it('removes a device only after asking, and says what removal means', async () => {
+    const calls = stubApi((url) => (url.includes('/rooms') ? [] : device));
+
+    const view = await renderPage();
+    await view.findByText('Desk lamp');
+
+    fireEvent.press(view.getByTestId('remove-device'));
+
+    // Nothing is sent until the person confirms: this is the one action here that cannot be undone by
+    // pressing something else.
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    expect(await view.findByText('Remove Desk lamp?')).toBeTruthy();
+    expect(view.getByText(/pair it again/)).toBeTruthy();
+
+    fireEvent.press(view.getByTestId('confirm-accept'));
+
+    await waitFor(() =>
+      expect(
+        calls.some((c) => c.method === 'DELETE' && c.url.includes('/devices/device-1')),
+      ).toBe(true),
+    );
+  });
+
+  it('does not offer removal to someone it would refuse', async () => {
+    globalThis.fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.endsWith('/homes')
+        ? [{ ...homeAsAdmin, role: 'member' }]
+        : url.includes('/rooms')
+          ? []
+          : device;
+      return { ok: true, status: 200, text: async () => JSON.stringify(body) } as Response;
+    }) as unknown as typeof fetch;
+
+    const view = await renderPage();
+    await view.findByText('Desk lamp');
+
+    expect(view.queryByTestId('remove-device')).toBeNull();
+  });
+
   it('sends a command when the switch is flipped', async () => {
     const calls = stubApi((url) => {
       if (url.includes('/rooms')) return [];

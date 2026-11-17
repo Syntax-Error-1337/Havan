@@ -1,7 +1,14 @@
 export { DeviceCard } from './ui/DeviceCard';
 export { DeviceTile } from './ui/DeviceTile';
 export { PointControl, controlFor, PillSwitch, titleFor } from './ui/controls';
-export { useDevices, useDevice, useRenameDevice, useSetPoint, useSetRoom } from './model/queries';
+export {
+  useDevices,
+  useDevice,
+  useRemoveDevice,
+  useRenameDevice,
+  useSetPoint,
+  useSetRoom,
+} from './model/queries';
 export { primaryPoint, type Device, type DevicePoint } from './model/types';
 export {
   expectedReportWords,

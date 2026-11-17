@@ -529,6 +529,37 @@ in `shared/lib/useInlineEdit` and are used by the settings list too, so the two 
 drift. Verified live as an admin: typed a new name in the hero, pressed Save, and the dashboard showed it
 without a reload; the demo account was returned to `member` and the device to its name afterwards.
 
+### Removing a device, and the endpoint that never worked
+
+A customer who gives a bulb away had no way to say so: the app offered no removal, and when the control
+was added the call failed with `503 unavailable`. The route had been documented since Phase 3 and the
+database was refusing it:
+
+```
+42501 new row violates row-level security policy for table "devices"
+```
+
+`home_member_scope` says "you may touch a device whose home you belong to". A release sets
+`home_id = NULL`, and Postgres applies a `FOR ALL` policy's USING expression to the *new* row too — so
+the row you leave behind can never be a member of the home it just left. Migrations `0038`/`0039` record
+the experiment: a `WITH CHECK` that allows NULL, a split into per-command policies, `USING (… OR home_id
+IS NULL)`. All of them still fail, for the same reason.
+
+The answer is not a cleverer policy. A release *changes a row's tenancy*, which is the exact operation RLS
+exists to prevent an ordinary writer from performing, so the write runs in a system context — and the
+authority moves to where it can be tested: `DeviceService::unclaim` requires an admin of the home.
+`backend/crates/api/tests/device_release.rs` proves both halves: **204** for an owner, and **403 with
+nothing changed** for a member (before this, any member could have called it).
+
+On the app side, "Remove this device" sits at the bottom of the device screen, quiet and destructive, and
+asks in an **in-app sheet** rather than `Alert.alert` — because `react-native-web` implements that as a
+no-op, which is also why "Delete room" had never worked in the web build. `shared/ui/Confirm` is a
+platform-neutral, branded, testable dialog, and both destructive actions now use it.
+
+Verified live: opened the device as an admin, pressed Remove, read the sheet, confirmed — the app returned
+to `/` and the device was gone from the home. The row survived with `state = 'released'`, which is what
+keeps the licence and the history honest.
+
 ### Colour is a token, or it is a bug
 
 `src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and

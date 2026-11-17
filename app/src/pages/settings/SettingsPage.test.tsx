@@ -93,22 +93,19 @@ describe('settings', () => {
 
   it('asks before deleting a room, because devices fall out of it', async () => {
     const calls = stubApi();
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-
     const view = await renderPage();
     await fireEvent.press(await view.findByLabelText('Delete Kitchen', {}, { timeout: 5000 }));
 
-    expect(alert).toHaveBeenCalled();
+    // An in-app sheet, not `Alert.alert`: react-native-web implements the native alert as a no-op, so
+    // this confirmation used to be invisible on web and the room was never deleted.
+    expect(await view.findByText('Delete Kitchen?')).toBeTruthy();
     expect(calls.find((c) => c.method === 'DELETE')).toBeUndefined();
 
-    // The destructive button is the one that actually deletes.
-    const buttons = alert.mock.calls[0]![2] as { style?: string; onPress?: () => void }[];
-    buttons.find((b) => b.style === 'destructive')!.onPress!();
+    await fireEvent.press(view.getByTestId('confirm-accept'));
 
     await waitFor(() => {
       expect(calls.find((c) => c.method === 'DELETE' && c.url.includes('/rooms/room-1'))).toBeTruthy();
     });
-    alert.mockRestore();
   });
 
   it('declares presence, because automations ask "is anyone home"', async () => {

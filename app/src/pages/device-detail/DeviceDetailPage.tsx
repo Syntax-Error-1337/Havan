@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, TextInput } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { Box, Screen, AppText, Glass, Icon, Sparkline, iconForCategory } from '../../shared/ui';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import {
+  Box,
+  Screen,
+  AppText,
+  Glass,
+  Icon,
+  Sparkline,
+  iconForCategory,
+  useConfirm,
+} from '../../shared/ui';
 import { PointControl } from '../../entities/device';
 import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
@@ -17,6 +26,7 @@ import {
   useDevice,
   useDeviceUpdate,
   useHistory,
+  useRemoveDevice,
   useRenameDevice,
   useSetPoint,
   useSetRoom,
@@ -41,6 +51,35 @@ export function DeviceDetailPage() {
   const setPoint = useSetPoint(id ?? '');
   const setRoom = useSetRoom();
   const rename = useRenameDevice();
+  const remove = useRemoveDevice();
+  const router = useRouter();
+  const { ask, sheet } = useConfirm();
+
+  /**
+   * Asking is the point: this is the one action on the screen that cannot be undone by pressing
+   * something else. The wording says what happens rather than "are you sure" — "sure" is a question
+   * about the person, and this sentence should be about the device.
+   */
+  const confirmRemove = () => {
+    if (!device?.home_id) return;
+    const homeId = device.home_id;
+    ask({
+      title: `Remove ${device.name}?`,
+      message:
+        'It leaves this home and stops appearing in the app. To use it again, pair it again. Its licence stays with the platform and its history is kept.',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep it',
+      destructive: true,
+      onConfirm: () =>
+        remove.mutate(
+          { deviceId: device.id, homeId },
+          // Back to the home it is no longer in: leaving the customer on a page about a device they just
+          // removed is how an app feels broken.
+          { onSuccess: () => router.replace('/') },
+        ),
+    });
+  };
+
   // Hooks above the early returns, as always: `device` is undefined until the query resolves.
   const nameEdit = useInlineEdit(device?.name ?? '', (name) => {
     if (id) rename.mutate({ deviceId: id, name });
@@ -49,7 +88,7 @@ export function DeviceDetailPage() {
   const { data: homes } = useHomes(false);
   // Renaming is an admin action on the server. A control that exists only to be refused is worse than
   // no control: the member taps their device's name, types, presses Save and is told no.
-  const canRename = canManage(homes?.find((h) => h.id === device?.home_id)?.role ?? 'member');
+  const canManageHome = canManage(homes?.find((h) => h.id === device?.home_id)?.role ?? 'member');
 
   if (isPending) {
     return (
@@ -76,6 +115,7 @@ export function DeviceDetailPage() {
 
   return (
     <Screen>
+      {sheet}
       <Box p="lg" gap="lg">
         {/* The hero is the device's own category: a bulb glows violet, a lock pink, a camera blue —
             chosen from data, so a product we have never seen still looks deliberate. */}
@@ -134,7 +174,7 @@ export function DeviceDetailPage() {
                 <AppText tone="muted">Cancel</AppText>
               </Pressable>
             </Box>
-          ) : canRename ? (
+          ) : canManageHome ? (
             <Pressable
               onPress={nameEdit.open}
               testID="rename-device"
@@ -260,6 +300,30 @@ export function DeviceDetailPage() {
           <AppText tone="danger" variant="caption">
             {setPoint.error.message}
           </AppText>
+        ) : null}
+
+        {/* Last, quiet, and destructive: the bottom of the screen is where "I am done with this" lives,
+            not next to the switch someone presses ten times a day. */}
+        {canManageHome ? (
+          <Box gap="xs" style={{ paddingTop: tokens.space.md }}>
+            <Pressable
+              onPress={confirmRemove}
+              accessibilityRole="button"
+              accessibilityHint="The device leaves this home and must be paired again to come back"
+              testID="remove-device"
+              disabled={remove.isPending}
+              style={{ alignSelf: 'center', paddingVertical: tokens.space.sm }}
+            >
+              <AppText variant="caption" tone="danger">
+                {remove.isPending ? 'Removing…' : 'Remove this device'}
+              </AppText>
+            </Pressable>
+            {remove.isError ? (
+              <AppText variant="tiny" tone="danger" style={{ textAlign: 'center' }}>
+                {remove.error instanceof Error ? remove.error.message : 'That device was not removed.'}
+              </AppText>
+            ) : null}
+          </Box>
         ) : null}
       </Box>
     </Screen>

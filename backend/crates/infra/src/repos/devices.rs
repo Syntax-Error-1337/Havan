@@ -483,8 +483,22 @@ impl DeviceRepo for PgDevices {
         Ok(())
     }
 
+    /// Release a device from its home.
+    ///
+    /// Runs as the system on purpose. A release *changes the row's tenancy* — the thing RLS exists to
+    /// stop an ordinary writer from doing — and no policy can express it: Postgres applies a policy's
+    /// USING expression to the new row as well, and "you are a member of this device's home" is not true
+    /// of a row with no home. (0038 tried; 0039 reverts it with the test results in the comment.)
+    ///
+    /// The authorisation therefore lives where it can be tested: `DeviceService::unclaim` requires an
+    /// admin of the home before calling this, and `tests/device_release.rs` proves both halves — a 204
+    /// for an admin, a 403 with nothing changed for a member.
     async fn unclaim(&self, device_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
-        let mut tx = self.pg.scoped(&ctx_for(user_id)).await?;
+        let _ = user_id;
+        let mut tx = self
+            .pg
+            .scoped(&kernel::TenantCtx::system("device-release"))
+            .await?;
         let n = sqlx::query(
             "UPDATE devices SET home_id = NULL, room_id = NULL, state = 'released' WHERE id = $1",
         )
