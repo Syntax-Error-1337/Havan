@@ -32,7 +32,10 @@ test('every vendor is listed with what they have live', async ({ page }) => {
   const table = page.getByRole('region', { name: 'Vendors' });
   await expect(table.getByRole('columnheader', { name: 'Status' })).toBeVisible();
   await expect(table.getByRole('columnheader', { name: 'Devices' })).toBeVisible();
-  await expect(table.getByRole('columnheader', { name: 'Licences' })).toBeVisible();
+  // Two ceilings, named: activations against granted licences, and the device cap that refuses the next
+  // activation even when licences remain.
+  await expect(table.getByRole('columnheader', { name: 'Activated' })).toBeVisible();
+  await expect(table.getByRole('columnheader', { name: 'Device cap' })).toBeVisible();
 
   // The seeded vendor is a known row, so the table is checked against a fact rather than a count.
   await expect(page.getByTestId('vendor-acme')).toBeVisible();
@@ -50,25 +53,35 @@ test('opening a vendor answers the phone call', async ({ page }) => {
   await expect(page.getByRole('columnheader', { name: 'Serial' })).toBeVisible();
 });
 
+/**
+ * A fixed slug, not one per run.
+ *
+ * These two tests used to onboard a vendor named `e2e-<timestamp>` on every execution — fifty-five of them
+ * accumulated, so the operator's vendor book opened with a page of `E2E Vendor` and `To Suspend` and the
+ * number in its header (55 vendors) described the test suite rather than the business. Onboarding is
+ * idempotent on a slug the server already knows, so a fixed one is enough.
+ */
 test('a vendor is onboarded from the console', async ({ page }) => {
-  const slug = `e2e-${Date.now().toString(36)}`;
+  const slug = 'e2e-onboard';
 
   await page.getByRole('button', { name: 'Onboard vendor' }).click();
   await page.getByLabel('Vendor slug').fill(slug);
-  await page.getByLabel('Vendor name').fill('E2E Vendor');
+  // Named for what it is: an operator scanning the vendor book should not have to guess which rows came
+  // from the test suite.
+  await page.getByLabel('Vendor name').fill('Test vendor (e2e)');
   await page.getByRole('button', { name: 'Create vendor' }).click();
 
   const row = page.getByTestId(`vendor-${slug}`);
   await expect(row).toBeVisible();
-  await expect(row).toContainText('E2E Vendor');
+  await expect(row).toContainText('Test vendor (e2e)');
   await expect(row).toContainText('active');
 });
 
 test('suspending a vendor is one press and says what it means', async ({ page }) => {
-  const slug = `sus-${Date.now().toString(36)}`;
+  const slug = 'e2e-suspend';
   await page.getByRole('button', { name: 'Onboard vendor' }).click();
   await page.getByLabel('Vendor slug').fill(slug);
-  await page.getByLabel('Vendor name').fill('To Suspend');
+  await page.getByLabel('Vendor name').fill('Test vendor (suspend)');
   await page.getByRole('button', { name: 'Create vendor' }).click();
 
   const row = page.getByTestId(`vendor-${slug}`);

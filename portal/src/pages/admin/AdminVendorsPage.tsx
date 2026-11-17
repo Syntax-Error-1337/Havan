@@ -17,6 +17,12 @@ export function AdminVendorsPage() {
   const [slug, setSlug] = useState('');
   const [name, setName] = useState('');
 
+  // Searching the vendor book is the operator's most common act: a support call starts with a name, a slug
+  // from a log line, or "who is suspended". Fifty-five rows and no way to ask a question about them is a
+  // list, not a console.
+  const [q, setQ] = useState('');
+  const [only, setOnly] = useState<'all' | 'active' | 'suspended'>('all');
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     await create.mutateAsync({ slug: slug.trim(), name: name.trim() });
@@ -29,6 +35,15 @@ export function AdminVendorsPage() {
   if (error) return <p className="error">{error.message}</p>;
 
   const suspended = vendors.filter((v) => v.status === 'suspended').length;
+
+  const needle = q.trim().toLowerCase();
+  const rows = vendors.filter(
+    (v) =>
+      (only === 'all' || v.status === only) &&
+      (needle === '' ||
+        v.name.toLowerCase().includes(needle) ||
+        v.slug.toLowerCase().includes(needle)),
+  );
 
   return (
     <>
@@ -75,6 +90,29 @@ export function AdminVendorsPage() {
         </form>
       ) : null}
 
+      <div className="row spread" style={{ marginBottom: 12, gap: 12 }}>
+        <input
+          className="input"
+          style={{ maxWidth: 320 }}
+          placeholder="Search a vendor name or slug"
+          aria-label="Search vendors"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <div className="row" style={{ gap: 6 }}>
+          {(['all', 'active', 'suspended'] as const).map((value) => (
+            <button
+              key={value}
+              className={`btn ${only === value ? 'btn--primary' : 'btn--quiet'}`}
+              aria-pressed={only === value}
+              onClick={() => setOnly(value)}
+            >
+              {value === 'all' ? 'All' : value === 'active' ? 'Active' : 'Suspended'}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <TableFrame label="Vendors">
         <table className="table">
           <thead>
@@ -83,15 +121,21 @@ export function AdminVendorsPage() {
               <th>Status</th>
               <th style={{ textAlign: 'right' }}>Products</th>
               <th style={{ textAlign: 'right' }}>Devices</th>
-              <th style={{ textAlign: 'right' }}>Licences</th>
-              <th style={{ textAlign: 'right' }}>Quota</th>
+              {/* Two different ceilings, and the old headers named neither: "Licences 0 / 0" is activated
+                  of granted, and "Quota" is a device cap that refuses the *next* activation. */}
+              <th style={{ textAlign: 'right' }} title="Devices activated / licences granted">
+                Activated
+              </th>
+              <th style={{ textAlign: 'right' }} title="Device cap; the next activation is refused at the cap">
+                Device cap
+              </th>
               <th>
                 <span className="muted">Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            {vendors.map((v) => (
+            {rows.map((v) => (
               <tr key={v.id} data-testid={`vendor-${v.slug}`}>
                 <td>
                   <Link to={`/admin/vendors/${v.id}`}>
@@ -109,9 +153,13 @@ export function AdminVendorsPage() {
                 <td style={{ textAlign: 'right' }}>{v.products}</td>
                 <td style={{ textAlign: 'right' }}>{v.devices}</td>
                 <td style={{ textAlign: 'right' }}>
-                  {v.used} / {v.granted}
+                  {v.used.toLocaleString()} / {v.granted.toLocaleString()}
                 </td>
-                <td style={{ textAlign: 'right' }}>{v.quota_devices ?? 'none'}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {v.quota_devices === null || v.quota_devices === undefined
+                    ? 'none'
+                    : v.quota_devices.toLocaleString()}
+                </td>
                 <td style={{ textAlign: 'right' }}>
                   <button
                     className="btn"
@@ -130,6 +178,11 @@ export function AdminVendorsPage() {
             ))}
           </tbody>
         </table>
+        {rows.length === 0 ? (
+          <p className="muted" style={{ padding: 24 }} data-testid="no-vendors-match">
+            No vendor matches that. {q ? 'Clear the search' : 'Pick another status'} to see them all.
+          </p>
+        ) : null}
       </TableFrame>
 
       <p className="muted" style={{ marginTop: 16 }}>

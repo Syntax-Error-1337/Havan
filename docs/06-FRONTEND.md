@@ -154,6 +154,26 @@ Three decisions worth knowing:
 
 ## Portal (React)
 
+### The vendor book described the test suite
+
+The operator console opened on **55 vendors**. Thirty-six of them were `E2E Vendor` and `To Suspend`, one per
+admin end-to-end run, each with a `e2e-<timestamp>` slug. The header said "55 vendors · 1 suspended" — a
+number about the suite, in the place where the operator reads how big the business is.
+
+The two specs onboarded with a fresh timestamp every execution. They now onboard `e2e-onboard` and
+`e2e-suspend` — fixed slugs, so a second run finds the row it made and onboarding is a no-op — and name them
+`Test vendor (e2e)` / `Test vendor (suspend)`, because an operator scanning the book should not have to guess
+which rows came from a test. Deleting the debris took the count from 55 to 19 real vendors, and two further
+suite runs moved it by zero.
+
+**A list is not a console.** The vendors table had no search, no filter, and two columns that named neither of
+the ceilings they showed: `Licences 0 / 0` is *activated of granted*, and `Quota 50` refuses the **next**
+activation even when licences remain. Now: search over name and slug (a support call starts with one or the
+other, or with a line from a log), `All / Active / Suspended` chips, an explicit empty state, and headers
+`Activated` and `Device cap` with the definitions in their tooltips.
+
+Operator console **6 → 8/10**.
+
 ### Test data is data
 
 The vendor portal's first screen, on the seeded account, was **eighteen products named `E2E Bulb`**, each
