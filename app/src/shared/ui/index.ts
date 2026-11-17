@@ -1,7 +1,6 @@
 export { Box, AppText } from './Box';
 export { Button } from './Button';
 export { AreaChart } from './AreaChart';
-export { Canvas } from './Canvas';
 export { MeshBackground } from './MeshBackground';
 export { TabBar, type TabKey } from './TabBar';
 export { Glass } from './Glass';
