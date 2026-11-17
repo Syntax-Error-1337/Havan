@@ -67,8 +67,9 @@ export function DashboardPage() {
     if (!homeId && homes && homes.length > 0) setHome(homes[0]!.id);
   }, [homeId, homes, setHome]);
 
-  // Live state for whichever home is open.
-  useHomeStream(homeId);
+  // Live state for whichever home is open. The status is shown, not swallowed: a screen that has
+  // stopped hearing from the house must say so rather than keep showing what it last heard.
+  const stream = useHomeStream(homeId);
 
   // A page at a time. The footer offers the rest: with a thousand devices the payload is ~3 MB, and
   // that should be a decision the person makes, not a cost every cold start pays.
@@ -185,6 +186,22 @@ export function DashboardPage() {
                 clock={clock}
                 onOpenHomes={() => router.push('/homes')}
               />
+
+              {stream === 'reconnecting' ? (
+                <Box row gap="xs" style={{ alignItems: 'center' }} testID="stream-reconnecting">
+                  <Box
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: color.warning,
+                    }}
+                  />
+                  <AppText variant="tiny" tone="muted">
+                    Reconnecting — showing what was last reported
+                  </AppText>
+                </Box>
+              ) : null}
 
               {/* Searching is a question about the list. While it is being asked, the rail, the hero
                   and the scenes step aside: they are the home's state, not the answer, and leaving

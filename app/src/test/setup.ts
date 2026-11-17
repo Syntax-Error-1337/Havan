@@ -42,6 +42,8 @@ class TestSocket {
 
   sent: string[] = [];
   closed = false;
+  /** 0 CONNECTING, 1 OPEN, 3 CLOSED — the three a reconnect decision actually reads. */
+  readyState = 0;
 
   constructor(readonly url: string) {
     TestSocket.instances.push(this);
@@ -52,11 +54,20 @@ class TestSocket {
   }
 
   close() {
+    this.readyState = 3;
     this.closed = true;
   }
 
   open() {
+    this.readyState = 1;
     this.onopen?.();
+  }
+
+  /** The server or the network drops the connection: closed, and the client is told. */
+  terminate() {
+    this.readyState = 3;
+    this.closed = true;
+    this.onclose?.();
   }
 
   emit(message: unknown) {
@@ -73,6 +84,8 @@ class TestSocket {
   TestSocket.instances[TestSocket.instances.length - 1];
 // Sockets accumulate across tests; start each one from a clean slate so a test
 // cannot emit into a connection that was closed by the previous test.
+(globalThis as unknown as { __socketCount: () => number }).__socketCount = () =>
+  TestSocket.instances.length;
 (globalThis as unknown as { __resetSockets: () => void }).__resetSockets = () => {
   TestSocket.instances = [];
 };

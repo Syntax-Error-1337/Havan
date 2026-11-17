@@ -1,9 +1,10 @@
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
+import { AppState } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { testQueryClient } from '../../test/query';
 import { Text } from 'react-native';
 
-import { useHomeStream } from './useHomeStream';
+import { retryDelayMs, useHomeStream } from './useHomeStream';
 import { qk } from '../../shared/api/keys';
 import { useSession } from '../../entities/session';
 import type { Device } from '../../entities/device/model/types';
@@ -18,7 +19,10 @@ type TestSocket = {
   url: string;
   sent: string[];
   closed: boolean;
+  readyState: number;
   open: () => void;
+  /** The network drops it: closed, and the client is told — what a lost cell tower looks like. */
+  terminate: () => void;
   emit: (message: unknown) => void;
   emitRaw: (data: string) => void;
 };
@@ -147,4 +151,131 @@ describe('home stream', () => {
 
     expect(socket.closed).toBe(true);
   });
+
+  /**
+   * A socket that never comes back works in a demo and dies on a train. These tests are about the two
+   * things a real phone does to a connection: lose it, and suspend it.
+   *
+   * The retry *timer* is checked through `retryDelayMs` rather than by advancing a fake clock: mounting
+   * a component under jest's fake timers leaves the next mount in this file without an effect at all,
+   * which is an artefact of the test environment rather than anything a customer would meet.
+   */
+  it('says reconnecting the moment the connection drops, and does not spin', async () => {
+    const { view } = await mountWithStatus();
+    const socket = lastSocket();
+    await act(async () => {
+      socket.open();
+    });
+    expect(view.getByText('live')).toBeTruthy();
+
+    await act(async () => {
+      socket.terminate();
+    });
+
+    expect(view.getByText('reconnecting')).toBeTruthy();
+    // No hot loop: the next socket is a scheduled retry, not an immediate new connection.
+    expect(lastSocket()).toBe(socket);
+  });
+
+  it('opens another socket when the app comes back, and refetches what it held', async () => {
+    const listeners: ((state: string) => void)[] = [];
+    const spy = jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation(((_: string, handler: (state: string) => void) => {
+        listeners.push(handler);
+        return { remove: () => undefined } as never;
+      }) as never);
+
+    try {
+      const { view, client } = await mountWithStatus();
+      const invalidate = jest.spyOn(client, 'invalidateQueries');
+      const first = lastSocket();
+      await act(async () => {
+        first.open();
+      });
+
+      // The phone went to the background, which is what suspends the socket on a real device.
+      await act(async () => {
+        first.terminate();
+      });
+      expect(listeners).toHaveLength(1);
+
+      // The customer unlocks it long before the backoff timer would have fired.
+      await act(async () => {
+        listeners[0]?.('active');
+      });
+
+      const second = lastSocket();
+      expect(second).not.toBe(first);
+
+      // Being back is not being up to date: the window spent disconnected may have hidden changes,
+      // so the resync happens when the new socket is open, not when it is created.
+      expect(invalidate).not.toHaveBeenCalled();
+      await act(async () => {
+        second.open();
+      });
+      expect(view.getByText('live')).toBeTruthy();
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.dashboard('home-1') });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.devices('home-1') });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('does not reconnect while the app is already connected', async () => {
+    const listeners: ((state: string) => void)[] = [];
+    const spy = jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation(((_: string, handler: (state: string) => void) => {
+        listeners.push(handler);
+        return { remove: () => undefined } as never;
+      }) as never);
+
+    try {
+      await mountWithStatus();
+      const socket = lastSocket();
+      await act(async () => {
+        socket.open();
+      });
+
+      await act(async () => {
+        listeners[0]?.('active');
+      });
+
+      // A resume event on a healthy socket must not throw the subscription away and re-auth.
+      expect(lastSocket()).toBe(socket);
+      expect(socket.closed).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('backs off further each time, and stops at half a minute', () => {
+    expect(retryDelayMs(0)).toBe(500);
+    expect(retryDelayMs(1)).toBe(1000);
+    expect(retryDelayMs(2)).toBe(2000);
+    expect(retryDelayMs(6)).toBe(30_000);
+    // A phone that has been offline for an hour must still retry — with a ceiling, not a growing wait.
+    expect(retryDelayMs(50)).toBe(30_000);
+    expect(retryDelayMs(-1)).toBe(500);
+  });
 });
+
+/** A probe that renders the stream status, so a state the customer can see can be asserted. */
+async function mountWithStatus() {
+  function StatusProbe() {
+    return <Text>{useHomeStream('home-1')}</Text>;
+  }
+
+  const client = testQueryClient();
+  client.setQueryData(qk.devices('home-1'), [device()]);
+  client.setQueryData(qk.device('d1'), device());
+
+  const view = await render(
+    <QueryClientProvider client={client}>
+      <StatusProbe />
+    </QueryClientProvider>,
+  );
+
+  return { client, view };
+}

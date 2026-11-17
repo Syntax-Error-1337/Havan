@@ -374,6 +374,33 @@ than from taste:
   accents gained a daylight set (`categoryAccentLight`) because cyan at 1.6:1 on a
   white card is not an icon.
 
+### The live stream has to survive a train
+
+`useHomeStream` holds one socket per signed-in app and writes every pushed change into the query cache,
+so an open screen repaints without a refetch. The version that shipped first opened the socket once and
+never reopened it, which works in a demo and fails the moment a phone leaves the house.
+
+What it does now:
+
+- **Reconnects** with a jittered backoff — 500 ms doubling to a 30 s ceiling (`retryDelayMs`), plus up to
+  250 ms of jitter so a hundred thousand phones that lost the same cell tower do not return in step.
+- **Resyncs after a gap.** A reconnection means events were missed, so the dashboard and device queries
+  are invalidated *when the new socket opens* — not when it is created. Being back is not being up to date.
+- **Reconnects at once on resume.** A backgrounded phone is not a disconnected customer: `AppState`
+  returning to `active` with a dead or closed socket reconnects immediately instead of waiting out a timer
+  set twenty minutes earlier. A resume on a healthy socket does nothing.
+- **Says so.** The dashboard renders **"Reconnecting — showing what was last reported"** while the stream
+  is down; the status is a return value, not a swallowed detail, because a screen that silently freezes on
+  yesterday's temperature is worse than one that admits it is catching up.
+
+Verified by stopping the API under a signed-in dashboard: the notice appeared, and once the API was back
+the app returned to live on its own within ~4 s, with no user action and no manual refresh.
+
+The retry timer itself is unit-tested through `retryDelayMs` rather than by advancing a fake clock:
+mounting a component under jest's fake timers leaves the next mount in the file without an effect, which
+is an artefact of the environment, not something a customer meets. The drop, the resume and the status
+transition are all exercised for real against the test socket.
+
 ### Colour is a token, or it is a bug
 
 `src/shared/config/tokens.ts` is the only file in the app allowed to contain a colour value, and
