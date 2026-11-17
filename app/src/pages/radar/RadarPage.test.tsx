@@ -127,7 +127,20 @@ describe('radar', () => {
     await fireEvent.press(await view.findByText('Acme Bulb', {}, { timeout: 6_000 }));
 
     expect(await view.findByText('Which network should it join?')).toBeTruthy();
-    expect(view.getByPlaceholderText('Network name')).toBeTruthy();
-    expect(view.getByPlaceholderText('Password')).toBeTruthy();
+    // Labelled, not placeholder-only, and found the way a person finds them.
+    expect(view.getByLabelText('Network name')).toBeTruthy();
+    expect(view.getByLabelText('Wi-Fi password')).toBeTruthy();
+
+    // The two reasons a first pairing fails, said before it happens: a 5 GHz-only network, and a password
+    // typed blind on a phone keyboard.
+    expect(view.getByText(/2\.4 GHz only/)).toBeTruthy();
+    const password = view.getByLabelText('Wi-Fi password');
+    expect(password.props.secureTextEntry).toBe(true);
+    await fireEvent.press(view.getByLabelText('Show Wi-Fi password'));
+    // Wait for the re-render rather than reading the node from the frame the press happened in.
+    expect(
+      (await view.findByLabelText('Hide Wi-Fi password')) !== null,
+    ).toBe(true);
+    expect(view.getByLabelText('Wi-Fi password').props.secureTextEntry).toBe(false);
   });
 });

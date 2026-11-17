@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, TextInput } from 'react-native';
+import { Animated, Easing, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 
@@ -337,6 +337,7 @@ function WifiForm({
 }) {
   const [ssid, setSsid] = useState('');
   const [password, setPassword] = useState('');
+  const [reveal, setReveal] = useState(false);
 
   const field = {
     backgroundColor: tokens.color.surface,
@@ -357,23 +358,61 @@ function WifiForm({
         </AppText>
       </Box>
 
-      <TextInput
-        placeholder="Network name"
-        placeholderTextColor={tokens.color.muted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        value={ssid}
-        onChangeText={setSsid}
-        style={field}
-      />
-      <TextInput
-        placeholder="Password"
-        placeholderTextColor={tokens.color.muted}
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        style={field}
-      />
+      <Box gap="xs">
+        <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
+          NETWORK NAME
+        </AppText>
+        <TextInput
+          placeholder="The name your phone shows"
+          placeholderTextColor={tokens.color.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="off"
+          accessibilityLabel="Network name"
+          value={ssid}
+          onChangeText={setSsid}
+          style={field}
+        />
+        {/* The most common reason a first pairing fails, said before it happens: these devices are 2.4 GHz
+            only, and a house with "Home" and "Home_5G" looks like one network until the device never
+            appears. */}
+        <AppText variant="tiny" tone="muted">
+          Most smart devices join 2.4 GHz only. If you can see two names, pick the one without “5G”.
+        </AppText>
+      </Box>
+
+      <Box gap="xs">
+        <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
+          WI-FI PASSWORD
+        </AppText>
+        <View style={{ justifyContent: 'center' }}>
+          <TextInput
+            placeholder="The password for that network"
+            placeholderTextColor={tokens.color.muted}
+            secureTextEntry={!reveal}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="off"
+            accessibilityLabel="Wi-Fi password"
+            value={password}
+            onChangeText={setPassword}
+            style={field}
+          />
+          {/* A wrong Wi-Fi password is the other half of "the device never appeared", and it is typed on a
+              phone keyboard with no other way to check it. */}
+          <Pressable
+            onPress={() => setReveal((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={reveal ? 'Hide Wi-Fi password' : 'Show Wi-Fi password'}
+            hitSlop={10}
+            style={{ position: 'absolute', right: 14 }}
+          >
+            <AppText variant="tiny" tone="muted">
+              {reveal ? 'HIDE' : 'SHOW'}
+            </AppText>
+          </Pressable>
+        </View>
+      </Box>
 
       {error ? <AppText tone="danger" variant="caption">{error}</AppText> : null}
 

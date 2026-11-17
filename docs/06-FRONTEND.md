@@ -815,6 +815,25 @@ drawn for anyone, and the refusals were silent — the demo account *was* a memb
 which is how a screen looks broken when the server is behaving correctly. The role ships with the homes list,
 so the controls are drawn only when `canManage(role)` allows them, with the reason in the section footnote.
 
+### The two reasons a first pairing fails
+
+The Wi-Fi form — the step a customer must complete for any device to exist at all — asked for `Network name`
+and `Password` as placeholder-only fields and nothing else. Both reasons a first pairing fails were unspoken:
+
+- **These devices are 2.4 GHz only.** A house with `Home` and `Home_5G` looks like one network until the device
+  never appears, and the customer has no way to know which name was the wrong one. The form says it before the
+  mistake: *"Most smart devices join 2.4 GHz only. If you can see two names, pick the one without “5G”."*
+- **A Wi-Fi password is typed blind on a phone keyboard**, and a typo here looks exactly like a broken device.
+  There is a `SHOW` / `HIDE` control, as on the sign-in screen.
+
+Both fields are labelled, not placeholder-only, and the password field carries `autoComplete="off"` so a browser
+does not offer to fill *the platform's* password into *the router's* field.
+
+Verified through the pairing suite (real render, mock radio): the labels are found the way a person finds them,
+the 2.4 GHz line is present, and the toggle flips `secureTextEntry`. What is *not* verified is the step after
+this one — handing credentials to a real device over BLE — because the browser has no radio; that remains a
+hardware-day item.
+
 ### The first screen a customer ever sees
 
 The sign-in screen scored **5/10** as a white-label first impression, and the reasons were all "the form does
