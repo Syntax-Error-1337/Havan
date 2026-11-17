@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Switch, TextInput } from 'react-native';
 
-import { Box, AppText, Button, Screen, ChipPicker } from '../../shared/ui';
+import {
+  Box,
+  AppText,
+  Button,
+  ChipPicker,
+  Screen,
+  ValueField,
+  defaultPointValue,
+  readablePoint,
+} from '../../shared/ui';
 import { tokens } from '../../app-shell/theme';
 import { useHomes } from '../../entities/home';
 import { useDevices } from '../../entities/device';
@@ -44,9 +53,11 @@ export function AutomationsPage() {
       >
         <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <Box gap="xs">
-            <AppText variant="display">Automatic</AppText>
+            <AppText variant="display">Automations</AppText>
             <AppText variant="caption" tone="muted">
-              {rules?.length ? `${rules.length} rule(s)` : 'Nothing runs on its own yet'}
+              {rules?.length
+                ? `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}`
+                : 'Nothing runs on its own yet'}
             </AppText>
           </Box>
           <Button
@@ -65,13 +76,25 @@ export function AutomationsPage() {
 
         {isLoading ? <AppText tone="muted">Loading…</AppText> : null}
 
-        {!isLoading && rules?.length === 0 ? (
-          <Box gap="sm" p="lg" radius="md" bg="surface" border>
-            <AppText variant="title">No rules</AppText>
-            <AppText tone="muted">
-              A rule is a trigger, an optional condition and one or more actions. Turn a lamp on at
-              sunset, or when a door sensor opens.
-            </AppText>
+        {/* Not while the form is open: an empty-state card underneath the editor that just appeared is the
+          screen telling the customer two different things at once. */}
+      {!isLoading && rules?.length === 0 && !creating ? (
+          <Box gap="md" p="lg" radius="md" bg="surface" border>
+            <Box gap="xs">
+              <AppText variant="title">No automations yet</AppText>
+              <AppText tone="muted">
+                A rule is a trigger, an optional condition and one or more actions. Turn a lamp on at
+                sunset, or when a door sensor opens.
+              </AppText>
+            </Box>
+            {/* The only way to start was a ghost "New rule" link in the header, two lines above a card
+                that had just explained what a rule is. An empty state that ends without an action is a
+                screen that ends with the customer's own guess. */}
+            {homeId ? (
+              <Box row>
+                <Button label="Create your first rule" onPress={() => setCreating(true)} />
+              </Box>
+            ) : null}
           </Box>
         ) : null}
 
@@ -232,31 +255,34 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
         style={field}
       />
 
-      <AppText variant="caption" tone="muted">
-        When
-      </AppText>
-      <Box row gap="sm">
-        <Button
-          label="Every few minutes"
-          variant={kind === 'schedule' ? 'primary' : 'ghost'}
-          onPress={() => setKind('schedule')}
-        />
-        <Button
-          label="A device changes"
-          variant={kind === 'device_state' ? 'primary' : 'ghost'}
-          onPress={() => setKind('device_state')}
-        />
-      </Box>
+      {/* "When" was a ghost text button beside a full-width primary one — two different controls from two
+          different design systems, for one either/or question. It is a chip row like every other choice here. */}
+      <ChipPicker
+        label="When"
+        value={kind}
+        options={[
+          { id: 'schedule', label: 'Every few minutes' },
+          { id: 'device_state', label: 'A device changes' },
+        ]}
+        onChange={(next) => setKind(next === 'device_state' ? 'device_state' : 'schedule')}
+      />
 
       {kind === 'schedule' ? (
-        <TextInput
-          placeholder="Minutes between runs"
-          placeholderTextColor={tokens.color.muted}
-          keyboardType="number-pad"
-          value={minutes}
-          onChangeText={setMinutes}
-          style={field}
-        />
+        <Box gap="xs">
+          {/* A bare "5" under a schedule is a number with no unit. */}
+          <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
+            EVERY (MINUTES)
+          </AppText>
+          <TextInput
+            placeholder="5"
+            placeholderTextColor={tokens.color.muted}
+            keyboardType="number-pad"
+            value={minutes}
+            onChangeText={setMinutes}
+            accessibilityLabel="Minutes between runs"
+            style={field}
+          />
+        </Box>
       ) : (
         <>
           <ChipPicker
@@ -268,19 +294,35 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
               setSourceCode(null);
             }}
           />
-          <ChipPicker
-            label="Point"
-            value={sourceCode}
-            options={points(source).map((p) => ({ id: p.code, label: p.code }))}
-            onChange={setSourceCode}
-          />
-          <TextInput
-            placeholder="Becomes (true / false / number)"
-            placeholderTextColor={tokens.color.muted}
-            value={sourceValue}
-            onChangeText={setSourceValue}
-            style={field}
-          />
+          {source ? (
+            points(source).length === 0 ? (
+              <AppText variant="caption" tone="muted">
+                This device has nothing a rule can watch.
+              </AppText>
+            ) : (
+              <ChipPicker
+                label="What should it watch"
+                value={sourceCode}
+                options={points(source).map((p) => ({ id: p.code, label: readablePoint(p.code, p) }))}
+                onChange={(code) => {
+                  setSourceCode(code);
+                  setSourceValue(defaultPointValue(points(source).find((p) => p.code === code)));
+                }}
+              />
+            )
+          ) : (
+            <AppText variant="caption" tone="muted">
+              Pick the device whose change should start the rule.
+            </AppText>
+          )}
+          {sourceCode ? (
+            <ValueField
+              label="WHEN IT BECOMES"
+              point={points(source).find((p) => p.code === sourceCode) ?? {}}
+              value={sourceValue}
+              onChange={setSourceValue}
+            />
+          ) : null}
         </>
       )}
 
@@ -296,19 +338,34 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
           setTargetCode(null);
         }}
       />
-      <ChipPicker
-        label="Point"
-        value={targetCode}
-        options={points(target).map((p) => ({ id: p.code, label: p.code }))}
-        onChange={setTargetCode}
-      />
-      <TextInput
-        placeholder="Set to (true / false / number)"
-        placeholderTextColor={tokens.color.muted}
-        value={targetValue}
-        onChangeText={setTargetValue}
-        style={field}
-      />
+      {target ? (
+        points(target).length === 0 ? (
+          <AppText variant="caption" tone="muted">
+            This device has nothing a rule can change.
+          </AppText>
+        ) : (
+          <ChipPicker
+            label="What should happen"
+            value={targetCode}
+            options={points(target).map((p) => ({ id: p.code, label: readablePoint(p.code, p) }))}
+            onChange={(code) => {
+              setTargetCode(code);
+              setTargetValue(defaultPointValue(points(target).find((p) => p.code === code)));
+            }}
+          />
+        )
+      ) : (
+        <AppText variant="caption" tone="muted">
+          Pick the device the rule should change.
+        </AppText>
+      )}
+      {targetCode ? (
+        <ValueField
+          point={points(target).find((p) => p.code === targetCode) ?? {}}
+          value={targetValue}
+          onChange={setTargetValue}
+        />
+      ) : null}
 
       {create.error instanceof Error ? (
         <AppText variant="caption" tone="danger">

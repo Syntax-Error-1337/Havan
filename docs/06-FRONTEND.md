@@ -815,6 +815,32 @@ drawn for anyone, and the refusals were silent — the demo account *was* a memb
 which is how a screen looks broken when the server is behaving correctly. The role ships with the homes list,
 so the controls are drawn only when `canManage(role)` allows them, with the reason in the section footnote.
 
+### The automations editor asked for a wire format
+
+`/automations` scored **7/10** and the empty state was the smaller half of it. The title said **`Automatic`**
+while the tab, the route and the product all say *Automations*; the empty card explained what a rule is and
+then stopped, leaving the only way to start as a ghost `New rule` link two lines above it; and the editor asked
+for **`Point`** with the choices `switch.power`, `brightness.level`, `color_temp.kelvin` and a text box labelled
+`Set to (true / false / number)`.
+
+Same disease as the scenes editor one iteration earlier, and the cure is now shared: `ValueField`,
+`readablePoint` and `defaultPointValue` moved into `shared/ui`, so both editors label a point `Power` /
+`Level (%)` and draw a switch for a switch, a numeric field with its unit for a level, and text for text. Two
+copies of that control is how two slightly different controls happen — the reason `ChipPicker` exists at all.
+
+Three more from the same review:
+
+- **The empty state keeps its own action** (`Create your first rule`), and it is hidden while the form is open —
+  a card under the editor that says "no automations" is the screen contradicting itself in two places.
+- **`When` was a ghost text button beside a full-width primary one** — two controls from two design systems for
+  one either/or question. It is a chip row now, like every other choice on the screen.
+- **A bare `5`** under a schedule is a number with no unit; it says `EVERY (MINUTES)`.
+
+Also fixed in `ChipPicker` itself: an unselected chip printed its label in muted grey on a surface that is
+nearly the same grey, so half the options were there and unreadable. Selection is carried by the fill.
+
+Automations **7 → 8/10**.
+
 ### The device screen was a debug view with a chart
 
 `/device/:id` scored **6/10** and every deduction was the same mistake in a different place: it printed the

@@ -43,8 +43,14 @@ export function ChipPicker({
             accessibilityState={{ selected: value === option.id }}
             accessibilityLabel={label ? `${label}: ${option.label}` : option.label}
           >
+            {/* An unselected chip said its label in muted grey on a surface that is nearly the same grey: the
+                choice was there and unreadable. `elevated` is a step up from the card, and the label keeps the
+                text tone — selection is carried by the fill, not by hiding the other options. */}
             <Box px="md" py="sm" radius="pill" bg={value === option.id ? 'accent' : 'surface'} border>
-              <AppText variant="caption" tone={value === option.id ? 'text' : 'muted'}>
+              <AppText
+                variant="caption"
+                style={{ opacity: value === option.id ? 1 : 0.9 }}
+              >
                 {option.label}
               </AppText>
             </Box>

@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 
-import { Box, AppText, Button, ChipPicker, Screen, ScreenHeader } from '../../shared/ui';
+import {
+  Box,
+  AppText,
+  Button,
+  ChipPicker,
+  Screen,
+  ScreenHeader,
+  ValueField,
+  defaultPointValue,
+  readablePoint,
+} from '../../shared/ui';
 import { tokens } from '../../app-shell/theme';
 import { useCurrentHome } from '../../entities/home';
 import { useDevices, type Device } from '../../entities/device';
@@ -195,12 +205,12 @@ export function ScenesPage() {
                     <ChipPicker
                       label="What should happen"
                       value={action.code}
-                      options={changes.map((p) => ({ id: p.code, label: readable(p.code, p) }))}
+                      options={changes.map((p) => ({ id: p.code, label: readablePoint(p.code, p) }))}
                       onChange={(code) =>
                         setActions((rows) =>
                           rows.map((row, i) =>
                             i === index
-                              ? { ...row, code, value: defaultFor(changes.find((p) => p.code === code)) }
+                              ? { ...row, code, value: defaultPointValue(changes.find((p) => p.code === code)) }
                               : row,
                           ),
                         )
@@ -270,79 +280,6 @@ export function ScenesPage() {
         </Box>
       </ScrollView>
     </Screen>
-  );
-}
-
-/**
- * A point's code in a person's words: `brightness.level` is "Brightness", with its unit if it has one.
- *
- * The editor used to offer the wire name, which is a vendor's identifier, not a thing a customer sets.
- */
-function readable(code: string, point: { unit?: string | null }): string {
-  const slot = code.split('.')[1] ?? code.split('.')[0] ?? code;
-  const words = slot.replace(/[_-]+/g, ' ');
-  const label = words.charAt(0).toUpperCase() + words.slice(1);
-  return point.unit ? `${label} (${point.unit})` : label;
-}
-
-/** The value a point starts at when it is chosen, so the control is never blank. */
-function defaultFor(point: { kind?: string } | undefined): string {
-  if (!point) return 'true';
-  if (point.kind === 'bool') return 'true';
-  if (point.kind === 'int' || point.kind === 'float') return '0';
-  return '';
-}
-
-/**
- * A value control that matches the point's own type.
- *
- * A switch is On/Off buttons, a number is a numeric field with its unit, anything else is text. The old form
- * had one text box labelled "Value (true / false / number)" and asked the customer to know the wire format of
- * their own bulb.
- */
-function ValueField({
-  point,
-  value,
-  onChange,
-}: {
-  point: { kind?: string; unit?: string | null };
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  if (point.kind === 'bool') {
-    const on = value.trim().toLowerCase() === 'true';
-    return (
-      <Box gap="xs">
-        <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
-          SET TO
-        </AppText>
-        <ChipPicker
-          label=""
-          value={on ? 'on' : 'off'}
-          options={[
-            { id: 'on', label: 'On' },
-            { id: 'off', label: 'Off' },
-          ]}
-          onChange={(next) => onChange(next === 'on' ? 'true' : 'false')}
-        />
-      </Box>
-    );
-  }
-
-  return (
-    <Box gap="xs">
-      <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
-        SET TO{point.unit ? ` (${point.unit})` : ''}
-      </AppText>
-      <TextInput
-        keyboardType={point.kind === 'int' || point.kind === 'float' ? 'numeric' : 'default'}
-        placeholder={point.kind === 'int' || point.kind === 'float' ? '0' : 'Value'}
-        placeholderTextColor={tokens.color.muted}
-        value={value}
-        onChangeText={onChange}
-        style={field}
-      />
-    </Box>
   );
 }
 

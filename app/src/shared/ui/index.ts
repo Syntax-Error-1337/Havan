@@ -16,6 +16,7 @@ export { Screen } from './Screen';
 export { Skeleton, HomeSkeleton } from './Skeleton';
 export { Sparkline } from './Sparkline';
 export { ChipPicker } from './ChipPicker';
+export { ValueField, readablePoint, defaultPointValue } from './ValueField';
 export { Section } from './Section';
 export { ScreenHeader } from './ScreenHeader';
 export { Row, Toggle } from './Row';
