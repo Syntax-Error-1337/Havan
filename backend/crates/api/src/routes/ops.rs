@@ -50,6 +50,9 @@ pub async fn metrics(State(state): State<AppState>, headers: HeaderMap, peer: Pe
     // channels and sockets were the same number, because every socket held its own subscription.
     let channels = state.hub.channel_count().await;
     let sockets = state.hub.socket_count();
+    // 0 = this pod subscribes to `home:*` itself; 1 = it holds one `pod:{id}` feed and the forwarder does the
+    // fan-out. The channel gauge means something different in each mode, so a dashboard needs to know which.
+    let fanout = i32::from(state.hub.is_fanout());
 
     let body = format!(
         "{}# HELP haven_theme_cache_hits_total Theme reads answered without a database query.\n\
@@ -60,7 +63,10 @@ pub async fn metrics(State(state): State<AppState>, headers: HeaderMap, peer: Pe
          haven_stream_channels {channels}\n\
          # HELP haven_stream_sockets Open websockets on this process.\n\
          # TYPE haven_stream_sockets gauge\n\
-         haven_stream_sockets {sockets}\n",
+         haven_stream_sockets {sockets}\n\
+         # HELP haven_stream_fanout 1 when this pod receives its channels from haven-fanout.\n\
+         # TYPE haven_stream_fanout gauge\n\
+         haven_stream_fanout {fanout}\n",
         kernel::metrics::render()
     );
 

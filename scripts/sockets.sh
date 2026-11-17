@@ -50,7 +50,21 @@ note "redis subscriptions on home:${HOME_ID}: $(docker exec haven-redis redis-cl
   --count "$COUNT" --urls "$WEBSOCKETS" --hold "$HOLD" > /tmp/sockets.out 2>&1 &
 LOAD_PID=$!
 
-sleep 7
+# Wait for the sockets to be *armed*, not for a fixed sleep: publishing before the subscriptions exist is a
+# measurement of the script, not of the platform. Polls the same gauges an operator would.
+armed_total() {
+  local sum=0 port value
+  for port in "${PARTS[@]}"; do
+    value=$(curl -s "http://127.0.0.1:${port}/metrics" | awk '/^haven_stream_sockets/ {print $2}')
+    sum=$((sum + ${value:-0}))
+  done
+  echo "$sum"
+}
+for _ in $(seq 1 40); do
+  [ "$(armed_total)" -ge "$COUNT" ] && break
+  sleep 0.5
+done
+
 say "During (before the frame)"
 for port in "${PARTS[@]}"; do
   pid=$(pod_pid "$port")

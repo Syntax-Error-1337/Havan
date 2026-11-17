@@ -145,6 +145,22 @@ check: testdb ## fmt + clippy + tests + no secrets + routes match handlers + rea
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
 	$(CARGO_TEST) test --workspace
 
+# The same gate without the database suites, for the loop between edits.
+#
+# Measured where the five minutes actually go: the fifty-eight suites execute in 12.8 s. The other four
+# minutes are compilation — one small change to `infra` relinks every test binary that depends on it, and
+# there are fifty of those. Sharding would not help; it would only add build contention. This target exists
+# so the fast feedback loop is a make target rather than a personal recipe, and so nobody spends an afternoon
+# "optimising" the part that is already four percent of the time.
+check-fast: ## fmt + lints + the cheap gates, no database suites (~90 s on a warm tree)
+	$(CARGO) fmt --all --check
+	bash scripts/no-secrets.sh
+	python3 scripts/route-arity.py --self-test
+	$(MAKE) contrast
+	$(MAKE) tokens
+	$(MAKE) time-serde
+	$(CARGO) clippy --workspace --all-targets -- -D warnings
+
 .PHONY: audit
 audit: ## dependency advisories: shipped code must be clean, tooling must be clean at high
 	bash scripts/audit.sh

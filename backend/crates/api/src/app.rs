@@ -146,7 +146,12 @@ impl AppState {
             fleet,
             audit,
             ca: Arc::new(tokio::sync::OnceCell::new()),
-            hub: crate::hub::Hub::new(cfg_redis),
+            // `HAVEN_FANOUT=1` puts the pod behind `haven-fanout`: it holds no `home:*` subscription of its
+            // own and receives every channel it serves on one `pod:{id}` feed instead.
+            hub: crate::hub::Hub::new(
+                cfg_redis,
+                std::env::var("HAVEN_FANOUT").is_ok_and(|v| v == "1" || v == "true"),
+            ),
         }
     }
 }

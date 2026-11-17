@@ -169,9 +169,37 @@ rather than once.
 
 The honest limit: **a per-process hub costs one Redis subscription per pod per channel.** Two replicas
 serving one home hold two subscriptions and Redis delivers the frame twice — once per pod, which is exactly
-the fan-out the per-socket design did N times. Ten pods serving one home cost ten. Past that the answer is a
-single fan-out tier (one subscriber forwarding to pods over their own channel), not a bigger broadcast
-buffer, and it should be built when a home actually spans pods rather than before.
+what the per-socket design did N times. Ten pods serving one home cost ten, and the fix at that point is a
+fan-out tier, not a bigger broadcast buffer.
+
+### The tier above, for the day a home spans pods
+
+That tier exists now: `haven-fanout`. It holds the only `PSUBSCRIBE home:* user:*` in the fleet, and republishes
+each event to the pods that asked for that channel, on `pod:{id}`. A pod started with `HAVEN_FANOUT=1` holds no
+channel subscriptions at all — it writes interest (`SADD haven.fanout.ch:{channel}`, 30-second expiry, refreshed
+every ten seconds) and reads one feed.
+
+Measured, 1 000 sockets over two pods:
+
+| mode | Redis subs on the home channel | pods' own feeds | every socket got the frame | armed |
+|---|---|---|---|---|
+| direct (hub per pod) | **2** | — | 1 000 / 1 000 | 1.25 s |
+| fan-out tier | **0** | 2 | 1 000 / 1 000 | 4.09 s |
+
+Mid-run in the fan-out configuration: `PUBSUB CHANNELS pod:*` → 2, `PUBSUB NUMSUB home:{id}` → **0**,
+`PUBSUB NUMPAT` → 2 (the forwarder's patterns), and `SMEMBERS haven.fanout.ch:home:{id}` → both pods. Release
+the sockets and the pod channels disappear with them.
+
+**What it costs.** A second hop: 4.09 s to arm 1 000 sockets instead of 1.25 s, and every event crosses Redis
+twice (once to the forwarder, once to each pod). It also adds two failure modes that the direct mode does not
+have — a dead forwarder leaves the fleet silent until a standby takes the leadership key, and interest that
+nobody refreshes turns a pod into a listener for nothing. Those are why the default is still direct: the tier is
+worth running when **a home is served by many pods**, not before. `haven_stream_fanout` on `/metrics` says which
+mode a pod is in, because `haven_stream_channels` means something different in each.
+
+The first version of this measured **816 of 1 000 sockets able to connect in a minute**: interest was written on
+a fresh Redis connection per socket, and the fan-out worked while the connection storm around it did not. One
+reused connection fixed it, which is the sort of thing only a load test says out loud.
 
 The cost is one extra hop through an in-process broadcast channel per event (~microseconds), and one
 bounded backlog per channel: a socket that falls 256 messages behind is not reading, and is better

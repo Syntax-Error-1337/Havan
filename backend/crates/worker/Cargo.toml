@@ -9,9 +9,7 @@ name = "worker"
 path = "src/lib.rs"
 
 [dev-dependencies]
-futures-util.workspace = true
 sqlx.workspace = true
-redis.workspace = true
 
 [[bin]]
 name = "haven-worker"
@@ -22,6 +20,13 @@ path = "src/main.rs"
 [[bin]]
 name = "haven-telemetry-maintain"
 path = "src/bin/telemetry_maintain.rs"
+
+# The tier above the pods: one `PSUBSCRIBE home:* user:*` for the whole fleet, republishing each event to the
+# pods that asked for its channel. It lives here because the worker is the process that is expected to run
+# alone — a second copy of it is elected away, not duplicated.
+[[bin]]
+name = "haven-fanout"
+path = "src/bin/fanout.rs"
 
 [dependencies]
 kernel.workspace = true
@@ -38,3 +43,5 @@ serde_json.workspace = true
 rumqttc.workspace = true
 anyhow.workspace = true
 uuid.workspace = true
+redis.workspace = true
+futures-util.workspace = true

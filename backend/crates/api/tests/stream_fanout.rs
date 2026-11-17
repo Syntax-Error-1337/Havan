@@ -114,6 +114,84 @@ async fn open(
     socket
 }
 
+/// The second tier, without the forwarder binary: a pod in fan-out mode must subscribe to nothing of its own.
+///
+/// This is the property that makes the tier worth having — a pod holding a hundred homes holds one
+/// subscription, and its interest in each channel is a Redis set with an expiry rather than a connection.
+#[tokio::test]
+async fn a_pod_in_fanout_mode_subscribes_to_itself_and_registers_interest() {
+    let Ok(redis_url) = std::env::var("TEST_REDIS_URL") else {
+        eprintln!("skipping: TEST_REDIS_URL not set");
+        return;
+    };
+    let client = redis::Client::open(redis_url.clone()).expect("redis url");
+    let mut redis = client
+        .get_multiplexed_async_connection()
+        .await
+        .expect("redis");
+
+    let home = format!("home:{}", Uuid::now_v7());
+    let hub = api::hub::Hub::new(redis_url.clone(), true);
+
+    let mut subscription = hub.subscribe(std::slice::from_ref(&home)).await;
+
+    // No subscription to the home channel at all: that is the forwarder's job now.
+    assert_eq!(
+        subscribers(&mut redis, &home).await,
+        0,
+        "a fan-out pod must not subscribe to the channel itself"
+    );
+
+    // The pod registers interest, and the set has an expiry so a dead pod is not a black hole.
+    let listeners: Vec<String> = redis::cmd("SMEMBERS")
+        .arg(format!("haven.fanout.ch:{home}"))
+        .query_async(&mut redis)
+        .await
+        .expect("smembers");
+    assert_eq!(listeners.len(), 1, "one pod is interested: {listeners:?}");
+    let ttl: i64 = redis::cmd("TTL")
+        .arg(format!("haven.fanout.ch:{home}"))
+        .query_async(&mut redis)
+        .await
+        .expect("ttl");
+    assert!(ttl > 0, "interest expires without a refresh; ttl was {ttl}");
+
+    // And it holds exactly one subscription of its own, whatever it is serving.
+    let pod_id = listeners[0].clone();
+    assert_eq!(
+        subscribers(&mut redis, &format!("pod:{pod_id}")).await,
+        1,
+        "one pod feed, not one per channel"
+    );
+
+    // An envelope on that feed reaches the socket waiting on the home channel.
+    let receiver = subscription.receivers_mut().first_mut().expect("receiver");
+    let envelope =
+        serde_json::json!({ "ch": home, "p": r#"{"t":"device.online","device_id":"probe"}"# })
+            .to_string();
+    redis::cmd("PUBLISH")
+        .arg(format!("pod:{pod_id}"))
+        .arg(envelope)
+        .query_async::<i64>(&mut redis)
+        .await
+        .expect("publish");
+
+    let received = tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv())
+        .await
+        .expect("a frame within 5s")
+        .expect("frame");
+    assert!(received.contains("probe"), "got {received}");
+
+    hub.release(subscription).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let gone: Vec<String> = redis::cmd("SMEMBERS")
+        .arg(format!("haven.fanout.ch:{home}"))
+        .query_async(&mut redis)
+        .await
+        .expect("smembers");
+    assert!(gone.is_empty(), "interest is withdrawn: {gone:?}");
+}
+
 #[tokio::test]
 async fn many_sockets_on_one_home_hold_one_redis_subscription() {
     let Some(f) = boot().await else {

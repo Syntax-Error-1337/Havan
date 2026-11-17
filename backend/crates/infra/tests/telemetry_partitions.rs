@@ -113,9 +113,10 @@ async fn a_month_with_no_partition_is_created_and_its_rows_rescued() {
     );
     assert_eq!(again.rescued, 0);
 
-    // Hourly rollups have no partitions to drop, so the same window is enforced with batched deletes.
-    let stale_bucket =
-        OffsetDateTime::now_utc() - time::Duration::days(DEFAULT_RETENTION_DAYS + 30);
+    // Rollups are partitioned by month too (0040), so an expired month is dropped like a reading's — but a
+    // bucket outside every month window still has to be deleted, because a DEFAULT partition cannot be dropped.
+    // Ten years ago is outside the twelve months 0040 created, so this row lands in the overflow on purpose.
+    let stale_bucket = OffsetDateTime::now_utc() - time::Duration::days(365 * 10);
     let stale_point = Uuid::now_v7();
     sqlx::query(
         "INSERT INTO telemetry_rollup (point_id, bucket, vendor_id, min_num, max_num, avg_num, sum_num, samples)
@@ -126,7 +127,17 @@ async fn a_month_with_no_partition_is_created_and_its_rows_rescued() {
     .bind(vendor)
     .execute(pg.pool())
     .await
-    .expect("a rollup older than the window");
+    .expect("a rollup outside every partition");
+
+    // It went to the DEFAULT partition, which is the only place a delete is still needed.
+    let stranded: String = sqlx::query_scalar(
+        "SELECT tableoid::regclass::text FROM telemetry_rollup WHERE point_id = $1",
+    )
+    .bind(stale_point)
+    .fetch_one(pg.pool())
+    .await
+    .expect("read back the rollup");
+    assert_eq!(stranded, "telemetry_rollup_overflow");
 
     let pruned = maintain(&pg, DEFAULT_RETENTION_DAYS)
         .await

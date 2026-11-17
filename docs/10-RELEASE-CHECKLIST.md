@@ -25,6 +25,33 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 Two of these are worth running twice: `make chaos` because it stops containers, and
 `make load` because a first run after a long idle can time out on a cold cache.
 
+### The five minutes are compilation, not tests
+
+`make check` was described here as "the whole suite, 53 binaries, about five minutes", which invites the
+obvious conclusion that the suites are slow and should be sharded. `scripts/check-timing.sh` times each gate:
+
+| gate | time |
+|---|---|
+| testdb | 2.0 s |
+| fmt --check | 0.5 s |
+| no-secrets | 3.4 s |
+| route-arity / contrast / tokens / time-serde | 0.7 s together |
+| clippy --all-targets | 0.9 s warm, ~78 s cold |
+| **cargo test --workspace** | **227 s**, of which **12.8 s is the suites running** |
+
+The other ~170 seconds are `cargo test --workspace --no-run`: one change to `infra` relinks every test binary
+that depends on it, and `api` has fifty. Two hypotheses were tested rather than assumed — that
+`clippy --all-targets` evicts the test artefacts (it does not: `--no-run` after clippy is 1.2 s, and warm it is
+0.3 s), and that sharding the suites would divide the time (there is nothing to divide).
+
+So the fix is not a faster runner, it is not waiting for one: **`make check-fast`** runs fmt, secrets, the four
+script gates and clippy without the database suites — the loop between edits. `make check` stays the gate
+before a commit. Merging the fifty integration test files into a handful of binaries is the only change that
+would move the number, and it would put the suites in parallel against one database, which is the interference
+this workspace already has to avoid (the `scheduler` suites fire each other's automations). Correctness first:
+the minutes stay, and the reason is written down so nobody spends an afternoon optimising four percent.
+
+
 **The app suite leaks timers.** Run plain, `jest` finishes its assertions and then reports seven
 suites failed because a worker would not exit; the failures are teardown, not assertions. `npm test`
 therefore passes `--forceExit`, which makes the exit code mean what it looks like. That is a

@@ -275,10 +275,31 @@ Two operational details that are not incidental:
 - **It is safe on a schedule and on three replicas.** Every step is `IF NOT EXISTS` / `IF EXISTS`, the
   spill is inside one transaction on one connection, and a second run in the same minute does nothing.
 
-Hourly rollups are deleted by the same run, in batches of 40 000 up to 25 batches a tick: `telemetry_rollup`
-is not partitioned (one row per point per hour is three orders of magnitude smaller than the readings it
-summarises), so its window is enforced with deletes rather than `DROP TABLE`. They go through the
-`haven_system` role because that table has RLS forced on and an owner is still subject to policies.
+**Rollups were the same problem one order of magnitude down.** `telemetry_rollup` was *not* partitioned when
+this job was first written — one row per point per hour is three orders of magnitude smaller than the readings
+it summarises, which is true until it is 8 760 rows per point per year. A million devices with five points is
+43 billion rows, and a retention job deleting those in batches of 40 000 is 108 million batches a year: a job
+that never catches up, on a table nobody had looked at.
+
+`0040_rollup_partitions.sql` partitions it by month — rename, recreate partitioned, copy, drop, and re-apply the
+RLS policy and `FORCE ROW LEVEL SECURITY` that a `DROP`/`CREATE` cycle silently loses. The migration is a
+guarded `DO` block for two reasons: `haven-migrate` already runs each migration in a transaction, so an explicit
+`BEGIN`/`COMMIT` committed the work early and left sqlx reporting "there is no transaction in progress"; and a
+deploy that applied the conversion but failed before writing its bookkeeping row would otherwise fail on the
+next boot with `telemetry_rollup_legacy already exists`. Re-running it now says *already partitioned; nothing to
+do*.
+
+Both tables are rolled by the same pass, because the argument is identical and one job keeps two tables honest:
+
+```text
+created=["telemetry_rollup_2027_02"] dropped=[] overflow_rows=0 retention_days=730
+retention 300 days → dropped=["telemetry_rollup_2025_11", "telemetry_rollup_2025_12"]
+```
+
+What is left in a **DEFAULT** partition cannot be dropped, only deleted — a bucket computed from a device clock
+years out of step lands there. Those rows are still deleted in batches, through the `haven_system` role, because
+`telemetry_rollup` has RLS forced on and even the schema owner is subject to the policy. An hourly aggregate is
+rebuilt from readings, so deleting it is not the same decision as deleting a customer's history.
 
 ### The seed that lied because the sweep was honest
 
