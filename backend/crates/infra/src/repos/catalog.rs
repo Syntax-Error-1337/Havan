@@ -302,8 +302,17 @@ impl CatalogRepo for PgCatalog {
     async fn public_lookup(&self, terms: &[String]) -> Result<Vec<PublicProduct>, AppError> {
         let mut tx = self.pg.scoped(&TenantCtx::system("catalog-public")).await?;
 
-        let rows = sqlx::query_as::<_, (String, String, String, Option<String>)>(
-            r#"SELECT product_key, name, category, icon
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                Option<serde_json::Value>,
+            ),
+        >(
+            r#"SELECT product_key, name, category, icon, thing_model -> 'radio'
                  FROM products
                 WHERE status = 'published'"#,
         )
@@ -316,12 +325,15 @@ impl CatalogRepo for PgCatalog {
 
         Ok(rows
             .into_iter()
-            .map(|(product_key, name, category, icon)| PublicProduct {
+            .map(|(product_key, name, category, icon, radio)| PublicProduct {
                 hash: advertisement_hash(&product_key),
                 product_key,
                 name,
                 category,
                 icon,
+                // The column is `jsonb`; a shape this cannot read is a product we decline to
+                // describe rather than one we crash on.
+                radio: radio.and_then(|v| serde_json::from_value(v).ok()),
             })
             .filter(|p| wanted.contains(&p.hash) || wanted.contains(&p.product_key.to_lowercase()))
             .collect())

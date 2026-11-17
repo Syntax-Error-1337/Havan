@@ -40,6 +40,10 @@ pub struct PublicProduct {
     pub name: String,
     pub category: String,
     pub icon: Option<String>,
+    /// What the hardware can join, so the app can warn *before* a customer types the wrong
+    /// password: "this device needs 2.4 GHz" is a much cheaper sentence than a failed pairing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radio: Option<protocol::thing_model::Radio>,
     pub hash: String,
 }
 
@@ -172,6 +176,9 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
         publish_now: bool,
     ) -> Result<Product, AppError> {
         validate_identity(&model)?;
+        // A radio declaration is checked on the way in, not only at publish: a draft that cannot
+        // ever be published should say so while the vendor is still looking at the field.
+        validate_radio(&model)?;
         if publish_now {
             validate_rules(&model)?;
         }
@@ -238,6 +245,7 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
         }
 
         validate_identity(&model)?;
+        validate_radio(&model)?;
         // The key is the device's identity; changing it would orphan every
         // device already claimed under the old one.
         if model.product_key != existing.product_key {
@@ -318,6 +326,7 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
             return Ok(product);
         }
 
+        validate_radio(&product.thing_model)?;
         validate_rules(&product.thing_model)?;
         self.repo.publish(vendor_id, id).await?;
         Ok(Product {
@@ -342,6 +351,33 @@ fn validate_identity(model: &ThingModel) -> Result<(), AppError> {
     }
     if model.name.trim().is_empty() {
         return Err(AppError::validation("a product needs a name"));
+    }
+    Ok(())
+}
+
+/// A radio declaration is either right or absent.
+///
+/// Absent is allowed — the field is new and existing products must keep validating — but a *wrong*
+/// one is not: an unknown band or cipher is a promise the pairing screen would repeat to a customer
+/// and the hardware could not keep. Naming the bad value is the point; "invalid radio" would send a
+/// vendor looking at the wrong line of their JSON.
+fn validate_radio(model: &ThingModel) -> Result<(), AppError> {
+    let Some(radio) = &model.radio else {
+        return Ok(());
+    };
+    if radio.bands.is_empty() && radio.security.is_empty() {
+        return Err(AppError::validation(
+            "radio is declared but empty; name the bands and security it supports, or remove it",
+        ));
+    }
+    let unknown = radio.unknown();
+    if !unknown.is_empty() {
+        return Err(AppError::validation(format!(
+            "unknown radio value(s): {}; bands are {} and security is {}",
+            unknown.join(", "),
+            protocol::thing_model::BANDS.join(", "),
+            protocol::thing_model::SECURITY.join(", ")
+        )));
     }
     Ok(())
 }
@@ -560,5 +596,50 @@ mod tests {
 
         let err = certification_transition("uncertified", "approved").unwrap_err();
         assert_eq!(err.code_kind(), ErrorCode::ValidationFailed);
+    }
+
+    #[test]
+    fn a_radio_declaration_is_checked_against_what_exists() {
+        use protocol::thing_model::{Radio, ThingModel};
+
+        let base = |radio: Option<Radio>| ThingModel {
+            schema_version: 1,
+            product_key: "radio_probe".into(),
+            name: "Radio probe".into(),
+            category: "light".into(),
+            icon: None,
+            capabilities: vec![],
+            constraints: Default::default(),
+            radio,
+        };
+
+        // Absent is fine: the field is new and existing products must keep validating.
+        assert!(validate_radio(&base(None)).is_ok());
+
+        // A plausible declaration passes.
+        assert!(
+            validate_radio(&base(Some(Radio {
+                bands: vec!["2.4ghz".into()],
+                security: vec!["wpa2-psk".into()],
+            })))
+            .is_ok()
+        );
+
+        // Declared but empty is a promise to nobody: refuse it rather than store a blank.
+        let empty = validate_radio(&base(Some(Radio::default()))).unwrap_err();
+        assert!(empty.to_string().contains("declared but empty"), "{empty}");
+
+        // The typo case, which is the one that would reach a customer: the message has to name it.
+        let unknown = validate_radio(&base(Some(Radio {
+            bands: vec!["2.4Ghz".into(), "6ghz".into()],
+            security: vec!["wpa2".into()],
+        })))
+        .unwrap_err()
+        .to_string();
+        assert!(unknown.contains("2.4Ghz") && unknown.contains("6ghz") && unknown.contains("wpa2"));
+        assert!(
+            unknown.contains("wpa2-psk"),
+            "and say what the valid values are: {unknown}"
+        );
     }
 }

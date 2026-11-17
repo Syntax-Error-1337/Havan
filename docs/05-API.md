@@ -206,7 +206,7 @@ aborting the burst.
 | POST | `/push-tokens` |
 | GET | `/metrics` | Prometheus text; loopback, or `x-ops-token` elsewhere |
 | GET | `/catalog/capabilities` | versioned capability catalog, cached 1 h |
-| GET | `/catalog/products?product_key=` | radar metadata by product hash |
+| GET | `/catalog/products?hashes=&keys=` | radar metadata by advertisement hash or product key (exact, 1–50 terms, never an enumeration). Carries `radio` when the product declares it, so the app can warn "2.4 GHz only" before a customer types a password for a 5 GHz network |
 | GET | `/stream` | WebSocket upgrade |
 
 ### Your data, and leaving

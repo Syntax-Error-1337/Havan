@@ -23,6 +23,49 @@ pub struct ThingModel {
     pub capabilities: Vec<CapabilityBinding>,
     #[serde(default)]
     pub constraints: Constraints,
+    /// What the hardware's radio can actually join.
+    ///
+    /// Optional, and absent means "not declared" rather than "anything goes": a product that cannot
+    /// say it is 2.4 GHz only will fail in a customer's hands on a 5 GHz network, and the pairing
+    /// screen has nothing to warn with. Declaring it moves that failure from the living room to the
+    /// catalogue, where it costs a support ticket instead of a return.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radio: Option<Radio>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Radio {
+    /// `2.4ghz`, `5ghz` — the bands the device has a radio for.
+    #[serde(default)]
+    pub bands: Vec<String>,
+    /// `open`, `wpa-psk`, `wpa2-psk`, `wpa2-enterprise`, `wpa3-sae`.
+    #[serde(default)]
+    pub security: Vec<String>,
+}
+
+/// Every band and cipher a product may declare. A closed list, because a typo in "2.4Ghz" would
+/// otherwise be a declaration nobody can act on — silently, since the field is free text to a
+/// validator that only checks it is a string.
+pub const BANDS: [&str; 2] = ["2.4ghz", "5ghz"];
+pub const SECURITY: [&str; 5] = ["open", "wpa-psk", "wpa2-psk", "wpa2-enterprise", "wpa3-sae"];
+
+impl Radio {
+    /// Unknown values, so a validator can name them rather than nodding at them.
+    pub fn unknown(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .bands
+            .iter()
+            .filter(|b| !BANDS.contains(&b.as_str()))
+            .cloned()
+            .collect();
+        out.extend(
+            self.security
+                .iter()
+                .filter(|s| !SECURITY.contains(&s.as_str()))
+                .cloned(),
+        );
+        out
+    }
 }
 
 fn one() -> u16 {
@@ -470,6 +513,7 @@ mod tests {
                     version: Some(cap.version),
                     points,
                 }],
+                radio: None,
                 constraints: Constraints::default(),
             };
             assert!(
