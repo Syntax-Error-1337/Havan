@@ -58,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
     let runner = std::sync::Arc::new(automation::Runner::new(
         infra::PgAutomation::new(pg.clone()),
         client.clone(),
+        cache.clone(),
         format!("worker-{}", std::process::id()),
     ));
 

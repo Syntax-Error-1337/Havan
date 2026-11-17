@@ -69,19 +69,24 @@ async fn handle(mut socket: WebSocket, state: AppState) {
     };
 
     // Membership is checked per home before a single event is forwarded.
-    let mut channels = Vec::new();
+    let mut homes = Vec::new();
     for home_id in frame.homes {
         if state.homes.require(home_id, claims.sub).await.is_ok() {
-            channels.push(format!("home:{home_id}"));
+            homes.push(format!("home:{home_id}"));
         }
     }
 
-    if channels.is_empty() {
+    if homes.is_empty() {
         let _ = socket
             .send(Message::Text(r#"{"t":"error","code":"no_homes"}"#.into()))
             .await;
         return;
     }
+
+    // Plus the person: an alert belongs to whoever has to read it, and one customer can be in several
+    // homes. The token already proved who this socket belongs to, so no extra check applies here.
+    let mut channels = homes.clone();
+    channels.push(format!("user:{}", claims.sub));
 
     let (tx, mut rx) = mpsc::channel::<String>(128);
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
@@ -100,7 +105,7 @@ async fn handle(mut socket: WebSocket, state: AppState) {
 
     let _ = socket
         .send(Message::Text(
-            serde_json::json!({ "t": "ready", "homes": channels })
+            serde_json::json!({ "t": "ready", "homes": homes })
                 .to_string()
                 .into(),
         ))

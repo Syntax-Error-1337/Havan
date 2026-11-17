@@ -374,6 +374,26 @@ than from taste:
   accents gained a daylight set (`categoryAccentLight`) because cyan at 1.6:1 on a
   white card is not an icon.
 
+### Alerts are pushed, not polled
+
+The unread count and the alert list used to be polled every 30 seconds — two requests per signed-in
+app, forever. At a million apps that is ~66 000 requests a second spent asking a question the platform
+already knows the answer to, so the answer is now pushed: the worker publishes
+`{"t":"notification","id":…}` on `user:{owner}` when it raises an alert, the API forwards it on the
+socket the app already holds, and the app bumps the count in place and refetches the list. Polling
+survives as a five-minute safety net for anything a missed push left behind.
+
+**A cache key that no screen reads is a feature that does not exist.** The first version of the live
+stream wrote dashboard updates to `['home', id, 'dashboard']` while the screen fetches
+`['home', id, 'dashboard', 200]` — so every pushed event landed in an entry nothing rendered, and the
+dashboard never moved in the running app. The tests passed because they seeded that same wrong key.
+Writes now use `setQueriesData` with the prefix (patching every page size that exists), and the test
+seeds the real key so this cannot silently return.
+
+Proven live, in this order: `0 of 6 online` → `1 of 6 online` and `Alerts · 2` → `Alerts · 3` from a
+single published frame with no refresh; then a real `schedule` automation firing in the worker raised
+an alert and the header went `Alerts · 3` → `Alerts · 4` after 61 s, with no client poll involved.
+
 ### The live stream has to survive a train
 
 `useHomeStream` holds one socket per signed-in app and writes every pushed change into the query cache,

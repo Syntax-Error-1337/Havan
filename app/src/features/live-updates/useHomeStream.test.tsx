@@ -54,6 +54,8 @@ const device = (over: Partial<Device> = {}): Device => ({
   ...over,
 });
 
+const DASHBOARD_KEY = [...qk.dashboard('home-1'), 200] as const;
+
 function Probe() {
   useHomeStream('home-1');
   return <Text>probe</Text>;
@@ -65,6 +67,14 @@ async function mount() {
   const client = testQueryClient();
   client.setQueryData(qk.devices('home-1'), [device()]);
   client.setQueryData(qk.device('d1'), device());
+  // The real key carries the page size; the dashboard reads *this* entry, so a test that seeds the
+  // bare prefix would pass while the running app stayed still — which is exactly what happened.
+  client.setQueryData(DASHBOARD_KEY, {
+    devices: [device()],
+    unread_count: 0,
+    rooms: [],
+    scenes: [],
+  });
 
   const view = await render(
     <QueryClientProvider client={client}>
@@ -114,13 +124,17 @@ describe('home stream', () => {
     expect(detail?.points[0]?.value).toBe(true);
   });
 
-  it('marks a device offline from the pulse', async () => {
+  it('marks a device offline from the pulse, in the entry the dashboard reads', async () => {
     const { client } = await mount();
 
     lastSocket().emit({ t: 'device.offline', device_id: 'd1' });
 
     expect(client.getQueryData<Device[]>(qk.devices('home-1'))?.[0]?.online).toBe(false);
     expect(client.getQueryData<Device>(qk.device('d1'))?.online).toBe(false);
+    // The screen renders `dashboard.devices`, not the devices cache.
+    expect(client.getQueryData<{ devices: Device[] }>(DASHBOARD_KEY)?.devices[0]?.online).toBe(
+      false,
+    );
   });
 
   it('refetches after a settle, because the optimistic value was a guess', async () => {
@@ -130,6 +144,27 @@ describe('home stream', () => {
     lastSocket().emit({ t: 'command.settled', device_id: 'd1', code: 'switch.power' });
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.device('d1') });
+  });
+
+  it('bumps the alert count when a pushed notification arrives, without a device', async () => {
+    const { client } = await mount();
+    // A notification frame names a person, not a device: no `device_id` at all.
+    client.setQueryData(qk.unread, { unread: 2 });
+    client.setQueryData(qk.dashboard('home-1'), {
+      home: { id: 'home-1', name: 'Workshop' },
+      devices: [],
+      unread_count: 2,
+    });
+    const invalidate = jest.spyOn(client, 'invalidateQueries');
+
+    lastSocket().emit({ t: 'notification', id: 'n1' });
+
+    expect(client.getQueryData<{ unread: number }>(qk.unread)?.unread).toBe(3);
+    expect(
+      client.getQueryData<{ unread_count: number }>(qk.dashboard('home-1'))?.unread_count,
+    ).toBe(3);
+    // The list is refetched, but the count did not wait for it.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.notifications });
   });
 
   it('ignores noise instead of crashing the screen', async () => {

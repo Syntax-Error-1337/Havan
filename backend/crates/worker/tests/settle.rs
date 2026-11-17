@@ -167,6 +167,7 @@ async fn boot() -> Option<Fixture> {
     let automation = Arc::new(Runner::new(
         infra::PgAutomation::new(infra_pg.clone()),
         client,
+        cache.clone(),
         "worker-test".into(),
     ));
 

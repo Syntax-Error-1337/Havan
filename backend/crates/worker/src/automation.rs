@@ -17,6 +17,8 @@ use uuid::Uuid;
 pub struct Runner {
     repo: PgAutomation,
     mqtt: AsyncClient,
+    /// Where an alert goes when it is raised: the person's open apps, not their next poll.
+    cache: infra::Cache,
     id: String,
     /// Last fire time per automation. Two rules that set each other's trigger
     /// would otherwise ping-pong forever; a short cooldown makes that a
@@ -25,8 +27,9 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn new(repo: PgAutomation, mqtt: AsyncClient, id: String) -> Self {
+    pub fn new(repo: PgAutomation, mqtt: AsyncClient, cache: infra::Cache, id: String) -> Self {
         Self {
+            cache,
             repo,
             mqtt,
             id,
@@ -231,10 +234,23 @@ impl Runner {
     ) -> Result<String, String> {
         match action {
             Action::Notify { title, body } => {
-                self.repo
+                let raised = self
+                    .repo
                     .notify_owner_about(home_id, title, body, about.clone())
                     .await
                     .map_err(|e| format!("{e:?}"))?;
+
+                // A notification nobody is told about is a row in a table. The person's open app
+                // hears it here, on the socket it already holds, instead of learning about it at the
+                // next poll — which, at a million phones, is a poll this platform should not need.
+                if let Some((owner, notification_id)) = raised {
+                    let (channel, payload) = notification_event(owner, notification_id);
+                    if let Err(e) = self.cache.publish_event(&channel, &payload).await {
+                        // The row is committed either way: failing to push must not fail the run.
+                        tracing::warn!(error = ?e, "could not push the alert to open apps");
+                    }
+                }
+
                 Ok(format!("notified: {title}"))
             }
             Action::SetDevice {
@@ -344,5 +360,35 @@ mod about_tests {
             about_for(&Trigger::Schedule { every_secs: 60 }),
             serde_json::json!({})
         );
+    }
+}
+
+/// The channel and payload for "this person has a new alert".
+///
+/// The channel is the person, not the home: an alert belongs to whoever has to read it, and a person
+/// can be in several homes. Pure and tested — the app matches on `t`, and a renamed field here is a
+/// push that silently never arrives.
+fn notification_event(owner: Uuid, notification_id: Uuid) -> (String, String) {
+    (
+        format!("user:{owner}"),
+        serde_json::json!({ "t": "notification", "id": notification_id }).to_string(),
+    )
+}
+
+#[cfg(test)]
+mod notification_event_tests {
+    use super::notification_event;
+    use uuid::Uuid;
+
+    #[test]
+    fn a_push_names_the_person_and_the_alert() {
+        let owner = Uuid::now_v7();
+        let id = Uuid::now_v7();
+        let (channel, payload) = notification_event(owner, id);
+
+        assert_eq!(channel, format!("user:{owner}"));
+        let value: serde_json::Value = serde_json::from_str(&payload).expect("json");
+        assert_eq!(value["t"], serde_json::json!("notification"));
+        assert_eq!(value["id"], serde_json::json!(id));
     }
 }

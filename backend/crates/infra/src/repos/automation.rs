@@ -470,6 +470,7 @@ impl PgAutomation {
     ) -> Result<(), AppError> {
         self.notify_owner_about(home_id, title, body, serde_json::json!({}))
             .await
+            .map(|_| ())
     }
 
     /// The same, with the context that makes an alert actionable.
@@ -477,13 +478,15 @@ impl PgAutomation {
     /// An alert that says "Leak check" and cannot be tapped is a notification the customer reads and
     /// then has to go hunting for. When the trigger names a device, the row carries its id, so the app
     /// can open that device instead of the list.
+    /// Returns the owner and the notification's id, so the caller can push it to that person's open
+    /// apps. `None` means the home has no owner left to tell.
     pub async fn notify_owner_about(
         &self,
         home_id: Uuid,
         title: &str,
         body: &str,
         data: serde_json::Value,
-    ) -> Result<(), AppError> {
+    ) -> Result<Option<(Uuid, Uuid)>, AppError> {
         let mut tx = self.tx().await?;
         let owner: Option<Uuid> = sqlx::query_scalar("SELECT owner_id FROM homes WHERE id = $1")
             .bind(home_id)
@@ -492,7 +495,7 @@ impl PgAutomation {
             .map_err(db)?;
 
         let Some(owner) = owner else {
-            return Ok(());
+            return Ok(None);
         };
 
         // If the alert names a device, it also names it in words. The app shows the action as
@@ -514,11 +517,12 @@ impl PgAutomation {
             None => data,
         };
 
+        let notification_id = kernel::new_id();
         sqlx::query(
             r#"INSERT INTO notifications (id, user_id, kind, title, body, data)
                VALUES ($1, $2, 'automation', $3, $4, $5)"#,
         )
-        .bind(kernel::new_id())
+        .bind(notification_id)
         .bind(owner)
         .bind(title)
         .bind(body)
@@ -527,7 +531,8 @@ impl PgAutomation {
         .await
         .map_err(db)?;
 
-        tx.commit().await.map_err(db)
+        tx.commit().await.map_err(db)?;
+        Ok(Some((owner, notification_id)))
     }
 }
 

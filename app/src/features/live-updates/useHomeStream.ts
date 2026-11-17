@@ -67,15 +67,30 @@ export function useHomeStream(homeId: string | null): StreamStatus {
 
     const onMessage = (event: { data: string }) => {
       const msg = safeParse(String(event.data));
-      if (!msg || !msg.device_id) return;
+      if (!msg) return;
+
+      // An alert is about a person, not a device, and it arrives on `user:{id}`. The count is bumped
+      // in place — this frame *is* the new alert — and the list is invalidated so opening /alerts
+      // shows it without waiting for the safety-net poll.
+      if (msg.t === 'notification') {
+        patchDashboards((dash) => ({ ...dash, unread_count: dash.unread_count + 1 }));
+        qc.setQueryData<{ unread: number }>(qk.unread, (count) => ({
+          unread: (count?.unread ?? 0) + 1,
+        }));
+        qc.invalidateQueries({ queryKey: qk.notifications });
+        return;
+      }
+
+      if (!msg.device_id) return;
       const deviceId = msg.device_id;
 
-      // The dashboard holds its own copy of the device list; a screen that reads it
-      // must repaint from the same event, not from the next refetch.
+      // The dashboard holds its own copy of the device list, and it keeps one cache entry *per page
+      // size* — `['home', id, 'dashboard', 200]`, `…, 420]`. Writing a single key meant every live
+      // event landed in an entry no screen reads, which is why the dashboard never moved in the
+      // running app while the tests (which seeded that same key) passed. `setQueriesData` with the
+      // prefix patches every page size that exists.
       const patchDashboard = (patch: (d: Device) => Device) =>
-        qc.setQueryData<Dashboard>(qk.dashboard(homeId), (dash) =>
-          dash ? { ...dash, devices: dash.devices.map(patch) } : dash,
-        );
+        patchDashboards((dash) => ({ ...dash, devices: dash.devices.map(patch) }));
 
       switch (msg.t) {
         case 'point.changed':
@@ -133,6 +148,12 @@ export function useHomeStream(homeId: string | null): StreamStatus {
           break;
       }
     };
+
+    /** Patch every cached dashboard for this home, whatever page size it was fetched at. */
+    const patchDashboards = (patch: (dash: Dashboard) => Dashboard) =>
+      qc.setQueriesData<Dashboard>({ queryKey: qk.dashboard(homeId) }, (dash) =>
+        dash ? patch(dash) : dash,
+      );
 
     /** What a missed window costs: the home may have changed while we were not listening. */
     const resync = () => {

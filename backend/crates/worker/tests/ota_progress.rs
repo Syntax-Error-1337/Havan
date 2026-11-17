@@ -147,6 +147,7 @@ async fn boot() -> Option<Fixture> {
     let runner = Arc::new(Runner::new(
         infra::PgAutomation::new(infra_pg.clone()),
         client,
+        cache.clone(),
         "ota-progress-test".into(),
     ));
 

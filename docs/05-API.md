@@ -511,6 +511,12 @@ Events (server → client):
 | `automation.fired` | `{automation_id, run_id}` |
 | `ota.progress` | `{device_id, state, pct}` |
 | `home.updated` | `{home}` |
+| `notification` | `{id}` — an alert for the signed-in person, on `user:{user_id}` |
+
+The socket subscribes to two kinds of channel: one `home:{id}` per home the caller proved membership
+of, and `user:{user_id}` for the person themselves — because an alert belongs to whoever has to read
+it, and one customer can be in several homes. A `notification` frame carries no `device_id`: the app
+bumps its unread count in place and refetches the list, rather than waiting for a poll.
 
 Heartbeat: the server answers protocol-level pings; a client that misses two is
 dropped. The client reconnects with jittered backoff and re-sends `auth`.
