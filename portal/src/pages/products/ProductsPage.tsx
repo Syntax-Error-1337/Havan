@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useProducts, useCreateProduct, type ThingModel } from '../../entities/product';
+import {
+  useProducts,
+  useCreateProduct,
+  useDeleteProduct,
+  type Product,
+  type ThingModel,
+} from '../../entities/product';
 import { ProductTable } from '../../widgets/product-table/ProductTable';
 import { ApiError } from '../../shared/api/client';
 
@@ -18,6 +24,19 @@ export function ProductsPage() {
   const navigate = useNavigate();
   const { data, isPending, error } = useProducts();
   const create = useCreateProduct();
+  const remove = useDeleteProduct();
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  const onDelete = async (product: Product) => {
+    setRefusal(null);
+    if (!window.confirm(`Delete ${product.name}? This cannot be undone.`)) return;
+    try {
+      await remove.mutateAsync(product.id);
+    } catch (e) {
+      // The server knows what is in the way; say what it said.
+      setRefusal(e instanceof ApiError ? e.message : 'that product could not be deleted');
+    }
+  };
   const [showNew, setShowNew] = useState(false);
   const [key, setKey] = useState('');
   const [name, setName] = useState('');
@@ -97,7 +116,14 @@ export function ProductsPage() {
             No products yet. Create one, then define what it can do.
           </p>
         ) : (
-          <ProductTable products={data} />
+          <>
+            {refusal ? (
+              <p className="error" role="status" data-testid="delete-refusal">
+                {refusal}
+              </p>
+            ) : null}
+            <ProductTable products={data} onDelete={onDelete} />
+          </>
         )}
       </div>
     </>

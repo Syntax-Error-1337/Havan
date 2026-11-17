@@ -6,7 +6,14 @@ import { TableFrame } from '../../shared/ui/TableFrame';
  * The list is the vendor's whole catalogue. Status is the only column that
  * changes, and it is the one that decides whether customers can pair.
  */
-export function ProductTable({ products }: { products: Product[] }) {
+export function ProductTable({
+  products,
+  onDelete,
+}: {
+  products: Product[];
+  /** Present only where deleting is offered; the refusal comes from the server. */
+  onDelete?: (product: Product) => void;
+}) {
   return (
     <TableFrame label="Products">
   <table className="table">
@@ -18,6 +25,7 @@ export function ProductTable({ products }: { products: Product[] }) {
             <th>Capabilities</th>
             <th>Status</th>
             <th>Certification</th>
+            {onDelete ? <th aria-label="Actions" /> : null}
           </tr>
         </thead>
         <tbody>
@@ -41,6 +49,17 @@ export function ProductTable({ products }: { products: Product[] }) {
                   {product.certification}
                 </span>
               </td>
+              {onDelete ? (
+                <td>
+                  <button
+                    className="btn btn--danger"
+                    aria-label={`Delete ${product.name}`}
+                    onClick={() => onDelete(product)}
+                  >
+                    Delete
+                  </button>
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

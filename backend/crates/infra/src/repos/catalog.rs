@@ -1,5 +1,5 @@
 use crate::pg::Pg;
-use domain::catalog::{CatalogRepo, Product, PublicProduct, certification_transition};
+use domain::catalog::{CatalogRepo, Product, PublicProduct, Unused, certification_transition};
 use kernel::{AppError, TenantCtx};
 use protocol::thing_model::ThingModel;
 use sha2::{Digest, Sha256};
@@ -232,6 +232,51 @@ impl CatalogRepo for PgCatalog {
         .map_err(db)?;
 
         tx.commit().await.map_err(db)
+    }
+
+    async fn delete(&self, vendor_id: Uuid, id: Uuid) -> Result<Option<Unused>, AppError> {
+        let mut tx = self.pg.scoped(&PgCatalog::ctx(vendor_id)).await?;
+
+        // One statement, so the counts and the delete cannot disagree: the row is removed only when
+        // nothing points at it, and the same read says what did.
+        let row: Option<(i64, i64, i64, i64)> = sqlx::query_as(
+            r#"WITH counts AS (
+                   SELECT p.id,
+                          (SELECT count(*) FROM devices d
+                            WHERE d.product_id = p.id AND d.state <> 'released') AS devices,
+                          (SELECT count(*) FROM licence_activations a
+                            WHERE a.product_id = p.id) AS activations
+                     FROM products p
+                    WHERE p.id = $2 AND p.vendor_id = $1
+               ), gone AS (
+                   DELETE FROM products p
+                    USING counts c
+                    WHERE p.id = c.id
+                      AND c.devices = 0
+                      AND c.activations = 0
+                  RETURNING p.id
+               )
+               SELECT (SELECT count(*) FROM counts),
+                      COALESCE((SELECT devices FROM counts), 0),
+                      COALESCE((SELECT activations FROM counts), 0),
+                      (SELECT count(*) FROM gone)"#,
+        )
+        .bind(vendor_id)
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+
+        match row {
+            Some((0, _, _, _)) | None => Err(AppError::not_found("product")),
+            Some((_, _, _, 1)) => Ok(None),
+            Some((_, devices, activations, _)) => Ok(Some(Unused {
+                devices,
+                activations,
+            })),
+        }
     }
 
     async fn publish(&self, vendor_id: Uuid, id: Uuid) -> Result<(), AppError> {

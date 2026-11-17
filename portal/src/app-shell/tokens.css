@@ -223,6 +223,16 @@ select.input {
   color: #04070c;
 }
 
+.btn--danger {
+  border-color: var(--danger, #b42318);
+  color: var(--danger, #b42318);
+  background: transparent;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #b42318) 12%, transparent);
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

@@ -64,6 +64,16 @@ pub trait CatalogRepo {
         product: &Product,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
 
+    /// Remove a product nobody depends on.
+    ///
+    /// Returns `Some(Unused { devices, activations })` when it refused, so the refusal can name what
+    /// is in the way; `None` when the row is gone.
+    fn delete(
+        &self,
+        vendor_id: Uuid,
+        id: Uuid,
+    ) -> impl Future<Output = Result<Option<Unused>, AppError>> + Send;
+
     fn publish(
         &self,
         vendor_id: Uuid,
@@ -105,6 +115,16 @@ pub const CERTIFICATION_STATES: [&str; 4] = ["uncertified", "submitted", "certif
 
 /// Is `from -> to` a legal certification move? Same-state is a no-op, so a retried POST is
 /// not an error the caller has to interpret.
+/// Why a product could not be removed: something already points at it.
+///
+/// Present as data rather than as a formatted error inside the repo, because the two numbers are
+/// what make the refusal useful — "6 devices are live on this product" tells the vendor what to do.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unused {
+    pub devices: i64,
+    pub activations: i64,
+}
+
 pub fn certification_transition(from: &str, to: &str) -> Result<(), AppError> {
     if !CERTIFICATION_STATES.contains(&to) {
         return Err(AppError::validation(format!(
@@ -237,6 +257,43 @@ impl<R: CatalogRepo + Send + Sync> CatalogService<R> {
 
     /// Returns the violations instead of failing, so the portal can render them
     /// next to the field that caused them.
+    /// Delete a product, or say precisely why it has to stay.
+    ///
+    /// Two things make a catalogue entry permanent, and both are money or hardware:
+    ///
+    /// - **devices** — a product with devices in people's homes cannot vanish from the store;
+    /// - **licence activations** — they are the billing record. The foreign key cascades, so a
+    ///   delete would erase the very rows an invoice was built from. A vendor tidying their
+    ///   catalogue must not be able to delete their own revenue history.
+    pub async fn delete(&self, vendor_id: Uuid, id: Uuid) -> Result<(), AppError> {
+        let Some(unused) = self.repo.delete(vendor_id, id).await? else {
+            return Ok(());
+        };
+        if unused.devices > 0 {
+            return Err(AppError::code(
+                kernel::ErrorCode::Conflict,
+                format!(
+                    "{} device(s) are live on this product; a catalogue entry that people already \
+                     own cannot be removed",
+                    unused.devices
+                ),
+            ));
+        }
+        if unused.activations > 0 {
+            return Err(AppError::code(
+                kernel::ErrorCode::Conflict,
+                format!(
+                    "{} licence activation(s) are recorded against this product; they are the \
+                     billing history and are not deleted with the catalogue entry",
+                    unused.activations
+                ),
+            ));
+        }
+        // Neither count blocked it and the row is still there: only reachable if the delete raced
+        // with another, and a second answer is better than a wrong one.
+        Err(AppError::not_found("product"))
+    }
+
     pub async fn validate(
         &self,
         vendor_id: Uuid,

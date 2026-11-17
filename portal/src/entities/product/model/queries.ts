@@ -85,3 +85,19 @@ export function usePublishProduct(id: string) {
     },
   });
 }
+
+/**
+ * Remove a product nobody depends on.
+ *
+ * The server refuses with a 409 naming what is in the way — devices in people's homes, or licence
+ * activations that are the billing history. The refusal is shown where it happens rather than
+ * pre-filtered here: the UI does not know what the vendor's fleet looks like at this instant.
+ */
+export function useDeleteProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/vendor/products/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.products }),
+  });
+}

@@ -1,6 +1,6 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use domain::catalog::Product;
@@ -18,7 +18,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/vendor/auth/login", post(login))
         .route("/vendor/products", get(list).post(create))
-        .route("/vendor/products/{id}", get(one).patch(update))
+        .route("/vendor/products/{id}", get(one).patch(update).delete(remove_product))
         .route("/vendor/products/{id}/validate", post(validate))
         .route("/vendor/products/{id}/publish", post(publish))
         .route(
@@ -142,6 +142,23 @@ async fn update(
 
 /// Returns violations rather than failing: the portal renders them beside the
 /// fields that caused them, and a 200 with an empty list means "ready".
+/// `DELETE /vendor/products/{id}` — a catalogue entry that nothing points at.
+///
+/// The two refusals are not politeness: devices in people's homes make the entry permanent, and
+/// licence activations are the billing record that would cascade away with it.
+async fn remove_product(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    state
+        .catalog
+        .delete(vendor.vendor_id, id)
+        .await
+        .map_err(ApiError)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn validate(
     State(state): State<AppState>,
     vendor: VendorAuth,
