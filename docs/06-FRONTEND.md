@@ -152,6 +152,36 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The home's clock, and the shortcut under it
+
+Settings showed `Time zone — UTC` as a **read-only row**. Every home created before the first-run screen asked for
+a name was created in UTC, and once created it could never be moved: a customer who moves, or who was set up
+wrongly, keeps a home whose schedules fire at the wrong hour forever. It is now an editable row with a one-tap
+*Use Asia/Taipei* (the phone's own zone) beside it.
+
+Fixing that exposed the shortcut it was built on:
+
+```rust
+/// shortcut: shape only, not the tz database — "Mars/Olympus" passes. Upgrade to a real lookup when
+/// schedules exist (Phase 6), because a wrong zone shifts every automation silently.
+fn valid_timezone(tz: &str) -> bool
+```
+
+**Schedules exist.** Phase 6 shipped; `crates/domain/src/homes.rs` was still accepting `Mars/Olympus` by
+counting slashes. The due upgrade needs no dependency: Postgres ships the authority as `pg_timezone_names`, so the
+repo asks the database whether the zone exists, and the service refuses anything it does not know.
+
+Verified against the running API:
+
+| Request | Result |
+|---|---|
+| `PATCH {"timezone":"Asia/Tokyo"}` | **200**, home returns `Asia/Tokyo` |
+| `PATCH {"timezone":"Mars/Olympus"}` | **422** `that is not a timezone this platform knows…` |
+| the demo's `Workshop`, before this pass | `UTC` — the exact case this fixes |
+
+And in the app: the row reads `Time zone — Asia/Taipei`, offers *Use Asia/Taipei* when the home is somewhere else,
+and tapping it moved the home from `Europe/Berlin` back — confirmed in the database, not just on screen.
+
 ### A palette nobody could reach
 
 `providers.tsx` carried this comment:

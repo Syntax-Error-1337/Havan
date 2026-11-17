@@ -111,6 +111,23 @@ pub trait HomeRepo {
         name: &str,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
 
+    fn set_timezone(
+        &self,
+        home_id: Uuid,
+        timezone: &str,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Is this a timezone the platform can actually schedule in?
+    ///
+    /// `valid_timezone` only checks the shape of the string ("Mars/Olympus" passes), and its own comment
+    /// said to upgrade to a real lookup once schedules existed. They exist: an automation at 07:00 is
+    /// evaluated in the home's zone, so a zone the database does not know is a schedule that never fires
+    /// or fires at the wrong hour, silently. Postgres already ships the authority (`pg_timezone_names`).
+    fn timezone_exists(
+        &self,
+        timezone: &str,
+    ) -> impl Future<Output = Result<bool, AppError>> + Send;
+
     fn delete(&self, home_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
 
     fn set_location(
@@ -195,8 +212,12 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
         if name.is_empty() || name.chars().count() > 60 {
             return Err(AppError::validation("home name must be 1–60 characters"));
         }
-        if !valid_timezone(timezone) {
-            return Err(AppError::validation("unknown timezone"));
+        // The shape first (cheap, and it keeps the error message specific), then the real list — a home
+        // whose zone the scheduler cannot resolve has schedules that never fire.
+        if !valid_timezone(timezone) || !self.repo.timezone_exists(timezone).await? {
+            return Err(AppError::validation(
+                "that is not a timezone this platform knows; use an IANA name like Europe/Berlin",
+            ));
         }
 
         let home = Home {
@@ -226,6 +247,35 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
             .get(home_id, user_id)
             .await?
             .ok_or_else(|| AppError::not_found("home"))
+    }
+
+    /// Change the home's timezone.
+    ///
+    /// The home's zone is what every schedule is read against, so this is a manager's decision, and it is
+    /// checked against the real list rather than the shape of the string.
+    pub async fn set_timezone(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        timezone: &str,
+    ) -> Result<Home, AppError> {
+        let home = self.require(home_id, user_id).await?;
+        if !home.role.can_manage() {
+            return Err(AppError::forbidden(
+                "only an admin can change a home's timezone",
+            ));
+        }
+        let timezone = timezone.trim();
+        if !valid_timezone(timezone) || !self.repo.timezone_exists(timezone).await? {
+            return Err(AppError::validation(
+                "that is not a timezone this platform knows; use an IANA name like Europe/Berlin",
+            ));
+        }
+        self.repo.set_timezone(home_id, timezone).await?;
+        Ok(Home {
+            timezone: timezone.to_string(),
+            ..home
+        })
     }
 
     pub async fn rename(&self, home_id: Uuid, user_id: Uuid, name: &str) -> Result<Home, AppError> {
@@ -478,6 +528,40 @@ fn valid_timezone(tz: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_timezone_has_to_be_one_the_scheduler_can_use() {
+        let svc = HomeService::new(Arc::new(FakeRepo::default()));
+        let owner = Uuid::now_v7();
+        let home = svc
+            .create(owner, "Flat 3", "Asia/Taipei")
+            .await
+            .expect("create");
+
+        // A real IANA name is accepted, and comes back on the home.
+        let moved = svc
+            .set_timezone(home.id, owner, "Europe/Berlin")
+            .await
+            .expect("a real zone");
+        assert_eq!(moved.timezone, "Europe/Berlin");
+
+        // A shape-valid invention is refused: `valid_timezone` alone would have taken it, and every
+        // schedule in the home would then be read against a zone that does not exist.
+        let err = svc
+            .set_timezone(home.id, owner, "Mars/Olympus")
+            .await
+            .unwrap_err();
+        assert_eq!(err.code_kind(), ErrorCode::ValidationFailed);
+
+        // And a member cannot move everybody's schedules.
+        let guest = Uuid::now_v7();
+        svc.repo
+            .add_member(home.id, guest, Role::Member, false)
+            .await
+            .expect("add member");
+        let err = svc.set_timezone(home.id, guest, "UTC").await.unwrap_err();
+        assert_eq!(err.code_kind(), ErrorCode::Forbidden);
+    }
     use kernel::ErrorCode;
     use std::sync::Mutex;
 
@@ -527,6 +611,26 @@ mod tests {
                 .iter()
                 .find(|h| h.id == home_id)
                 .map(|h| Home { role, ..h.clone() }))
+        }
+        async fn set_timezone(&self, home_id: Uuid, timezone: &str) -> Result<(), AppError> {
+            if let Some(h) = self
+                .homes
+                .lock()
+                .unwrap()
+                .iter_mut()
+                .find(|h| h.id == home_id)
+            {
+                h.timezone = timezone.to_string();
+            }
+            Ok(())
+        }
+        /// The fake knows the zones the tests use, and nothing else: a made-up name must fail here exactly
+        /// as it does in Postgres.
+        async fn timezone_exists(&self, timezone: &str) -> Result<bool, AppError> {
+            Ok(matches!(
+                timezone,
+                "UTC" | "Europe/Berlin" | "Asia/Taipei" | "Asia/Kolkata" | "America/New_York"
+            ))
         }
         async fn rename(&self, home_id: Uuid, name: &str) -> Result<(), AppError> {
             if let Some(h) = self

@@ -1,4 +1,4 @@
-export { useHomes, useCreateHome, useRenameHome } from './model/queries';
+export { useHomes, useCreateHome, useRenameHome, useSetTimeZone } from './model/queries';
 export { useCurrentHome } from './model/current';
 export {
   useRooms,

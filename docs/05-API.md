@@ -268,7 +268,7 @@ aborting the burst.
 | Method | Path |
 |---|---|
 | GET | `/homes/{id}/dashboard` | one call: home, rooms, devices+points, scenes, unread count. Add `device_limit` (1–500) for a page, and `device_cursor` for the next one; a paged answer also carries `devices_total` and, when there is more, `devices_next_cursor` |
-| PATCH | `/homes/{id}` | `{name?, geo_lat?, geo_lon?}` — coordinates together, `null` clears |
+| PATCH | `/homes/{id}` | `{name?, geo_lat?, geo_lon?, timezone?}` — coordinates together, `null` clears; `timezone` is an IANA name checked against `pg_timezone_names`, because a wrong zone shifts every schedule silently |
 | POST | `/homes/{id}/presence` | `{present}` — this member is home / away |
 | PATCH/DELETE | `/rooms/{room_id}?home_id=` | rename; delete leaves its devices unassigned |
 | POST | `/automations/{id}/hook?token=` | **no bearer token**: the URL is the credential |

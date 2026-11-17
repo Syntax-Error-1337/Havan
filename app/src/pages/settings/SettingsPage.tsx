@@ -24,7 +24,9 @@ import {
   useRenameHome,
   useRenameRoom,
   useRooms,
+  useSetTimeZone,
 } from '../../entities/home';
+import { deviceTimeZone } from '../../shared/lib/timeZone';
 import { useMe, useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
@@ -45,6 +47,7 @@ export function SettingsPage() {
   const { brand, color } = useTheme();
   const appearance = usePreferences((s) => s.appearance);
   const setAppearance = usePreferences((s) => s.setAppearance);
+  const setTimeZone = useSetTimeZone();
 
   const { homeId } = useCurrentHome();
   const signOut = useSession((s) => s.signOut);
@@ -119,7 +122,38 @@ export function SettingsPage() {
               if (home) renameHome.mutate({ id: home.id, name });
             }}
           />
-          <Row title="Time zone" value={home?.timezone ?? 'UTC'} />
+          {/* Read-only until now, which meant a home created before the first-run screen asked (every
+              home made before the timezone fix) could never be moved: every schedule in it stayed an hour
+              or nine out. */}
+          <EditableRow
+            title="Time zone"
+            value={home?.timezone ?? 'UTC'}
+            placeholder="Europe/Berlin"
+            onSave={(value) => {
+              if (!home) return;
+              setTimeZone.mutate({ id: home.id, timezone: value });
+            }}
+            right={
+              home && home.timezone !== deviceTimeZone() ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setTimeZone.mutate({ id: home.id, timezone: deviceTimeZone() })}
+                  hitSlop={8}
+                >
+                  <AppText variant="tiny" style={{ color: color.accentInk }}>
+                    Use {deviceTimeZone()}
+                  </AppText>
+                </Pressable>
+              ) : null
+            }
+          />
+          {setTimeZone.error ? (
+            <AppText variant="tiny" tone="danger">
+              {setTimeZone.error instanceof Error
+                ? setTimeZone.error.message
+                : 'That timezone was not accepted.'}
+            </AppText>
+          ) : null}
           {/* `home.role` is not in the payload, so the rule comes from the homes list. */}
           {/* `devices.length` is a *page* of the dashboard's cursor, and on this screen the query often
               answers with none of it — so a six-device home said "Devices 0". The total is the only count

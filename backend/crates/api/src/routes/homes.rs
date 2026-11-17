@@ -43,6 +43,9 @@ fn default_tz() -> String {
 
 #[derive(Deserialize)]
 struct PatchHome {
+    /// An IANA name. Changing it moves every schedule in the home, which is why it needs an admin.
+    #[serde(default)]
+    timezone: Option<String>,
     name: Option<String>,
     /// Set together, or send null for both to clear. Solar automations need a place.
     #[serde(default, deserialize_with = "double_option")]
@@ -137,6 +140,14 @@ async fn rename(
         home = state
             .homes
             .rename(id, auth.user.id, name)
+            .await
+            .map_err(ApiError)?;
+    }
+
+    if let Some(timezone) = body.timezone.as_deref() {
+        home = state
+            .homes
+            .set_timezone(id, auth.user.id, timezone)
             .await
             .map_err(ApiError)?;
     }

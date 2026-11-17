@@ -669,6 +669,16 @@ mod tests {
         async fn rename(&self, _: Uuid, _: &str) -> Result<(), AppError> {
             Ok(())
         }
+
+        async fn set_timezone(&self, _: Uuid, _: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+
+        /// The fake knows one zone, which is the shape the tests care about: a real name passes, a made-up
+        /// one does not.
+        async fn timezone_exists(&self, timezone: &str) -> Result<bool, AppError> {
+            Ok(timezone == "Europe/Berlin" || timezone == "UTC")
+        }
         async fn delete(&self, _: Uuid) -> Result<(), AppError> {
             Ok(())
         }

@@ -20,6 +20,27 @@ export function useHomes(onlyWithoutHome = false) {
   });
 }
 
+/**
+ * Move the home to another timezone.
+ *
+ * Every schedule in the home is read against this, so it is one query with one cache invalidation —
+ * a home screen still showing yesterday's zone is a schedule that looks right and fires wrong.
+ */
+export function useSetTimeZone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; timezone: string }) =>
+      request<void>(`/homes/${input.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ timezone: input.timezone }),
+      }),
+    onSuccess: (_data, input) => {
+      void qc.invalidateQueries({ queryKey: qk.homes });
+      void qc.invalidateQueries({ queryKey: qk.dashboard(input.id) });
+    },
+  });
+}
+
 export function useRenameHome() {
   const qc = useQueryClient();
   return useMutation({

@@ -203,6 +203,28 @@ impl HomeRepo for PgHomes {
             .map_err(db)
     }
 
+    async fn set_timezone(&self, home_id: Uuid, timezone: &str) -> Result<(), AppError> {
+        sqlx::query("UPDATE homes SET timezone = $2 WHERE id = $1")
+            .bind(home_id)
+            .bind(timezone)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(db)
+    }
+
+    async fn timezone_exists(&self, timezone: &str) -> Result<bool, AppError> {
+        // Postgres ships the tz database as a view; asking it is cheaper and more correct than
+        // carrying a third-party list that drifts from the one the scheduler will use.
+        let row: (bool,) =
+            sqlx::query_as("SELECT EXISTS (SELECT 1 FROM pg_timezone_names WHERE name = $1)")
+                .bind(timezone)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(db)?;
+        Ok(row.0)
+    }
+
     async fn set_location(
         &self,
         home_id: Uuid,
