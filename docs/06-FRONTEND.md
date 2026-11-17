@@ -353,6 +353,30 @@ failed six tests on the default 5 s timeout that pass in a second locally, so
 
 ## Design language
 
+### Light mode was never looked at
+
+Every screenshot in this document is dark, and the palette has always had a light half. Flipping the operator
+theme to `light` (one `PUT /v1/ops/theme`) found the app mostly correct — the token discipline paid for itself —
+with **one class of defect no token can fix**:
+
+> An 11-point footer caption in the hero card rendered at **3.49:1**. Measured from the screenshot's own pixels,
+> not from the palette: the text colour was fine, the surface was fine, and the card's `opacity: 0.88` — the
+> "this is stale" treatment — multiplied every child's alpha, including the text's.
+
+**Opacity is not a safe way to express state.** `opacity` on a container is a compositor instruction: it drags
+images, borders and *type* down together, so a card that is 12 % quieter to a designer is 12 % closer to failing
+AA for a customer. The stale treatments on the hero card and on the device tiles now work per element — icon and
+chart fade, the halo goes, the dot changes colour, the words say `last reading` — and the text keeps the token
+the contrast gate already certified. Re-measured from the same pixels: **6.34:1**.
+
+Two things this pass settled for free, because a light palette is where hardcoded colours show up:
+
+- The mesh, header, presence pill, stat cards, chart and tab bar render correctly in light mode with no
+  per-component overrides — the point of `tokens.ts` being the only file allowed a hex literal.
+- `check-contrast.mjs` cannot catch this class of bug. It compares tokens against a base background; the defect
+  was a compositing effect *above* the tokens. Rendered pixels are the only honest measurement, which is why the
+  number above came from an image rather than from the palette.
+
 The app speaks iOS, not "a dark theme". `src/shared/config/tokens.ts` is the whole
 system, and the numbers in it come from Apple's Human Interface Guidelines rather
 than from taste:

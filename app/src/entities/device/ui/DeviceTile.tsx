@@ -135,7 +135,9 @@ export function DeviceTile({
       // pre-faded colour made it fall back to the raw string — a 45%-yellow card, brighter than a live one.)
       accent={accent}
       glow={state === 'live' ? glow : undefined}
-      style={{ flex: 1, minHeight: wide ? 104 : 132, opacity: state === 'live' ? 1 : 0.88 }}
+      // No subtree opacity: it would take the status text with it. The tile already says what it is with the
+      // halo, the dot, the words and the disabled control.
+      style={{ flex: 1, minHeight: wide ? 104 : 132 }}
       testID={`device-tile-${device.serial}`}
       accessibilityLabel={`${device.name}, ${
         state === 'live' ? 'online' : state === 'stale' ? `silent, ${silent ?? 'not heard from'}` : 'offline'
