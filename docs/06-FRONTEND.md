@@ -374,6 +374,21 @@ than from taste:
   accents gained a daylight set (`categoryAccentLight`) because cyan at 1.6:1 on a
   white card is not an icon.
 
+### More than one home, and more than one page
+
+Tapping the home's name opens `/homes`: every home the account can open, with its device and member
+counts from `GET /homes`, the current one ticked, and a way to create another. The app used to store
+one home id and assume it was enough — wrong for a customer with a flat and a cottage, and wrong for
+anyone who needs to look at a large account without logging in as its owner.
+
+The switcher is also how the paged dashboard is verified: the demo home has six devices and never
+shows a cursor, so `scripts/seed-big-home.sql` adds a **420-device** home. Measured on it:
+
+- the first page loads 200 devices and the header reads `171 of 420 online · showing 200` — the
+  count is the home's, not the page's;
+- the footer reads **Load 220 more · showing 200 of 420** and loads the rest in one press;
+- with all 420 loaded, **48 device tiles are mounted** at a time, because the list is windowed.
+
 ### The brand is data, not a constant
 
 `tokens.ts` used to be the whole brand, which meant a white-label partner needed a fork. It is now the

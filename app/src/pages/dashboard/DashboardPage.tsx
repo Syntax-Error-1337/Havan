@@ -17,6 +17,7 @@ import { qk } from '../../shared/api/keys';
 import { useMe, useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
+import { withAlpha } from '../../shared/ui/Glass';
 import { useTheme } from '../../app-shell/theme';
 import { groupByRoom } from './sections';
 import { buildRows } from './rows';
@@ -149,7 +150,13 @@ export function DashboardPage() {
   const homeName = dashboard?.home.name ?? homes?.find((h) => h.id === homeId)?.name ?? 'Home';
   const person = me?.display_name || me?.email || 'You';
   const clock = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const onlineText = `${summary.online} of ${summary.devices} online`;
+  // The count is the home's, not the page's: "171 of 200 online" on a 420-device home is a lie the
+  // page size told.
+  const totalDevices = dashboard?.devices_total ?? devices.length;
+  const onlineText =
+    totalDevices === devices.length
+      ? `${summary.online} of ${totalDevices} online`
+      : `${summary.online} of ${totalDevices} online · showing ${devices.length}`;
 
   return (
     <Screen>
@@ -172,7 +179,13 @@ export function DashboardPage() {
         ListHeaderComponent={
           <>
             <Box px="lg" py="md" gap="lg">
-              <HomeHeader name={homeName} person={person} subtitle={onlineText} clock={clock} />
+              <HomeHeader
+                name={homeName}
+                person={person}
+                subtitle={onlineText}
+                clock={clock}
+                onOpenHomes={() => router.push('/homes')}
+              />
 
               {/* Searching is a question about the list. While it is being asked, the rail, the hero
                   and the scenes step aside: they are the home's state, not the answer, and leaving
@@ -400,18 +413,26 @@ export function DashboardPage() {
                 accessibilityRole="button"
                 testID="load-all-devices"
                 onPress={() => setDeviceLimit((limit: number) => Math.min(limit * 4, 2000))}
-                style={{
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
                   alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
                   paddingVertical: 14,
                   borderRadius: 14,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: color.border,
-                  backgroundColor: color.glass,
-                }}
+                  borderWidth: 1,
+                  // A muted outline read as a status line, not as the thing to press. It wears the
+                  // accent now, and it says how many are behind it.
+                  borderColor: color.accent,
+                  backgroundColor: withAlpha(color.accent, pressed ? 0.24 : 0.14),
+                })}
               >
-                <AppText variant="caption" tone="muted">
-                  Showing {devices.length} of {dashboard.devices_total ?? devices.length} — load the
-                  rest
+                <AppText variant="caption" weight="600" style={{ color: color.accent }}>
+                  Load{' '}
+                  {(dashboard.devices_total ?? devices.length) - devices.length} more
+                </AppText>
+                <AppText variant="tiny" tone="muted">
+                  showing {devices.length} of {dashboard.devices_total ?? devices.length}
                 </AppText>
               </Pressable>
             </View>

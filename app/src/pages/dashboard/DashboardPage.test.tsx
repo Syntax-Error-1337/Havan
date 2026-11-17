@@ -83,6 +83,34 @@ describe('dashboard', () => {
     expect(view.getByText('Unassigned')).toBeTruthy();
   });
 
+  it('offers the rest when the home is bigger than one page', async () => {
+    stubApi((url) => {
+      if (url.includes('/homes/') && url.includes('/dashboard')) {
+        return {
+          home: { id: 'home-1', name: 'Big flat', timezone: 'UTC' },
+          rooms: [{ id: 'room-1', home_id: 'home-1', name: 'Living room', sort: 0 }],
+          devices: [
+            { id: 'd1', name: 'Lamp', room_id: 'room-1', serial: 'S1', product_key: 'k', category: 'light', online: true, points: [] },
+          ],
+          scenes: [],
+          unread_count: 0,
+          // The server's own words: this answer is a page of a larger home.
+          devices_total: 431,
+          devices_next_cursor: '0:4c616d70:01a1fd00-0000-7000-8000-000000000001',
+        };
+      }
+      return [{ id: 'home-1', name: 'Big flat', timezone: 'UTC', role: 'owner', device_count: 431, member_count: 1, created_at: '', owner_id: 'u' }];
+    });
+
+    const view = await renderDashboard();
+    await view.findByText('Lamp');
+
+    // Both halves matter: the count is the home's, and the footer says how much is behind it.
+    expect(view.getByText(/431 online/)).toBeTruthy();
+    expect(view.getByText(/Load 430 more/)).toBeTruthy();
+    expect(view.getByText(/showing 1 of 431/)).toBeTruthy();
+  });
+
   it('says so plainly when there are no devices', async () => {
     stubApi((url) => {
       if (url.includes('/scenes')) return [];

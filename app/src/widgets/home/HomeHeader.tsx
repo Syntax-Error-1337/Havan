@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText, Glass, Icon, type IconName } from '../../shared/ui';
@@ -19,11 +19,14 @@ export function HomeHeader({
   person,
   subtitle,
   clock,
+  onOpenHomes,
 }: {
   name: string;
   person: string;
   subtitle: string;
   clock: string;
+  /** Opens the home switcher. An account with one home still needs the way to add a second. */
+  onOpenHomes?: () => void;
 }) {
   const { color } = useTheme();
   const initials = person
@@ -53,14 +56,22 @@ export function HomeHeader({
           </AppText>
         </View>
 
-        <View style={{ flex: 1 }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${name} — switch home`}
+          onPress={onOpenHomes}
+          style={{ flex: 1, gap: 1 }}
+        >
           <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.2 }}>
             DASHBOARD
           </AppText>
-          <AppText variant="title" weight="700" numberOfLines={1}>
-            {name}
-          </AppText>
-        </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <AppText variant="title" weight="700" numberOfLines={1} style={{ flexShrink: 1 }}>
+              {name}
+            </AppText>
+            <Icon name="chevron-right" size={16} color={color.muted} />
+          </View>
+        </Pressable>
 
         <Glass padded={false} style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
