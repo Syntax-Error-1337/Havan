@@ -178,6 +178,30 @@ export function ProductEditorPage() {
         />
       </label>
 
+      {/* Two declarations a vendor cannot discover by looking at the editor: both change what a
+          customer sees, and both are silent when absent. Naming them here is cheaper than a support
+          ticket asking why the app warns about the wrong Wi-Fi band, or why the device says "silent". */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Two optional declarations change what the customer&apos;s app does with this product:
+        </p>
+        <ul className="muted" style={{ margin: 0, paddingLeft: 18 }}>
+          <li style={{ marginBottom: 6 }}>
+            <code>radio</code> — the app warns before pairing fails on a network the hardware cannot
+            join. Absent means &ldquo;not declared&rdquo;, and the customer finds out the hard way.
+            <div style={{ marginTop: 4 }}>
+              <code>{'{ "radio": { "bands": ["2.4ghz"], "security": ["wpa2-psk"] } }'}</code>
+            </div>
+          </li>
+          <li>
+            <code>report_interval_secs</code> — how often it reports, 1–86400. It decides when the device
+            counts as silent: the app and the platform&apos;s presence sweep both allow
+            <code> max(15 min, 3 × interval)</code>. Absent means the platform default, which is wrong for
+            hardware that sleeps for an hour.
+          </li>
+        </ul>
+      </div>
+
       <ManifestCard productId={id ?? ''} />
     </>
   );

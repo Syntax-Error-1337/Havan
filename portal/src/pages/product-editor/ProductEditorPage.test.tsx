@@ -75,6 +75,19 @@ describe('thing-model editor', () => {
     await waitFor(() => expect(editor().value).toContain('"product_key": "hv_acme_bulb1"'));
   });
 
+  it('tells the vendor about the declarations the JSON does not advertise', async () => {
+    stubFetch(() => ({ body: product() }));
+    renderEditor();
+
+    await waitFor(() => expect(editor().value.length).toBeGreaterThan(0));
+
+    // Both are invisible in the document (optional, absent by default) and both change customer-visible
+    // behaviour, so the editor has to name them where the document is being edited.
+    expect(screen.getByText('report_interval_secs')).toBeInTheDocument();
+    expect(screen.getByText('radio')).toBeInTheDocument();
+    expect(screen.getByText(/warns before pairing fails/)).toBeInTheDocument();
+  });
+
   it('refuses to save a document that is not JSON, and says why', async () => {
     const calls = stubFetch(() => ({ body: product() }));
     renderEditor();
