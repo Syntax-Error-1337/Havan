@@ -138,7 +138,14 @@ export function AutomationsPage() {
                   {run.isPending ? 'Running…' : 'Run now'}
                 </AppText>
               </Pressable>
-              <Pressable onPress={() => setOpen(open === rule.id ? null : rule.id)}>
+              {/* No `accessibilityRole` meant no role in the DOM either: a screen reader announced this as
+                  text, not as the control it is. */}
+              <Pressable
+                onPress={() => setOpen(open === rule.id ? null : rule.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`${open === rule.id ? 'Hide' : 'Show'} the run history for ${rule.name}`}
+                testID={`history-${rule.id}`}
+              >
                 <AppText variant="caption" tone="accent">
                   {open === rule.id ? 'Hide history' : 'History'}
                 </AppText>
@@ -146,6 +153,8 @@ export function AutomationsPage() {
               <Pressable
                 onPress={() => remove.mutate(rule.id)}
                 disabled={remove.isPending}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete ${rule.name}`}
               >
                 <AppText variant="caption" tone="danger">
                   Delete

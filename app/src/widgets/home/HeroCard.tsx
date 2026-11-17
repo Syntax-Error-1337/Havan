@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText, AreaChart, Glass, Icon, iconForCapability } from '../../shared/ui';
 import { withAlpha } from '../../shared/ui/Glass';
+import { valueWithUnit } from '../../shared/ui/units';
 import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
   freshness,
@@ -88,7 +89,7 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
   // stopped eleven hours ago — the same overstatement the detached marker exists to avoid.
   const rangeText =
     readings.length > 1
-      ? `${Math.min(...readings).toFixed(1)}–${Math.max(...readings).toFixed(1)} ${point?.unit ?? ''} recorded`
+      ? `${valueWithUnit(`${Math.min(...readings).toFixed(1)}–${Math.max(...readings).toFixed(1)}`, point?.unit)} recorded`
       : 'no readings yet';
 
   // What the day did, in one number: a range says how far it moved, the delta says which way.
@@ -238,7 +239,7 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
               ? ''
               : direction === null
                 ? 'steady'
-                : `${direction} ${Math.abs(delta ?? 0).toFixed(1)} ${point?.unit ?? ''}`.trim()}
+                : `${direction} ${valueWithUnit(Math.abs(delta ?? 0).toFixed(1), point?.unit)}`}
           </AppText>
         </View>
       </View>

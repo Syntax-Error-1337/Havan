@@ -82,10 +82,10 @@ test('a rule can be run by hand, and the run is recorded as a manual one', async
   try {
     await page.goto('/automations');
 
-    // Scoped to the row this test created, and to its own two controls.
-    const row = page.getByText(name).locator('xpath=ancestor::div[.//text()[contains(., "Run now")]][1]');
-    await row.getByText('Run now').click();
-    await row.getByText('History').click();
+    // By the ids the screen already gives these controls. A text locator inside a 38-rule list was matching a
+    // card by position rather than by identity, which is the same mistake `.first()` made, one layer down.
+    await page.getByTestId(`run-${ruleId}`).click();
+    await page.getByTestId(`history-${ruleId}`).click();
 
     // The run happens in the worker, so the history is what proves it — and the label is the point:
     // "manual", not "schedule".

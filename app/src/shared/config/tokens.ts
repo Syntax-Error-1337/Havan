@@ -170,6 +170,13 @@ export const tokens = {
    * tall plus its gap and the home indicator; 148 pt clears all three.
    */
   layout: { tabBarHeight: 68, tabBarClearance: 148 },
+  /**
+   * Chart chrome: the two numbers at a chart's edges and the time labels under it.
+   *
+   * They belong to the palette because the operator owns the brand and because the light appearance is where
+   * a hardcoded grey stops being legible; `chartMask` is the colour an alpha-only SVG mask is painted with.
+   */
+  chart: { axis: 'rgba(235,235,245,0.45)', mask: '#FFFFFF' },
 } as const;
 
 /**

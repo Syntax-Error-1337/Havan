@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Box,
@@ -37,6 +37,8 @@ import type { DevicePoint } from '../../entities/device';
 import { canManage, useHomes, useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
+import { valueWithUnit } from '../../shared/ui/units';
+import { chartBand } from '../../entities/device/model/chart';
 
 export function DeviceDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -120,6 +122,31 @@ export function DeviceDetailPage() {
     <Screen>
       {sheet}
       <Box p="lg" gap="lg">
+        {/* Every screen that was pushed onto the stack needs a way back off it, and this one had none: the
+            only exits were the tab bar (which loses your place) and the platform's own gesture, which a
+            screenshot cannot see and a desktop browser does not have. */}
+        <Pressable
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          accessibilityHint="Returns to the previous screen"
+          testID="device-back"
+          style={{
+            width: tokens.touch.min,
+            height: tokens.touch.min,
+            borderRadius: tokens.touch.min / 2,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: color.glass,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: color.border,
+            marginBottom: -tokens.space.sm,
+          }}
+        >
+          <View style={{ transform: [{ rotate: '180deg' }] }}>
+            <Icon name="chevron-right" size={20} color={color.text} />
+          </View>
+        </Pressable>
         {/* The hero is the device's own category: a bulb glows violet, a lock pink, a camera blue —
             chosen from data, so a product we have never seen still looks deliberate. */}
         <Glass accent={accent} glow={glow} style={{ padding: 20 }}>
@@ -520,6 +547,12 @@ function HistoryChart({
 
   const samples = (data?.buckets ?? []).reduce((sum, b) => sum + b.n, 0);
 
+  // The band describes the drawing: measured buckets, plus the live reading *only* when it is part of the
+  // window. A stale device's current value is a different observation from another moment, and mixing it in
+  // made the sentence under the chart disagree with the numbers printed at its edges.
+  const liveValue = typeof charted?.value === 'number' && !asOf ? charted.value : null;
+  const band = chartBand(data?.buckets ?? [], charted?.unit, liveValue);
+
   return (
     <Box gap="xs">
       {/* `flexWrap`: at 200% zoom "Temperature" and four 44-point chips do not share a 195-point row, and a
@@ -541,7 +574,13 @@ function HistoryChart({
               style={{ minHeight: tokens.touch.min, minWidth: tokens.touch.min, justifyContent: 'center' }}
             >
               <Box px="sm" py="xs" radius="pill" bg={range === option ? 'accent' : 'surface'}>
-                <AppText variant="caption" tone={range === option ? 'text' : 'muted'}>
+                {/* Colour alone is not a state: the selected range also carries the heavier weight, so it
+                    survives a greyscale screenshot, a colour-blind eye and a printed support ticket. */}
+                <AppText
+                  variant="caption"
+                  weight={range === option ? '700' : '500'}
+                  tone={range === option ? 'text' : 'muted'}
+                >
                   {option}
                 </AppText>
               </Box>
@@ -563,9 +602,10 @@ function HistoryChart({
         // window makes "nothing here" a statement about a period rather than about the device.
         <AppText variant="caption" tone="muted">
           {charted && charted.value !== null && charted.value !== undefined
-            ? `No readings in the last ${RANGE_WORDS[range]} — the latest is ${charted.value}${
-                charted.unit ? ` ${charted.unit}` : ''
-              }.`
+            ? `No readings in the last ${RANGE_WORDS[range]} — the latest is ${valueWithUnit(
+                String(charted.value),
+                charted.unit,
+              )}.`
             : `No readings in the last ${RANGE_WORDS[range]} yet.`}
         </AppText>
       ) : (
@@ -582,6 +622,21 @@ function HistoryChart({
               accent={accent}
               gapColor={gapColor}
               height={120}
+              scale={
+                band
+                  ? { min: band.min, max: band.max, color: tokens.chart.axis }
+                  : null
+              }
+              // The window the axis draws, not the extent of the data: labelling the first and last bucket made
+              // a 24-hour axis read "7 AM … 11 AM" because the sensor had only reported for four of those hours.
+              axis={{
+                from: axisLabel(data?.from, range),
+                // The right end is *now*: the chart's axis runs to the present, which is what makes the empty
+                // stretch after the last reading read as time that passed. `data.to` is the last bucket, so
+                // using it labelled both ends of the axis with the same hour.
+                to: axisLabel(new Date().toISOString(), range),
+                color: tokens.chart.axis,
+              }}
             />
           </Box>
           {/* One string, not three children: a sentence assembled from nodes is also a sentence a test
@@ -591,8 +646,8 @@ function HistoryChart({
               own plumbing — how many samples it stored and how many columns it drew — on a screen where the
               customer asked what the temperature has been doing. */}
           <AppText variant="caption" tone="muted">
-            {`${chartRange(data?.buckets ?? [], charted)} over the last ${RANGE_WORDS[range]}`}
-            {asOf ? ` · as of ${asOf}` : ''}
+            {`${band ? band.text : ''}${band ? ' ' : ''}over the last ${RANGE_WORDS[range]}`}
+            {asOf ? ` · last reading ${asOf}` : ''}
           </AppText>
         </>
       )}
@@ -600,21 +655,18 @@ function HistoryChart({
   );
 }
 
-/** `21.3–21.9 °C · ` when there is a spread worth stating, otherwise nothing. */
-function chartRange(
-  buckets: { v: number | null }[],
-  point?: { value?: unknown; unit?: string | null },
-): string {
-  const values = buckets.map((b) => b.v).filter((v): v is number => typeof v === 'number');
-  // The live reading is part of the window. Leaving it out let the label contradict the number above
-  // it — a maximum of 21.1 under a current 21.5 °C — which is the sort of thing a customer spots first.
-  if (typeof point?.value === 'number') values.push(point.value);
-  if (values.length < 2) return '';
-
-  const unit = point?.unit ? ` ${point.unit}` : '';
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  // A flat line is a fact too, and "21.5–21.5 °C" states it badly.
-  if (Math.abs(high - low) < 0.05) return `steady at ${low.toFixed(1)}${unit}`;
-  return `${low.toFixed(1)}–${high.toFixed(1)}${unit}`;
+/**
+ * One end of the time axis, in the customer's own clock.
+ *
+ * An hour window is told in hours (`11 PM`), a week or a month in days (`Mon`, `Nov 3`) — printing "11 PM" at
+ * both ends of a month-long axis is a label that describes nothing.
+ */
+function axisLabel(iso: string | undefined, range: Range): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  if (range === '1h') return d.toLocaleTimeString(undefined, { hour: 'numeric' });
+  // A day's axis can span two calendar days, and two labels that both read "7 AM" describe nothing.
+  if (range === '1d') return d.toLocaleString(undefined, { weekday: 'short', hour: 'numeric' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }

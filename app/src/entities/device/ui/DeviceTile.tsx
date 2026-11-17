@@ -4,6 +4,7 @@ import { useTheme, tokens } from '../../../app-shell/theme';
 import { AppText, Glass, Icon, iconForCategory } from '../../../shared/ui';
 import { accentFor, glowFor } from '../../../shared/config/tokens';
 import { withAlpha } from '../../../shared/ui/Glass';
+import { valueWithUnit } from '../../../shared/ui/units';
 import { useSetPoint } from '../model/queries';
 import { commandNotice } from '../model/notices';
 import { primaryPoint, type Device } from '../model/types';
@@ -59,7 +60,7 @@ export function DeviceTile({
         ? point.value
           ? 'On'
           : 'Off'
-        : `${point.value}${point.unit ? ` ${point.unit}` : ''}`
+        : valueWithUnit(point.value, point.unit)
       : '—';
 
   const icon = (

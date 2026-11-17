@@ -152,6 +152,43 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### A chart nobody could argue with
+
+The device detail screen scored **4/10** by eye and every one of the complaints was real. Three of them were
+about the same thing: the chart was making claims it could not support.
+
+**It had no exit.** The screen had eleven controls and not one of them was *Back* — the only ways off it were
+the tab bar (which loses your place) and a native gesture that a screenshot cannot see and a desktop browser
+does not have. `router.canGoBack()` first, `replace('/')` second.
+
+**It had no scale.** A 16.6–18.2 °C day drew as a shape with no numbers, so the last reading — the coldest of
+the window — read as a crash. The band is now printed at the edges, computed from buckets that were actually
+measured.
+
+**It had no timeline.** Now `Tue, 7 AM → Wed, 7 AM`: the *window* the axis draws, not the extent of the data.
+Labelling the first and last bucket instead made a 24-hour axis read "7 AM … 11 AM" because the sensor had only
+reported for four of those hours, and a 1-day axis whose ends are both "7 AM" (24 hours apart) says nothing.
+
+**It drew gaps as zero.** `Bucket` carries `n` — the number of samples — and the API sends `v: 0, n: 0` for a
+bucket with none. The path builder concatenated every bucket regardless, so a sensor that had gone quiet fell to
+zero and stayed there, while the comment above the code claimed *"gaps are honoured: a bucket with no reading
+breaks the line instead of being drawn as zero"*. The path builder is now a pure function in
+`shared/ui/areaPath.ts` with five tests, and it starts a new `M` after a gap.
+
+**The fill ended in a wall.** Closing the area under the last reading drew a vertical edge that read as a plunge
+to the floor. It now dissolves into the gap under a horizontal mask.
+
+**Two numbers described two different things.** The caption pushed the device's *current* value into the range
+while the axis did not, so a stale sensor read `16.6–21.5 °C` above a line that never passed 18.2. The band
+lives in `entities/device/model/chart.ts` now, and the current reading joins it **only when it is inside the
+window** — which is exactly when the device is fresh. (The demo row itself was also inconsistent: `last_seen_at`
+10 hours ahead of its newest telemetry, `21.5 °C` on the point against `18.27` in the last sample. Reconciled to
+its own telemetry, so the screen no longer has to explain a contradiction that was never real.)
+
+**`58 %` is not a number.** `shared/ui/units.ts` writes a percent against the number and keeps the space a
+degree symbol needs — one function, so the tile, the hero and the detail screen cannot disagree about the same
+reading.
+
 ### The half of accessibility that is not a target size
 
 The audit from the previous pass covered seven screens in dark mode at 100% text size. Three of those words are

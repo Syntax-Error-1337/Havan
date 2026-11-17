@@ -1,7 +1,10 @@
 import { View } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import { StyleSheet, Text } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient, Mask, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
 import type { Bucket } from '../../entities/device/model/history';
+import { tokens } from '../config/tokens';
+import { buildSegments } from './areaPath';
 
 /**
  * A line with its own shadow under it.
@@ -34,8 +37,23 @@ export function AreaChart({
   now = null,
   nowAt,
   gapColor,
+  scale,
+  axis,
 }: {
   buckets: Bucket[];
+  /**
+   * The two numbers the line runs between, drawn at the chart's edges.
+   *
+   * Without them a chart has no scale, and a last reading that happens to be the window's coldest reads as
+   * "it crashed" — which is exactly what a reviewer said about a 16.6–17.7 °C day. The numbers are passed in
+   * rather than computed here so the unit is formatted once, by the screen that knows the device.
+   */
+  scale?: { min: string; max: string; color: string } | null;
+  /**
+   * The two ends of the time axis. A chart with no timeline says "something happened" and nothing else — the
+   * reviewer's complaint was exactly that: a shape with no idea whether it covered an hour or a month.
+   */
+  axis?: { from: string; to: string; color: string } | null;
   accent: string;
   /**
    * When the live reading was taken. The marker is placed at *that* moment, not at "now": a reading from
@@ -88,43 +106,59 @@ export function AreaChart({
   const nowX = now === null ? null : Math.max(0, Math.min(plot, ((nowMoment - first) / spanMs) * plot));
   const y = (v: number) => pad + (1 - (v - min) / span) * (height - pad * 2);
 
-  let line = '';
-  let area = `M0,${height} `;
-  let started = false;
-
-  buckets.forEach((bucket, i) => {
-    const px = x(i);
-    const py = y(bucket.v);
-    if (!started) {
-      line += `M${px.toFixed(1)},${py.toFixed(1)}`;
-      area += `L${px.toFixed(1)},${py.toFixed(1)}`;
-      started = true;
-    } else {
-      line += ` L${px.toFixed(1)},${py.toFixed(1)}`;
-      area += ` L${px.toFixed(1)},${py.toFixed(1)}`;
-    }
-  });
-  // The fill closes under the last *reading*, not under the axis end: filling to the edge would paint the
-  // gap as if it had been measured.
-  const lastX = x(buckets.length - 1);
-  area += ` L${lastX.toFixed(1)},${height} Z`;
+  // Gaps break the line, and the fill closes under each stretch's own last reading. `buildSegments` is pure
+  // because the previous inline version drew `L NaN,NaN` for every missing bucket while the comment above it
+  // claimed the opposite.
+  const { line, area, lastIndex, runs } = buildSegments(buckets, x, y, height);
+  // The tower of defensive fallbacks is gone: `buildSegments` guarantees `lastIndex` is the last bucket that
+  // held a reading, and `values.length >= 2` guarantees there is at least one.
+  const lastX = x(Math.max(lastIndex, 0));
 
   return (
     <View style={{ height }}>
       <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
         <Defs>
+          {/* Vertical: brightest under the line, gone at the baseline. */}
           <LinearGradient id="area" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={accent} stopOpacity="0.45" />
             <Stop offset="1" stopColor={accent} stopOpacity="0" />
           </LinearGradient>
+          {/* Horizontal: the fill dissolves into the gap on the right instead of ending in a vertical wall.
+              That wall was being read as a reading that crashed to the floor — the last bucket's value is
+              simply the last one there was. */}
+          {/* A mask paints by alpha only, so its colour is a formality — but it is still a literal, and the
+              token gate exists so that a screen cannot quietly decide on a colour the operator owns. */}
+          <LinearGradient id="areaFade" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0" stopColor={tokens.chart.mask} stopOpacity="1" />
+            <Stop offset="0.72" stopColor={tokens.chart.mask} stopOpacity="1" />
+            <Stop offset="1" stopColor={tokens.chart.mask} stopOpacity="0" />
+          </LinearGradient>
+          <Mask id="areaMask">
+            <Rect x="0" y="0" width={width} height={height} fill="url(#areaFade)" />
+          </Mask>
         </Defs>
-        {showFill ? <Path d={area} fill="url(#area)" /> : null}
+        {showFill ? <Path d={area} fill="url(#area)" mask="url(#areaMask)" /> : null}
+        {scale ? (
+          <>
+            {/* At the top and bottom of the *plotted* band, not at the axis ends: a truncated axis that does
+                not say where it was truncated is a chart nobody can argue with, including the person it is
+                about. */}
+            <SvgText x={width - 2} y={12} fontSize="10" fill={scale.color} textAnchor="end">
+              {scale.max}
+            </SvgText>
+            <SvgText x={width - 2} y={height - 4} fontSize="10" fill={scale.color} textAnchor="end">
+              {scale.min}
+            </SvgText>
+          </>
+        ) : null}
         <Path d={line} stroke={accent} strokeWidth="2.4" fill="none" strokeLinejoin="round" strokeLinecap="round" />
         {now === null ? (
-          /* The last bucket *is* the current reading: mark it where the line ends. */
+          /* The last *reading* is the current value: mark it where its own stretch ends. Marking the last
+             bucket instead put the dot at the right edge whenever the device had gone quiet, which is how a
+             sensor that stopped nine hours ago grew a spike it never reported. */
           <>
-            <Circle cx={x(buckets.length - 1)} cy={y(values[values.length - 1]!)} r="4" fill={accent} />
-            <Circle cx={x(buckets.length - 1)} cy={y(values[values.length - 1]!)} r="8" fill={accent} fillOpacity="0.22" />
+            <Circle cx={lastX} cy={y(values[values.length - 1]!)} r="4" fill={accent} />
+            <Circle cx={lastX} cy={y(values[values.length - 1]!)} r="8" fill={accent} fillOpacity="0.22" />
           </>
         ) : (
           /* A reading taken after a gap. The marker is its own point, joined to the line by a dotted
@@ -165,6 +199,16 @@ export function AreaChart({
           </>
         )}
       </Svg>
+      {axis ? (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
+          <Text style={[styles.axis, { color: axis.color }]}>{axis.from}</Text>
+          <Text style={[styles.axis, { color: axis.color }]}>{axis.to}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  axis: { fontSize: 10, fontVariant: ['tabular-nums'] },
+});

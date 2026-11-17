@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme, tokens } from '../../../app-shell/theme';
 import { AppText } from '../../../shared/ui';
 import { withAlpha } from '../../../shared/ui/Glass';
+import { unitSuffix, valueWithUnit } from '../../../shared/ui/units';
 import { useSetPoint } from '../model/queries';
 import { commandNotice } from '../model/notices';
 import type { Device, DevicePoint } from '../model/types';
@@ -214,7 +215,7 @@ function Stepper({
         style={{ color: accent, flex: 1, textAlign: 'center' }}
       >
         {at}
-        {unit ? <AppText variant="caption" tone="muted">{` ${unit}`}</AppText> : null}
+        {unitSuffix(unit) ? <AppText variant="caption" tone="muted">{unitSuffix(unit)}</AppText> : null}
       </AppText>
       {button(1, '+')}
     </View>
@@ -327,7 +328,9 @@ export function PointControl({
         {point.kind !== 'bool' && kind === 'slider' ? (
           <AppText variant="title" weight="600" style={{ color: accent }}>
             {String(point.value ?? point.min ?? 0)}
-            {point.unit ? <AppText variant="caption" tone="muted">{` ${point.unit}`}</AppText> : null}
+            {unitSuffix(point.unit) ? (
+              <AppText variant="caption" tone="muted">{unitSuffix(point.unit)}</AppText>
+            ) : null}
           </AppText>
         ) : null}
 
@@ -339,7 +342,7 @@ export function PointControl({
                 ? point.value
                   ? 'Yes'
                   : 'No'
-                : `${point.value}${point.unit ? ` ${point.unit}` : ''}`}
+                : valueWithUnit(point.value, point.unit)}
           </AppText>
         ) : null}
       </View>
