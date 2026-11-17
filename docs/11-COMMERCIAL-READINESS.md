@@ -70,6 +70,22 @@ Beyond the ten: a **device conformance suite** (`scripts/conformance.py`, 7/7 li
 is something we run rather than something we assert, and an **operator console** (`/admin` in the
 portal) with the vendor book, certification queue, billing and platform health.
 
+### Flows found missing by walking both consoles as a user
+
+Every route below existed before this pass and no screen called it, so each was a dead end rather than
+a missing feature. They are listed because "the endpoint exists" was what made them look done.
+
+| Flow | What was wrong | Where it landed |
+|---|---|---|
+| Bind an identity for SSO | the guard refuses enforcement while anybody is unbound, and nothing could bind — `enforced` could never be true | Security page member table; `POST /vendor/team/{id}/sso`, empty subject unbinds (409 while required) |
+| Delete a product | no DELETE existed at all | `DELETE /vendor/products/{id}` — 409 naming the count when devices are live or activations reference it, since those cascade from `products` |
+| Attach the support bundle | the artefact a vendor must send us was curl-only | `/support` in the portal, through `download()` in the API client |
+| See the DSAR purge | the operator could delete data and not tell whether it kept up | `GET /ops/privacy/due` + `/admin/privacy` |
+| Read the operator's own audit | suspend and certify left no readable record across vendors | `GET /ops/audit` + `/admin/audit` |
+| Export invoices as CSV | the link sent no ops token, so it worked on loopback and would 401 anywhere real | button through `adminDownload`; the route names the file |
+| Say what radio a product needs | nothing declared 2.4 GHz-only, so pairing failed in a customer's living room | `ThingModel.radio`, validated against closed lists, carried by the radar lookup |
+
+
 ## P0 — the revenue engine
 
 **1. Licence grants: a vendor must own the right to activate before they can.** Today a vendor uploads
