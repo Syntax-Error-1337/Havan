@@ -1,12 +1,14 @@
 import { useState } from 'react';
 
 import {
-  invoiceCsvUrl,
+  invoiceCsvPath,
   useGrantLicences,
   useIssueInvoice,
   useVendors,
 } from '../../entities/admin';
 import { currentPeriod } from '../../entities/invoice';
+import { adminDownload } from '../../shared/api/admin';
+import { useMutation } from '@tanstack/react-query';
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -21,6 +23,11 @@ export function AdminBillingPage() {
   const { data: vendors, isPending, error } = useVendors();
   const grant = useGrantLicences();
   const issue = useIssueInvoice();
+  // A button, not a link: an anchor sends no ops token, so the export worked on loopback and would
+  // have failed on any real deployment.
+  const csv = useMutation({
+    mutationFn: () => adminDownload(invoiceCsvPath(selected ?? '', period), `invoices-${period}.csv`),
+  });
 
   const [vendorId, setVendorId] = useState('');
   const [quantity, setQuantity] = useState('100');
@@ -124,14 +131,14 @@ export function AdminBillingPage() {
           >
             {issue.isPending ? 'Issuing…' : 'Issue'}
           </button>
-          <a
+          <button
             className="btn"
-            href={invoiceCsvUrl(selected, period)}
-            download
             aria-label="Download invoice CSV"
+            disabled={!selected || csv.isPending}
+            onClick={() => csv.mutate()}
           >
-            CSV
-          </a>
+            {csv.isPending ? 'CSV…' : 'CSV'}
+          </button>
         </div>
 
         {issued ? (

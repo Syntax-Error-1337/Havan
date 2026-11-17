@@ -175,11 +175,25 @@ async fn invoice_csv(
         invoice.period, invoice.amount_cents, invoice.currency
     ));
 
+    // A name, because the file is downloaded and then emailed to somebody in finance: an export
+    // called `download` in a folder of `download (3)`s is a support ticket waiting to happen.
+    let filename = format!(
+        "haven-invoices-{}-{}.csv",
+        &vendor_id.to_string()[..8],
+        invoice.period
+    );
+
     Ok((
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "text/csv; charset=utf-8".to_string(),
-        )],
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "text/csv; charset=utf-8".to_string(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+        ],
         out,
     )
         .into_response())

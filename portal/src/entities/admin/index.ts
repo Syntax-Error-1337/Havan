@@ -244,9 +244,16 @@ export function useIssueInvoice() {
 }
 
 /** The CSV export is a download, not a query: a browser handles the file better than JSON would. */
-export function invoiceCsvUrl(vendorId: string, period: string): string {
-  const base = import.meta.env.VITE_API_URL ?? '/v1';
-  return `${base}/ops/invoices.csv?vendor_id=${encodeURIComponent(vendorId)}&period=${encodeURIComponent(period)}`;
+/**
+ * The CSV path, without a host.
+ *
+ * It used to come back with the API base baked in, which was fine for an `<a href>` and wrong for
+ * `adminDownload` — the second prefix would have produced `/v1/v1/…`. A path is the form both callers
+ * can use, and the one that does not quietly depend on the console being on loopback: an anchor sends
+ * no `x-ops-token`, so the export worked locally and failed anywhere else.
+ */
+export function invoiceCsvPath(vendorId: string, period: string): string {
+  return `/ops/invoices.csv?vendor_id=${encodeURIComponent(vendorId)}&period=${encodeURIComponent(period)}`;
 }
 
 export type PurgeReport = { purged: string[] };

@@ -76,3 +76,36 @@ function safeParse(text: string): unknown {
     return undefined;
   }
 }
+
+/**
+ * Fetch a document as the operator — the invoices CSV.
+ *
+ * Separate from the vendor `download()` because it carries `x-ops-token` from the other store; the two
+ * doors do not borrow each other's credentials, and a download is no exception.
+ */
+export async function adminDownload(path: string, fallbackName: string): Promise<void> {
+  const token = getAdminToken();
+  const res = await fetch(`${BASE}${path}`, {
+    headers: token ? { 'x-ops-token': token } : {},
+  });
+  if (!res.ok) {
+    let message = `download failed (${res.status})`;
+    try {
+      const body = (await res.json()) as { error?: { message?: string } };
+      message = body.error?.message ?? message;
+    } catch {
+      /* not JSON; the status is all we have */
+    }
+    throw new AdminError(res.status, 'download_failed', message);
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const named = /filename="?([^";]+)"?/.exec(disposition)?.[1];
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = named ?? fallbackName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
