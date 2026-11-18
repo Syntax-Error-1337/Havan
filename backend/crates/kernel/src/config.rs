@@ -280,4 +280,50 @@ mod tests {
         .unwrap_err();
         assert_eq!(err, ConfigError::BadHex("HAVEN_VAULT_KEY", 64));
     }
+
+    /// Every variable the config reads is in `.env.example`.
+    ///
+    /// Two were not: `HAVEN_CA_DIR` and `HAVEN_DB_POOL`. Both have defaults, so nothing broke — and that is exactly why
+    /// nobody noticed. A deployment that needs an absolute CA path or a pool size scaled to its replica count had to read
+    /// the source to learn the name.
+    ///
+    /// The check reads the source rather than a list, for the same reason the route guards do: a list of keys is a list
+    /// somebody has to remember to update, and the one that gets forgotten is the one added last.
+    #[test]
+    fn every_environment_variable_is_in_the_example_file() {
+        let source = include_str!("config.rs");
+        let example = include_str!("../../../../.env.example");
+
+        let mut keys: Vec<&str> = Vec::new();
+        for quote in ['"'] {
+            let mut rest = source;
+            while let Some(at) = rest.find(quote) {
+                rest = &rest[at + 1..];
+                let Some(end) = rest.find(quote) else { break };
+                let candidate = &rest[..end];
+                if candidate.len() > 3
+                    && candidate
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                {
+                    keys.push(candidate);
+                }
+                rest = &rest[end + 1..];
+            }
+        }
+        keys.sort();
+        keys.dedup();
+
+        assert!(
+            keys.len() >= 10,
+            "the scan found only {} variables; it is looking in the wrong place: {keys:?}",
+            keys.len()
+        );
+
+        let missing: Vec<&&str> = keys.iter().filter(|key| !example.contains(**key)).collect();
+        assert!(
+            missing.is_empty(),
+            "these variables are read by the config but not shown in .env.example: {missing:?}"
+        );
+    }
 }
