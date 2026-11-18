@@ -4,7 +4,7 @@ import { useTheme, tokens } from '../../../app-shell/theme';
 import { AppText, Glass, Icon, iconForCategory } from '../../../shared/ui';
 import { accentFor, glowFor } from '../../../shared/config/tokens';
 import { withAlpha } from '../../../shared/ui/Glass';
-import { valueWithUnit } from '../../../shared/ui/units';
+import { reading, valueWithUnit } from '../../../shared/ui/units';
 import { useSetPoint } from '../model/queries';
 import { commandNotice } from '../model/notices';
 import { primaryPoint, type Device } from '../model/types';
@@ -60,7 +60,12 @@ export function DeviceTile({
         ? point.value
           ? 'On'
           : 'Off'
-        : valueWithUnit(point.value, point.unit)
+        : // The same rounding as the detail screen: `18.27 °C` is what the sensor sent, not what the room is,
+          // and this string is now spoken aloud as well as drawn.
+          valueWithUnit(
+            typeof point.value === 'number' ? reading(point.value) : point.value,
+            point.unit,
+          )
       : '—';
 
   const icon = (
@@ -142,7 +147,9 @@ export function DeviceTile({
       // halo, the dot, the words and the disabled control.
       style={{ flex: 1, minHeight: wide ? 104 : 132 }}
       testID={`device-tile-${device.serial}`}
-      accessibilityLabel={`${device.name}, ${
+      // The reading is in the label. A screen reader used to announce "Room Sensor, silent, Silent for 4h" and
+      // never the temperature — the one number the card exists to show, and the one a person asks for.
+      accessibilityLabel={`${device.name}, ${readout}, ${
         state === 'live' ? 'online' : state === 'stale' ? `silent, ${silent ?? 'not heard from'}` : 'offline'
       }`}
     >

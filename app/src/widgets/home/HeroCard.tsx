@@ -104,7 +104,11 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
     <Glass
       accent={accent}
       onPress={onOpen}
-      accessibilityLabel={`${device.name} — open`}
+      // The card's headline is the reading; a label that said only the name made the richest card on the
+      // screen the emptiest one to a screen reader.
+      accessibilityLabel={`${device.name}, ${
+        value === null ? 'no reading' : valueWithUnit(reading(value), point?.unit)
+      }, ${state === 'live' ? 'online' : 'last reading'} — open`}
       testID="hero-card"
       glow={state === 'live' ? glow : undefined}
       // Staleness is expressed per element — icon, chart, dot, the "last reading" tag — and *not* as an

@@ -80,9 +80,27 @@ describe('a device that stopped reporting', () => {
     expect(view.queryByText('Silent for 2h')).toBeNull();
   });
 
-  it('tells a screen reader which of the three it is', async () => {
+  it('tells a screen reader which of the three it is, and what it reads', async () => {
     const view = await renderTile({ ...base, online: true, last_seen_at: minutesAgo(240) });
 
-    expect(view.getByLabelText('Room Sensor, silent, Silent for 4h')).toBeTruthy();
+    // The value is part of the label: the card's whole purpose is the number, and it used to be announced as
+    // "Room Sensor, silent, Silent for 4h" — health without the reading it is about.
+    expect(view.getByLabelText('Room Sensor, 21.5 °C, silent, Silent for 4h')).toBeTruthy();
+  });
+
+  it('says "off" or "on" for a switch rather than a boolean', async () => {
+    const plug = {
+      ...base,
+      name: 'Coffee Plug',
+      category: 'plug',
+      online: true,
+      last_seen_at: minutesAgo(1),
+      points: [
+        { code: 'switch.power', capability: 'switch', slot: 'power', kind: 'bool', writable: true, value: false },
+      ],
+    } as unknown as Device;
+
+    const view = await renderTile(plug);
+    expect(view.getByLabelText('Coffee Plug, Off, online')).toBeTruthy();
   });
 });

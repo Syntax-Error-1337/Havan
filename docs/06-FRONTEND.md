@@ -152,6 +152,24 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The number nobody could hear
+
+Names and health were in every accessibility label; the **reading** was not. A screen reader announced
+*"Room Sensor, silent, Silent for 4h"* and *"Room Sensor — open"* — the health of a device on a card whose entire
+purpose is the number, and which a sighted customer reads as `18.3 °C`.
+
+| Surface | Label before | Label now |
+|---|---|---|
+| device tile | `Room Sensor, silent, Silent for 4h` | `Room Sensor, 21.5 °C, silent, Silent for 4h` |
+| device tile (switch) | `Coffee Plug, online` | `Coffee Plug, Off, online` |
+| hero card | `Room Sensor — open` | `Room Sensor, 18.3 °C, last reading — open` |
+
+The same rounding applies here as everywhere else: the label said `18.27 °C` because the readout was formatted
+with `valueWithUnit` alone — a string that is now *spoken* as well as drawn, so the false precision became false
+precision read aloud.
+
+Verified in the live DOM: `Room Sensor, 18.3 °C, last reading — open`, `Acme Bulb E27, On, offline`.
+
 ### "Loading…" is not a screen
 
 The dashboard had a `HomeSkeleton` — grey blocks in the shape of the rail, the hero and two tiles — and every
