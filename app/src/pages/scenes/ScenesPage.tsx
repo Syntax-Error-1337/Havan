@@ -13,7 +13,8 @@ import {
   QueryError,
   readablePoint,
 } from '../../shared/ui';
-import { tokens } from '../../app-shell/theme';
+import { tokens, useTheme } from '../../app-shell/theme';
+import type { Palette } from '../../shared/config/tokens';
 import { useCurrentHome } from '../../entities/home';
 import { useDevices, type Device } from '../../entities/device';
 import {
@@ -38,6 +39,7 @@ export function ScenesPage() {
   // Falls back to the home the app would open: `/scenes` reached directly had no home, and therefore
   // no scenes and no devices, on a home that has four of each.
   const { homeId } = useCurrentHome();
+  const { color } = useTheme();
   const { data: scenes, isPending, isError, refetch } = useScenes(homeId ?? undefined);
   const { data: devices } = useDevices(homeId ?? undefined);
   const activate = useActivateScene(homeId ?? undefined);
@@ -160,10 +162,10 @@ export function ScenesPage() {
             </AppText>
             <TextInput
               placeholder="Good night, Movie time…"
-              placeholderTextColor={tokens.color.muted}
+              placeholderTextColor={color.placeholder}
               value={name}
               onChangeText={setName}
-              style={field}
+              style={fieldStyle(color)}
             />
           </Box>
 
@@ -273,13 +275,12 @@ export function ScenesPage() {
             </AppText>
           ) : null}
 
-          {/* A grey button with no reason is a puzzle. This says what is still missing, in the order the
-              form asks for it. */}
+          {/* A grey button with no reason is a puzzle. This names *everything* still missing — it used to say
+              "Name the scene to finish" on a form that had no device chosen either, so a person who typed a
+              name and pressed the (still grey) button learned nothing new. */}
           {!canSave ? (
-            <AppText variant="tiny" tone="muted">
-              {name.trim().length === 0
-                ? 'Name the scene to finish.'
-                : 'Choose what the first action should do.'}
+            <AppText variant="tiny" tone="muted" testID="scene-blocked-by">
+              {missingForScene({ name, actions })}
             </AppText>
           ) : null}
           <Button
@@ -300,10 +301,14 @@ export function ScenesPage() {
  * picker that shows the same label twice cannot be used to build a scene.
  */
 export function deviceOptions(devices: Device[]): { id: string; label: string }[] {
+  // A scene *does* something, so a device with nothing to set is not a scene target. A room sensor was offered
+  // in this list, and picking it produced an action with no points — the customer's only clue was an empty
+  // "SET TO" under a device that cannot be set.
+  const controllable = devices.filter((d) => d.points?.some((p) => p.writable));
   const seen = new Map<string, number>();
-  for (const d of devices) seen.set(d.name, (seen.get(d.name) ?? 0) + 1);
+  for (const d of controllable) seen.set(d.name, (seen.get(d.name) ?? 0) + 1);
 
-  return devices.map((d) => ({
+  return controllable.map((d) => ({
     id: d.id,
     // The serial tail is what is printed on the device, so it is the thing the
     // person can match against the one in their hand.
@@ -314,12 +319,35 @@ export function deviceOptions(devices: Device[]): { id: string; label: string }[
   }));
 }
 
-const field = {
-  backgroundColor: tokens.color.bg,
-  borderWidth: 1,
-  borderColor: tokens.color.border,
-  borderRadius: tokens.radius.md,
-  padding: tokens.space.md,
-  color: tokens.color.text,
-  fontSize: tokens.font.body,
-} as const;
+/**
+ * The field's style, from the *current* palette.
+ *
+ * This was `tokens.color.bg` — the static dark palette that exists for legacy call sites — so in light mode the
+ * scene name was a black box with white text on a white card. A token that does not come from `useTheme()` is a
+ * dark-mode assumption wearing a token's clothes.
+ */
+/**
+ * What the form is still waiting for, in the order it asks.
+ *
+ * `every` rather than the first one: a person who fixes one thing should be told about the next in the same
+ * visit, not on the next attempt.
+ */
+export function missingForScene({ name, actions }: { name: string; actions: Draft[] }): string {
+  const problems: string[] = [];
+  const complete = actions.filter((a) => a.deviceId && a.code);
+  if (complete.length === 0) problems.push('choose a device and what it should do');
+  if (name.trim().length === 0) problems.push('name the scene');
+  if (problems.length === 0) return '';
+  return `Still to do: ${problems.join(', and ')}.`;
+}
+
+const fieldStyle = (color: Palette) =>
+  ({
+    backgroundColor: color.elevated,
+    borderWidth: 1,
+    borderColor: color.border,
+    borderRadius: tokens.radius.md,
+    padding: tokens.space.md,
+    color: color.text,
+    fontSize: tokens.font.body,
+  }) as const;

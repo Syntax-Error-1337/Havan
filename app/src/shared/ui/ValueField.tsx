@@ -1,6 +1,6 @@
 import { Box, AppText } from './Box';
 import { ChipPicker } from './ChipPicker';
-import { tokens } from '../../app-shell/theme';
+import { tokens, useTheme } from '../../app-shell/theme';
 import { TextInput } from 'react-native';
 
 /**
@@ -26,6 +26,8 @@ export function ValueField({
   /** The heading above the control; a trigger says "BECOMES" rather than "SET TO". */
   label?: string;
 }) {
+  // Declared before the early return: a hook after a branch is a hook that does not run on every render.
+  const { color } = useTheme();
   if (point.kind === 'bool') {
     const on = value.trim().toLowerCase() === 'true';
     return (
@@ -54,16 +56,18 @@ export function ValueField({
       <TextInput
         keyboardType={numeric ? 'numeric' : 'default'}
         placeholder={numeric ? '0' : 'Value'}
-        placeholderTextColor={tokens.color.muted}
+        placeholderTextColor={color.placeholder}
         value={value}
         onChangeText={onChange}
+        // The theme's palette, not `tokens.color`: the static one is dark, and in light mode this field was a
+        // black box on a white card — the same defect the scene editor had.
         style={{
-          backgroundColor: tokens.color.bg,
+          backgroundColor: color.elevated,
           borderWidth: 1,
-          borderColor: tokens.color.border,
+          borderColor: color.border,
           borderRadius: tokens.radius.md,
           padding: tokens.space.md,
-          color: tokens.color.text,
+          color: color.text,
           fontSize: tokens.font.body,
         }}
       />

@@ -152,6 +152,36 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### Six screens, one contact sheet
+
+Light mode's remaining screens had never been looked at either, so they were screenshotted as a single sheet and
+scored in one pass. Five of six were fine (**alerts 8.5, automations 8, homes 8, privacy 9, add-device 7**).
+`/scenes` scored **3/10**.
+
+Its name field was a **solid black rectangle with white text** on a white card. The cause was a one-word
+mistake: `tokens.color.bg` is the *static dark palette* kept for legacy call sites, not the theme's. Introduced
+through a `const field = {…}` at module scope — where a hook cannot reach — it made the most important control
+on the screen the only dark thing in a light app. The same bug was in `ValueField`, which the automations editor
+uses. Both now take the palette from `useTheme()`.
+
+Four more, all found by looking rather than by a gate:
+
+- **A placeholder that reads as typed text.** `muted` at 0.90 is nearly black, so an empty form looked filled.
+  Fields now use a `placeholder` token (0.42 light / 0.34 dark), which is safe here because every field that
+  uses it also has a persistent label.
+- **A disabled button you cannot see.** Its fill was `glass`, which is now near-white in light — white on white
+  with grey type. Disabled fills use `elevated` plus a hairline border, so the control still reads as a control
+  in a state it cannot be pressed in.
+- **A grey button with no reason.** The form said *"Name the scene to finish"* on a form with no device chosen
+  either, so typing a name and pressing the still-grey button taught nobody anything. `missingForScene()` names
+  every outstanding step, in the form's order, and is unit-tested for each combination.
+- **A sensor offered as a scene target.** A scene *does* something; a room sensor has nothing to set, and
+  choosing it produced an action with an empty "SET TO" under a device that cannot be set. `deviceOptions()`
+  now keeps only devices with a writable point.
+
+Scenes went **3 → 8**, with one more observation still open and worth recording: the device chips are ragged
+widths in two columns, which reads as unfinished next to the rest of the app.
+
 ### The appearance nobody screenshotted
 
 Every design review so far had been in dark mode. Light mode had a palette, a contrast gate that passed, and no

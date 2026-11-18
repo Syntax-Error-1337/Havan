@@ -26,6 +26,14 @@ export type Palette = {
   text: string;
   muted: string;
   /**
+   * Hint text inside an empty field.
+   *
+   * Lighter than `muted` on purpose: at 0.90 the scene editor's placeholder was indistinguishable from typed
+   * text, so an empty form looked like a filled one. Safe to lighten here because every field that uses it also
+   * carries a persistent label — the placeholder is an example, not the field's only name.
+   */
+  placeholder: string;
+  /**
    * The accent at *text* weight. Apple's system colours are tints — they are chosen to be a filled button or a
    * glyph, not a sentence — and the same is true of this one: `accent` measured 4.08:1 as an 11-point label on
    * a translucent card, under AA, while being perfectly legible as a 28-point number or a switch. So the fill
@@ -77,6 +85,7 @@ export const light: Palette = {
   // 0.82 measured 4.06:1 where this text is really drawn — on the mesh, not on a white card. The same
   // lesson as dark mode's 0.60: the token is judged against the surface it lands on.
   muted: 'rgba(60,60,67,0.90)',
+  placeholder: 'rgba(60,60,67,0.42)',
   // The system blue is 4.02:1 against white text — a button label nobody could pass AA with. This is
   // the same hue two steps deeper, 5.8:1.
   accent: '#0062CC',
@@ -116,6 +125,7 @@ export const dark: Palette = {
   // rendered pixels an 11-point caption landed at 3.8–4.4:1 on the real surface. The palette has to answer
   // for the surface it is actually drawn on.
   muted: 'rgba(235,235,245,0.72)',
+  placeholder: 'rgba(235,235,245,0.34)',
   // 4.59:1 against white (the system blue is 3.65) and still 4.1:1 on the night background, so a
   // filled button is readable without the accent disappearing into the canvas.
   accent: '#146EF5',

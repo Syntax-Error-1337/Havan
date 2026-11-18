@@ -41,7 +41,10 @@ test('a device opens with its readings and its room', async ({ page }) => {
 
   // Through the UI, not by URL: a deep link that works is not the same as a tile that opens.
   await page.getByText('Room Sensor').first().click();
-  await expect(page.getByText(/Offline|online/i).first()).toBeVisible();
+  // `.first()` in document order found the *dashboard's* "6 offline" pill, still mounted underneath the pushed
+  // screen, and reported it hidden. The device screen's own status line is the thing under test.
+  await expect(page.getByText(/· Living Room/)).toBeVisible();
+  await expect(page.getByText('Offline — showing the last values this device reported.')).toBeVisible();
   await expect(page.getByText(/Temperature/).first()).toBeVisible();
   // The room row is at the bottom now, above the destructive action.
   await expect(page.getByText('In which room')).toBeVisible();

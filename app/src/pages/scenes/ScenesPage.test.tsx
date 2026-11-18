@@ -2,9 +2,45 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { testQueryClient } from '../../test/query';
 
-import { ScenesPage, deviceOptions } from './ScenesPage';
+import { ScenesPage, deviceOptions, missingForScene } from './ScenesPage';
 import { ThemeProvider } from '../../app-shell/theme';
 import { useSession } from '../../entities/session';
+
+describe('deviceOptions', () => {
+  it('leaves out a device with nothing to set, because a scene can only change things', () => {
+    const sensor = {
+      ...device,
+      id: 'd2',
+      name: 'Room Sensor',
+      serial: 'S2',
+      points: [{ ...device.points[0], writable: false }],
+    };
+    expect(deviceOptions([device as never, sensor as never]).map((o) => o.id)).toEqual(['d1']);
+  });
+});
+
+describe('missingForScene', () => {
+  const empty = { deviceId: '', code: '', value: '' };
+
+  it('names both things when neither is chosen — a name alone does not finish a scene', () => {
+    expect(missingForScene({ name: '', actions: [empty] })).toBe(
+      'Still to do: choose a device and what it should do, and name the scene.',
+    );
+  });
+
+  it('drops the step that is already done', () => {
+    expect(missingForScene({ name: 'Dinner', actions: [empty] })).toBe(
+      'Still to do: choose a device and what it should do.',
+    );
+    expect(missingForScene({ name: '', actions: [{ ...empty, deviceId: 'd1', code: 'power' }] })).toBe(
+      'Still to do: name the scene.',
+    );
+  });
+
+  it('says nothing when the form is complete', () => {
+    expect(missingForScene({ name: 'Dinner', actions: [{ ...empty, deviceId: 'd1', code: 'power' }] })).toBe('');
+  });
+});
 
 const device = {
   id: 'd1',

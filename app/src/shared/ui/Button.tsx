@@ -28,7 +28,10 @@ export function Button({
   const bg = isDisabled
     ? variant === 'ghost'
       ? 'transparent'
-      : color.glass
+      : // `elevated`, not `glass`: glass is near-white in the light appearance, so a disabled button on a white
+        // card was a white button with grey type — a control you cannot see and therefore cannot understand the
+        // state of. `elevated` is a step off the card in both appearances.
+        color.elevated
     : variant === 'primary'
       ? color.accent
       : variant === 'danger'
@@ -53,7 +56,10 @@ export function Button({
           paddingHorizontal: variant === 'ghost' ? tokens.space.md : tokens.space.xl,
           borderRadius: tokens.radius.md,
           backgroundColor: bg,
-          borderWidth: 0,
+          // A disabled fill that is one step off the card still needs an edge, or on a white card it is a
+          // rectangle of almost-white with grey type in it. Ghost buttons stay borderless — they are bar
+          // buttons, and a hairline around "Run" would make it look like a filled control.
+          borderWidth: isDisabled && variant !== 'ghost' ? 1 : 0,
           borderColor: color.border,
           alignItems: 'center',
           justifyContent: 'center',
