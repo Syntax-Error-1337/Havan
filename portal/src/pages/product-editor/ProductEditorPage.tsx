@@ -111,18 +111,19 @@ export function ProductEditorPage() {
           <Link className="btn" to={`/products/${product.id}/firmware`}>
             Firmware
           </Link>
-          {/* A published model is immutable, so there is nothing a check could
-              find that a save could fix. */}
-          <button
-            className="btn"
-            onClick={runValidation}
-            disabled={readOnly || validate.isPending}
-          >
-            {validate.isPending ? 'Checking…' : 'Validate'}
-          </button>
-          <button className="btn" onClick={save} disabled={readOnly || !dirty || update.isPending}>
-            {update.isPending ? 'Saving…' : 'Save draft'}
-          </button>
+          {/* A published model is immutable, so there is nothing a check could find that a save could fix — and two
+              inert buttons beside a live one is a puzzle, not a state. The sentence says what the server says:
+              publishing is final, and a change is a new product key. */}
+          {readOnly ? null : (
+            <>
+              <button className="btn" onClick={runValidation} disabled={validate.isPending}>
+                {validate.isPending ? 'Checking…' : 'Validate'}
+              </button>
+              <button className="btn" onClick={save} disabled={!dirty || update.isPending}>
+                {update.isPending ? 'Saving…' : 'Save draft'}
+              </button>
+            </>
+          )}
           {/* No "Published" button: the status pill beside the key already says
               so, and a filled blue control that cannot be pressed reads as a
               broken button. */}
@@ -141,6 +142,13 @@ export function ProductEditorPage() {
           ) : null}
         </div>
       </div>
+
+      {readOnly ? (
+        <p className="muted" data-testid="published-note">
+          A published thing model cannot be edited — publishing is final, because installed devices already read it.
+          To change it, create a new product with a new key; the old one keeps working for the devices that have it.
+        </p>
+      ) : null}
 
       {saved && !dirty ? <p className="muted">Saved.</p> : null}
       {parseError ? <p className="error">{parseError}</p> : null}

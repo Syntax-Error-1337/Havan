@@ -146,16 +146,21 @@ describe('thing-model editor', () => {
     expect(screen.getByText('rule 4')).toBeInTheDocument();
   });
 
-  it('locks a published product instead of letting a save fail', async () => {
+  it('locks a published product, and says what to do instead of offering buttons that cannot work', async () => {
     stubFetch(() => ({ body: product({ status: 'published' }) }));
     renderEditor();
 
     await waitFor(() => expect(editor().readOnly).toBe(true));
-    expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
-    // Neither a fake "Published" button nor a Validate that could change nothing.
+
+    // Nothing that could only fail: no Publish, no Validate, no Save draft beside a live action.
     expect(screen.queryByRole('button', { name: 'Published' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Validate' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Validate' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
+
+    // And the reason, in the words the server uses when it refuses the write.
+    const note = screen.getByTestId('published-note');
+    expect(note.textContent).toMatch(/cannot be edited/);
+    expect(note.textContent).toMatch(/new product with a new key/);
   });
 });

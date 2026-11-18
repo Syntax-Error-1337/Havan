@@ -127,11 +127,23 @@ depends on it, and it is the only fabricated row this audit added.
 The rest of the screen is unusually good: the progress cell leads with failures rather than a percentage ("3 failed",
 "108 failed"), a halted campaign says *stopped*, not *done*, and a started rollout that matched nobody says so.
 
-## Products — walked, nothing fixed
+## Products — the list needed nothing, the editor needed one thing
 
 The list is honest about the rule it enforces ("3 products · a product must be published before a customer can pair
-it"), certification is its own column rather than folded into status, and deleting asks. The per-product editor is the
-one screen this pass did not reach.
+it"), certification is its own column rather than folded into status, and deleting asks.
+
+The editor is a wall of raw JSON, and that is a deliberate choice rather than a defect: the thing model *is* JSON,
+publishing is final, and the screen explains the two declarations the JSON does not advertise (`radio`,
+`report_interval_secs`) better than most documentation would.
+
+What it did get wrong: a **published** product still showed **Validate** and **Save draft**, both disabled and both
+unexplained — two controls that can only ever fail, beside one that works. They are gone for a published model, replaced
+by the sentence the server would have answered with: *"A published thing model cannot be edited — publishing is final,
+because installed devices already read it. To change it, create a new product with a new key; the old one keeps working
+for the devices that have it."*
+
+The read-only textarea is genuinely `readOnly` — checked in the DOM, not by eye — so the JSON cannot be typed into and
+lost.
 
 ## What was not found
 
