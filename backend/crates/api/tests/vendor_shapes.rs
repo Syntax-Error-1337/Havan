@@ -423,3 +423,30 @@ async fn no_vendor_response_carries_a_customer() {
         }
     }
 }
+
+/// The API doc lists every vendor route, checked against the routers rather than against memory.
+///
+/// docs/05-API.md is what an integrator reads before they have a token, and it drifted exactly the way a document does:
+/// two rows listing the same route with *different* query parameters — one of them a parameter the handler no longer
+/// accepts — and a new route with no row at all. Nothing caught it, because nothing read the doc.
+#[test]
+fn every_vendor_route_is_in_the_api_doc() {
+    let doc_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join("docs/05-API.md");
+    let doc = std::fs::read_to_string(&doc_path).expect("docs/05-API.md");
+
+    let mut missing = Vec::new();
+    for route in declared_vendor_routes() {
+        // Anywhere in the doc counts: a table row, or a sentence — `/vendor/auth/login` is explained in prose because
+        // it needs a body and a story. What does not count is silence.
+        if !doc.contains(&route) {
+            missing.push(route);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "these routes are served but not documented in docs/05-API.md: {missing:?}"
+    );
+}

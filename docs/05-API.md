@@ -313,27 +313,28 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/vendor/devices?product_key=&state=&q=&cursor=&limit=` | fleet page; `state` = online/offline/bound/unbound; `q` = substring of serial or name, trimmed, capped at 64 chars, `%`/`_` escaped (trigram index, migration 0041) |
+| GET | `/vendor/devices?product_key=&state=&q=&sort=&dir=&cursor=&limit=` | fleet page; `state` = online/offline/bound/unbound; `q` = substring of serial or name, trimmed, capped at 64 chars, `%`/`_` escaped (trigram index, migration 0041); `sort` = serial/name/last_seen, `dir` = asc/desc — a closed set, anything else is **422 naming the value**; the cursor is a bare device id and the ordering value is recomputed from it, so page two continues the order rather than the newest rows |
 | GET | `/vendor/analytics` | totals, online, bound, new 7/30 d, by product, by firmware |
-| GET | `/vendor/audit?limit=&cursor=` | the vendor's append-only trail, newest first |
+| GET | `/vendor/audit?limit=&cursor=&action=&actor=` | the vendor's append-only trail, newest first; `action` is **exact** (the values are a closed set), `actor` is part of an address, both trimmed and capped at 120 chars before the query; filters travel with the cursor and with `next_cursor` |
+| GET | `/vendor/audit.csv?action=&actor=` | the same rows as a file — `text/csv`, every field quoted with inner quotes doubled, same filters, newest first. Stops at 10,000 rows and says so in `x-audit-truncated: true`; a cap nobody is told about is a lie in a different place |
 | GET/POST | `/vendor/products` | |
 | GET/PATCH | `/vendor/products/{id}` | |
 | DELETE | `/vendor/products/{id}` | `204`; `409` naming the count when devices are live on it or licence activations reference it — both make the entry permanent |
 | POST | `/vendor/products/{id}/validate` | the six rules from the thing model |
 | POST | `/vendor/products/{id}/publish` | |
 | POST | `/vendor/products/{id}/certification/submit` | `{note?}` → asks us to test it; only a published product |
-| GET/POST | `/vendor/products/{id}/firmware` | upload → presigned PUT |
+| GET/POST | `/vendor/products/{product_id}/firmware` | upload → presigned PUT |
 | POST | `/vendor/firmware/{id}/sign` | portal signs with the vendor key |
 | GET/POST | `/vendor/ota-campaigns` | |
 | POST | `/vendor/ota-campaigns/{id}/pause\|resume\|halt` | |
-| GET | `/vendor/devices?product_id=&status=` | fleet list, cursor-paged |
 | GET | `/vendor/devices/{id}` | telemetry, logs, cert status |
 | GET/POST | `/vendor/api-keys` | `POST` mints a key, shown once |
 | DELETE | `/vendor/api-keys/{id}` | |
-| GET | `/vendor/audit` | |
 | GET/POST | `/vendor/webhooks` | `{url, events[]}` → `{id, secret}` once; events: `licence.activated`, `device.claimed`, `firmware.failed` |
 | DELETE | `/vendor/webhooks/{id}` | |
 | GET/POST | `/vendor/team` | members and invitations |
+| DELETE | `/vendor/team/invites/{id}` | withdraws an invitation that was never accepted; the token dies with it |
+| GET | `/vendor/support-bundle` | one device's story as a file: serial, firmware, last-seen, recent telemetry, logs — what support asks for and a customer cannot assemble |
 | DELETE | `/vendor/team/members/{id}` | owner cannot be removed, and the last owner cannot be demoted |
 | POST | `/vendor/team/{id}/sso` | binds an identity-provider subject to a member |
 | POST | `/vendor/invites/accept` | public: accepts an invitation token |
@@ -342,7 +343,10 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | POST | `/vendor/totp/enrol` | `{secret, otpauth_uri}` — shown once, replaces any previous secret |
 | POST | `/vendor/totp/confirm` | `{code}` → proves the member can read a code; until then the secret is not a factor |
 | DELETE | `/vendor/totp` | turns the member's factor off; **409** while the vendor requires it |
-| GET/POST | `/vendor/campaigns` | OTA rollouts; `{id}/start`, `{id}/halt`, `{id}/rollback` |
+| GET/POST | `/vendor/campaigns` | OTA rollouts |
+| POST | `/vendor/campaigns/{id}/start` | freezes the target list and queues the wave |
+| POST | `/vendor/campaigns/{id}/halt` | stops it where it is; devices already updated stay updated |
+| POST | `/vendor/campaigns/{id}/rollback` | puts the previous firmware back — the reason a rollout is safe to attempt |
 | GET | `/vendor/licences?limit=` | `{summary:{granted,used,remaining,activated_this_period,granted_value_cents,used_value_cents,unit_price_cents,currency}, activations:[…]}` |
 | GET | `/vendor/invoices?period=YYYY-MM` | that month as a `draft`, or the frozen document once issued |
 | GET | `/vendor/invoices/{period}` | the same, addressed by month |
