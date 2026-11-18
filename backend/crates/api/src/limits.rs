@@ -78,6 +78,18 @@ pub const REGISTER: Window = Window {
     secs: 60,
 };
 
+/// Failed sign-ins, per source across **all** accounts.
+///
+/// The per-account window has a hole that only shows from outside: ten failures per address is a tight budget for one
+/// target, but a spray that tries eight passwords against a thousand addresses never touches it — every attempt lands
+/// in a fresh bucket. This is the coarse budget that sees the shape of the attack instead of its target, and it is
+/// deliberately far above what a person can do by hand: sixty failures in five minutes from one address is a script, not
+/// a household sharing a router.
+pub const SOURCE: Window = Window {
+    limit: 60,
+    secs: 300,
+};
+
 /// Claims, per source and serial. A device that fails to claim is usually misconfigured,
 /// and it retries in a loop; that loop must not become a denial of service on the home.
 pub const CLAIM: Window = Window {
@@ -108,7 +120,9 @@ pub async fn check(state: &AppState, key: &str, window: Window) -> Result<(), Ap
             kernel::metrics::rate_limited();
             Err(ApiError(AppError::code(
                 kernel::ErrorCode::RateLimited,
-                "too many failed attempts; try again in a minute",
+                // Not "in a minute": the account window is a minute and the source window is five, and a message that
+                // promises the shorter one is a message that has to be explained by support.
+                "too many failed attempts; try again in a few minutes",
             )))
         }
         // A cache outage must not lock people out of their own homes: fail open on the
@@ -138,6 +152,22 @@ pub async fn record(state: &AppState, key: &str, window: Window) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The source budget must be loose enough that a household or an office never meets it, and tight enough that a
+    /// spray meets it quickly. These are the numbers that decide that, so they are checked when the file is compiled
+    /// rather than when someone remembers to run a test: a const block cannot pass by accident.
+    const _: () = {
+        assert!(
+            SOURCE.limit > LOGIN.limit,
+            "a source budget tighter than the per-account one would punish shared addresses"
+        );
+        assert!(
+            SOURCE.secs >= LOGIN.secs,
+            "the wider budget must also be the longer one, or it is a burst limit wearing a source's name"
+        );
+        // Sixty failures in five minutes is twelve a minute by hand, which nobody does.
+        assert!(SOURCE.limit >= 50 && SOURCE.limit <= 200);
+    };
 
     #[test]
     fn a_peer_without_connect_info_still_gets_one_bucket() {

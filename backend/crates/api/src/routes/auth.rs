@@ -109,7 +109,11 @@ async fn login(
     // person, while somebody working through a list of addresses is another, and they
     // must not share a budget.
     let key = format!("rl:login:{}:{}", peer.key(), body.email.to_lowercase());
+    // Two budgets: one that follows the account, and one that follows the source. A spray across many addresses never
+    // fills the first; a shared router never fills the second.
+    let source = format!("rl:login-source:{}", peer.key());
     limits::check(&state, &key, limits::LOGIN).await?;
+    limits::check(&state, &source, limits::SOURCE).await?;
 
     match state
         .identity
@@ -121,6 +125,7 @@ async fn login(
             // Only failures are counted, and only after the credentials were proven
             // wrong — see `limits`.
             limits::record(&state, &key, limits::LOGIN).await;
+            limits::record(&state, &source, limits::SOURCE).await;
             Err(ApiError(e))
         }
     }

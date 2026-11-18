@@ -69,7 +69,10 @@ async fn login(
         peer.key(),
         body.email.to_lowercase()
     );
+    // The same two budgets as the customer sign-in: one per account, one per source.
+    let source = format!("rl:vendor-login-source:{}", peer.key());
     crate::limits::check(&state, &key, crate::limits::LOGIN).await?;
+    crate::limits::check(&state, &source, crate::limits::SOURCE).await?;
 
     let vendor_id = state.identity.resolve_vendor(&body.vendor).await?;
 
@@ -81,6 +84,7 @@ async fn login(
         Ok(tokens) => Ok(Json(tokens)),
         Err(e) => {
             crate::limits::record(&state, &key, crate::limits::LOGIN).await;
+            crate::limits::record(&state, &source, crate::limits::SOURCE).await;
             Err(ApiError(e))
         }
     }

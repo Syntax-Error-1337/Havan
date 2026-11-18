@@ -107,7 +107,9 @@ the badge. Neither is reachable without an ESP32-S3 on a desk.
 - **Done:** OTA campaigns with halt semantics, gzip (99 KB → 11 KB on a device list),
   `make bench` baselines, the suite running as `haven_app` in CI, `GET /metrics`
   (requests/latency histogram, commands, websockets, rate-limit refusals, undelivered
-  commands), failure-counted rate limits on logins, registration and claims, and the
+  commands), failure-counted rate limits on logins (per account **and** per source — the
+  per-account window alone could not see a spray that tries a few passwords against many
+  addresses), registration and claims, and the
   **append-only audit log** (written on product publish, key mint/revoke and rollout
   start/halt; read by the vendor portal, isolated per vendor by RLS).
 - **OTA rollback:** a new, already-running campaign aimed at the devices actually running
