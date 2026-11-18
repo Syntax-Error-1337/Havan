@@ -50,7 +50,7 @@ sqlx = { version = "0.8", default-features = false, features = [
 redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
 rumqttc = "0.25"
 utoipa = { version = "5", features = ["axum_extras", "uuid", "time"] }
-sha2 = "0.10"
+sha2 = "0.11"
 hmac = "0.12"
 # TOTP only: RFC 4226 is defined over SHA-1, and an authenticator app that offers SHA-256 is
 # guessing which one the server meant. Dual MIT/Apache-2.0 (RustCrypto).
