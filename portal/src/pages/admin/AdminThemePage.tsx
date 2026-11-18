@@ -42,7 +42,9 @@ export function AdminThemePage() {
     draft.logo_text !== current.data?.logo_text ||
     draft.accent !== current.data?.accent ||
     draft.accent_secondary !== current.data?.accent_secondary ||
-    draft.mode !== current.data?.mode;
+    draft.mode !== current.data?.mode ||
+    (draft.support_email ?? '') !== (current.data?.support_email ?? '') ||
+    (draft.status_url ?? '') !== (current.data?.status_url ?? '');
 
   const set = <K extends keyof PlatformTheme>(key: K, value: PlatformTheme[K]) =>
     setDraft({ ...draft, [key]: value });
@@ -140,6 +142,33 @@ export function AdminThemePage() {
             </div>
           </div>
 
+          {/* Not part of the brand, but the same row: one white-label deployment has one support address, and a
+              customer whose device will not pair needs it inside the app rather than on a website they must find. */}
+          <strong style={{ display: 'block', marginTop: 20 }}>Help</strong>
+          <label className="field">
+            <span>Support email</span>
+            <input
+              data-testid="theme-support"
+              value={draft.support_email ?? ''}
+              maxLength={120}
+              placeholder="help@example.com"
+              onChange={(e) => set('support_email', e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>Status page</span>
+            <input
+              data-testid="theme-status"
+              value={draft.status_url ?? ''}
+              maxLength={200}
+              placeholder="https://status.example.com"
+              onChange={(e) => set('status_url', e.target.value)}
+            />
+            <small className="muted">
+              Shown in the app's About screen. Must start with https:// — the app opens it in the browser.
+            </small>
+          </label>
+
           <div className="row" style={{ gap: 8, marginTop: 16 }}>
             <button
               className="btn btn--primary"
@@ -152,6 +181,9 @@ export function AdminThemePage() {
                   accent: draft.accent,
                   accent_secondary: draft.accent_secondary,
                   mode: draft.mode,
+                  // Empty means "not set", which the server stores as NULL rather than an empty row.
+                  support_email: (draft.support_email ?? '').trim(),
+                  status_url: (draft.status_url ?? '').trim(),
                 })
               }
             >

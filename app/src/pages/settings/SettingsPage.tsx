@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, TextInput } from 'react-native';
+import { Linking, Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 
@@ -482,6 +482,24 @@ export function SettingsPage() {
               void copyDiagnostics();
             }}
           />
+          {/* The operator's own contact details, shown only when they exist. A row promising a support address that was
+              never set is a row that opens an empty mail app. */}
+          {brand.supportEmail ? (
+            <Row
+              title="Contact support"
+              subtitle={brand.supportEmail}
+              onPress={() => void Linking.openURL(`mailto:${brand.supportEmail}`)}
+              testID="support-email"
+            />
+          ) : null}
+          {brand.statusUrl ? (
+            <Row
+              title="Service status"
+              subtitle={brand.statusUrl.replace(/^https:\/\//, '')}
+              onPress={() => void Linking.openURL(brand.statusUrl as string)}
+              testID="status-url"
+            />
+          ) : null}
         </Section>
 
         <AppText variant="caption" tone="muted" style={{ textAlign: 'center' }}>

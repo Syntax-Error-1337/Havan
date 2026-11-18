@@ -20,6 +20,8 @@ type Row = (
     String,
     String,
     String,
+    Option<String>,
+    Option<String>,
     OffsetDateTime,
     Option<String>,
 );
@@ -78,7 +80,7 @@ impl PgTheme {
         let mut tx = self.pg.scoped(&TenantCtx::system("theme-read")).await?;
 
         let row: Option<Row> = sqlx::query_as(
-            r#"SELECT product_name, logo_text, accent, accent_secondary, mode, updated_at, updated_by
+            r#"SELECT product_name, logo_text, accent, accent_secondary, mode, support_email, status_url, updated_at, updated_by
                  FROM app_theme WHERE id = 1"#,
         )
         .fetch_optional(&mut *tx)
@@ -114,7 +116,7 @@ impl PgTheme {
         let mut tx = self.pg.scoped(&TenantCtx::system("theme-write")).await?;
 
         let previous: Option<Row> = sqlx::query_as(
-            r#"SELECT product_name, logo_text, accent, accent_secondary, mode, updated_at, updated_by
+            r#"SELECT product_name, logo_text, accent, accent_secondary, mode, support_email, status_url, updated_at, updated_by
                  FROM app_theme WHERE id = 1 FOR UPDATE"#,
         )
         .fetch_optional(&mut *tx)
@@ -126,24 +128,29 @@ impl PgTheme {
 
         let row: Row = sqlx::query_as(
             r#"INSERT INTO app_theme
-                 (id, product_name, logo_text, accent, accent_secondary, mode, updated_at, updated_by)
-               VALUES (1, $1, $2, $3, $4, $5, now(), $6)
+                 (id, product_name, logo_text, accent, accent_secondary, mode, support_email,
+                  status_url, updated_at, updated_by)
+               VALUES (1, $1, $2, $3, $4, $5, $6, $7, now(), $8)
                ON CONFLICT (id) DO UPDATE
                  SET product_name = EXCLUDED.product_name,
                      logo_text = EXCLUDED.logo_text,
                      accent = EXCLUDED.accent,
                      accent_secondary = EXCLUDED.accent_secondary,
                      mode = EXCLUDED.mode,
+                     support_email = EXCLUDED.support_email,
+                     status_url = EXCLUDED.status_url,
                      updated_at = now(),
                      updated_by = EXCLUDED.updated_by
-               RETURNING product_name, logo_text, accent, accent_secondary, mode, updated_at,
-                         updated_by"#,
+               RETURNING product_name, logo_text, accent, accent_secondary, mode, support_email,
+                         status_url, updated_at, updated_by"#,
         )
         .bind(&theme.product_name)
         .bind(&theme.logo_text)
         .bind(&theme.accent)
         .bind(&theme.accent_secondary)
         .bind(theme.mode.as_str())
+        .bind(&theme.support_email)
+        .bind(&theme.status_url)
         .bind(actor)
         .fetch_one(&mut *tx)
         .await
@@ -199,7 +206,17 @@ impl PgTheme {
 /// The stored columns, without the derived text colour — it is recomputed on read, so a change to the
 /// contrast rule applies to an old theme as well.
 fn from_row(row: Row) -> AppTheme {
-    let (product_name, logo_text, accent, accent_secondary, mode, updated_at, updated_by) = row;
+    let (
+        product_name,
+        logo_text,
+        accent,
+        accent_secondary,
+        mode,
+        support_email,
+        status_url,
+        updated_at,
+        updated_by,
+    ) = row;
     AppTheme {
         accent_on: domain::theme::on_colour(&accent).to_string(),
         product_name,
@@ -207,6 +224,8 @@ fn from_row(row: Row) -> AppTheme {
         accent,
         accent_secondary,
         mode: ThemeMode::parse(&mode).unwrap_or(ThemeMode::Dark),
+        support_email,
+        status_url,
         updated_at: Some(updated_at),
         updated_by,
     }

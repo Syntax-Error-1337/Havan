@@ -8,7 +8,12 @@ import { usePreferences } from '../entities/preferences';
 const ThemeContext = createContext<Theme>({
   color: dark,
   dark: true,
-  brand: { productName: DEFAULT_THEME.product_name, logoText: DEFAULT_THEME.logo_text },
+  brand: {
+    productName: DEFAULT_THEME.product_name,
+    logoText: DEFAULT_THEME.logo_text,
+    supportEmail: null,
+    statusUrl: null,
+  },
 });
 
 /**
@@ -29,6 +34,8 @@ export function ThemeProvider({
   accentSecondary,
   productName,
   logoText,
+  supportEmail,
+  statusUrl,
 }: {
   children: ReactNode;
   mode?: 'light' | 'dark';
@@ -37,6 +44,9 @@ export function ThemeProvider({
   accentSecondary?: string;
   productName?: string;
   logoText?: string;
+  /** The operator's own contact details — platform data, like the colours, so one white-label deployment is one place to change them. */
+  supportEmail?: string | null;
+  statusUrl?: string | null;
 }) {
   const system = useColorScheme();
   const isDark = (mode ?? system ?? 'dark') === 'dark';
@@ -46,6 +56,8 @@ export function ThemeProvider({
     const brand = {
       productName: productName ?? DEFAULT_THEME.product_name,
       logoText: logoText ?? DEFAULT_THEME.logo_text,
+      supportEmail: supportEmail ?? null,
+      statusUrl: statusUrl ?? null,
     };
 
     if (!accent) return { color: base, dark: isDark, brand };
@@ -55,7 +67,7 @@ export function ThemeProvider({
       dark: isDark,
       brand,
     };
-  }, [isDark, accent, accentOn, accentSecondary, productName, logoText]);
+  }, [isDark, accent, accentOn, accentSecondary, productName, logoText, supportEmail, statusUrl]);
 
   return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
 }
@@ -95,6 +107,8 @@ export function PlatformThemeProvider({ children }: { children: ReactNode }) {
       accentSecondary={theme.accent_secondary}
       productName={theme.product_name}
       logoText={theme.logo_text}
+      supportEmail={theme.support_email ?? null}
+      statusUrl={theme.status_url ?? null}
     >
       {children}
     </ThemeProvider>

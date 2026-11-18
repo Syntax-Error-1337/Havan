@@ -23,6 +23,10 @@ export type PlatformTheme = {
   accent_secondary: string;
   mode: 'dark' | 'light';
   accent_on: string;
+  /** Where a customer writes when the app cannot help. Absent means the operator has not set one. */
+  support_email?: string | null;
+  /** The operator's status page, https only. Absent means the row is not drawn. */
+  status_url?: string | null;
   updated_at: string | null;
   updated_by: string | null;
 };
@@ -37,6 +41,8 @@ export const DEFAULT_THEME: PlatformTheme = {
   accent_secondary: dark.accentAlt,
   mode: 'dark',
   accent_on: dark.onAccent,
+  support_email: null,
+  status_url: null,
   updated_at: null,
   updated_by: null,
 };

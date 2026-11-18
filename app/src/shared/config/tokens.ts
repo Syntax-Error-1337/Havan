@@ -317,7 +317,18 @@ export function glowFor(category: string | undefined, fallback: string): string 
 
 export type Tokens = typeof tokens;
 /** Who the product is, as the operator named it. */
-export type Brand = { productName: string; logoText: string };
+export type Brand = {
+  productName: string;
+  logoText: string;
+  /**
+   * The operator's own contact details, if they set any.
+   *
+   * Null rather than empty string: a row that says "Contact support" and opens nothing is worse than no row, and the
+   * absence is a fact about the deployment, not a missing value to paper over.
+   */
+  supportEmail: string | null;
+  statusUrl: string | null;
+};
 
 export type Theme = { color: Palette; dark: boolean; brand: Brand };
 

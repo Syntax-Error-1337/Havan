@@ -295,6 +295,9 @@ export type PlatformTheme = {
   accent_secondary: string;
   mode: 'dark' | 'light';
   accent_on: string;
+  /** Optional: who a customer writes to, and where they check whether the platform is up. */
+  support_email?: string | null;
+  status_url?: string | null;
   updated_at: string | null;
   updated_by: string | null;
 };

@@ -20,6 +20,12 @@ pub const MAX_PRODUCT_NAME: usize = 32;
 /// Initials, not a wordmark: the app renders them in a 42 pt circle.
 pub const MAX_LOGO_TEXT: usize = 3;
 
+/// Long enough for a real address, short enough that a settings row can show it without wrapping twice.
+pub const MAX_SUPPORT_EMAIL: usize = 120;
+
+/// Long enough for any status page URL, short enough to be a link and not a payload.
+pub const MAX_STATUS_URL: usize = 200;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
@@ -57,6 +63,12 @@ pub struct AppTheme {
     pub accent_secondary: String,
     pub mode: ThemeMode,
     pub accent_on: String,
+    /// Who a customer writes to when the app cannot help. `None` means the row is not drawn at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub support_email: Option<String>,
+    /// The operator's status page. https only — the app hands it to the system browser.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_url: Option<String>,
     #[serde(with = "time::serde::rfc3339::option")]
     pub updated_at: Option<OffsetDateTime>,
     pub updated_by: Option<String>,
@@ -71,6 +83,11 @@ pub struct ThemeInput {
     pub accent: String,
     pub accent_secondary: String,
     pub mode: String,
+    /// Optional: existing operators do not send these, and a missing field must not empty a working row.
+    #[serde(default)]
+    pub support_email: Option<String>,
+    #[serde(default)]
+    pub status_url: Option<String>,
 }
 
 impl Default for AppTheme {
@@ -82,6 +99,8 @@ impl Default for AppTheme {
             accent_secondary: "#8B5CF6".into(),
             mode: ThemeMode::Dark,
             accent_on: on_colour("#0A84FF").to_string(),
+            support_email: None,
+            status_url: None,
             updated_at: None,
             updated_by: None,
         }
@@ -122,6 +141,8 @@ impl AppTheme {
         let accent = normalise_colour(&input.accent, "accent")?;
         let accent_secondary = normalise_colour(&input.accent_secondary, "accent_secondary")?;
         let mode = ThemeMode::parse(&input.mode)?;
+        let support_email = support_email(input.support_email.as_deref())?;
+        let status_url = status_url(input.status_url.as_deref())?;
 
         Ok(Self {
             product_name: product_name.to_string(),
@@ -130,6 +151,8 @@ impl AppTheme {
             accent,
             accent_secondary,
             mode,
+            support_email,
+            status_url,
             updated_at: None,
             updated_by: None,
         })
@@ -153,6 +176,12 @@ impl AppTheme {
         }
         if self.mode != previous.mode {
             changed.push("mode");
+        }
+        if self.support_email != previous.support_email {
+            changed.push("support_email");
+        }
+        if self.status_url != previous.status_url {
+            changed.push("status_url");
         }
         changed
     }
@@ -253,6 +282,122 @@ fn rgb(hex: &str) -> (f64, f64, f64) {
     (channel(0), channel(2), channel(4))
 }
 
+/// An address a customer can write to, or nothing.
+///
+/// Deliberately shallow: an email is checked by sending one, and a regex that rejects a valid address is worse than no
+/// regex. What is refused is the shape that would render as a broken row — no `@`, whitespace, or a URL where an address
+/// belongs.
+fn support_email(raw: Option<&str>) -> Result<Option<String>, AppError> {
+    let Some(raw) = raw.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let valid = raw.len() <= MAX_SUPPORT_EMAIL
+        && raw.contains('@')
+        && !raw.split('@').next().unwrap_or_default().is_empty()
+        && raw.split('@').nth(1).is_some_and(|d| d.contains('.'))
+        && !raw.chars().any(char::is_whitespace);
+    if !valid {
+        return Err(validation(
+            "that does not look like an email address — it is the one a customer writes to",
+            "support_email",
+        ));
+    }
+    Ok(Some(raw.to_string()))
+}
+
+/// The operator's status page, or nothing.
+///
+/// https only. The app hands this straight to the system browser, so `javascript:` or a plain `http://` link is not a
+/// cosmetic problem — one is code, the other is a page that cannot be trusted to be the operator's.
+fn status_url(raw: Option<&str>) -> Result<Option<String>, AppError> {
+    let Some(raw) = raw.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let valid = raw.len() <= MAX_STATUS_URL
+        && raw.starts_with("https://")
+        && raw.len() > "https://".len()
+        && !raw.chars().any(char::is_whitespace);
+    if !valid {
+        return Err(validation(
+            "the status link has to start with https:// — the app opens it in the browser",
+            "status_url",
+        ));
+    }
+    Ok(Some(raw.to_string()))
+}
+
+#[cfg(test)]
+mod support_tests {
+    use super::*;
+
+    fn input() -> ThemeInput {
+        ThemeInput {
+            product_name: "Haven".into(),
+            logo_text: "HV".into(),
+            accent: "#146EF5".into(),
+            accent_secondary: "#8B5CF6".into(),
+            mode: "dark".into(),
+            support_email: None,
+            status_url: None,
+        }
+    }
+
+    #[test]
+    fn a_support_address_is_stored_trimmed_or_not_at_all() {
+        let mut asked = input();
+        asked.support_email = Some("  help@haven.example  ".into());
+        assert_eq!(
+            AppTheme::from_input(&asked)
+                .expect("valid")
+                .support_email
+                .as_deref(),
+            Some("help@haven.example")
+        );
+
+        // Empty means "not set", not "an address that is the empty string".
+        asked.support_email = Some("   ".into());
+        assert_eq!(
+            AppTheme::from_input(&asked).expect("valid").support_email,
+            None
+        );
+
+        for bad in ["help", "help@", "help@haven", "help haven@x.dev"] {
+            asked.support_email = Some(bad.into());
+            assert!(
+                AppTheme::from_input(&asked).is_err(),
+                "{bad:?} is not an address a customer can write to"
+            );
+        }
+    }
+
+    #[test]
+    fn a_status_link_is_https_or_it_is_not_stored() {
+        let mut asked = input();
+        asked.status_url = Some("https://status.haven.example".into());
+        assert_eq!(
+            AppTheme::from_input(&asked)
+                .expect("valid")
+                .status_url
+                .as_deref(),
+            Some("https://status.haven.example")
+        );
+
+        // The app hands this to the system browser: anything that is not https is either code or an untrusted page.
+        for bad in [
+            "http://status.example",
+            "javascript:alert(1)",
+            "https://",
+            "status.example",
+        ] {
+            asked.status_url = Some(bad.into());
+            assert!(
+                AppTheme::from_input(&asked).is_err(),
+                "{bad:?} must be refused"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +409,8 @@ mod tests {
             accent: accent.into(),
             accent_secondary: secondary.into(),
             mode: mode.into(),
+            support_email: None,
+            status_url: None,
         }
     }
 
@@ -376,6 +523,8 @@ mod tests {
             accent: before.accent.clone(),
             accent_secondary: before.accent_secondary.clone(),
             mode: "dark".into(),
+            support_email: None,
+            status_url: None,
         })
         .unwrap();
         assert!(same.changes(&before).is_empty());
@@ -386,6 +535,8 @@ mod tests {
             accent: "#FF3B30".into(),
             accent_secondary: before.accent_secondary.clone(),
             mode: "dark".into(),
+            support_email: None,
+            status_url: None,
         })
         .unwrap();
         assert_eq!(after.changes(&before), vec!["accent"]);
