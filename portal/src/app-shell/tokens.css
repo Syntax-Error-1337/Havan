@@ -560,3 +560,37 @@ th[aria-sort='descending'] .th-sort::after {
 .fleet-detail dd {
   margin: 2px 0 0;
 }
+
+/* The load controls live in the table's footer and stick to the bottom of its scroll container: above the table they
+   scrolled out of reach, and at 1,900 devices that is where they are needed most. */
+
+.table-foot td {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+/* The load bar: full width of the table's scroll container, stuck to its bottom, one row of count and actions. */
+.table-foot-bar {
+  position: sticky;
+  inset-block-end: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  inline-size: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  z-index: 1;
+}
+
+/* The count is a fact and the buttons are the actions: one on each side, so the bar reads as a footer rather than a
+   left-packed row with an empty half. */
+.table-foot-bar > .muted {
+  margin-inline-end: auto;
+}

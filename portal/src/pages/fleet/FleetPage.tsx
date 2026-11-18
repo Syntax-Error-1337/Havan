@@ -122,42 +122,6 @@ export function FleetPage() {
         </div>
       </div>
 
-      {/* The count and the controls sit above the table, not below it: at 1 900 devices the buttons were
-          two hundred rows away, which on a phone is the same as not having them. */}
-      <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        {/* "shown" was read as "on screen", and at 1,900 devices eleven rows are visible while two hundred are
-            loaded. The word says which of those it is. */}
-        <span className="muted" data-testid="fleet-count">
-          {devices.length.toLocaleString()} of {total.toLocaleString()} device{total === 1 ? '' : 's'}
-          {filter.q ? ` matching “${filter.q}”` : ''} loaded
-        </span>
-        {/* One set of controls, and it lives here rather than under the table: at 1 900 devices the bottom
-            of the page is two hundred rows away, which on a phone is the same as not having the buttons. */}
-        {hasNextPage ? (
-          <>
-            <button
-              className="btn"
-              onClick={() => void fetchNextPage()}
-              disabled={isFetchingNextPage || loadingAll}
-            >
-              {/* "Load more" did not say how many; the page size is 200 and the button can say so. */}
-              {isFetchingNextPage && !loadingAll ? 'Loading…' : 'Load 200 more'}
-            </button>
-            <button
-              className="btn btn--quiet"
-              onClick={() => void loadAll()}
-              disabled={isFetchingNextPage || loadingAll}
-            >
-              {/* "Load all 1,909" beside "200 loaded" reads as if two hundred were missing from the total. The
-                  number is what is left to fetch, which is the thing the press does. */}
-              {loadingAll
-                ? `Loading ${devices.length.toLocaleString()} of ${total.toLocaleString()}…`
-                : `Load the other ${(total - devices.length).toLocaleString()}`}
-            </button>
-          </>
-        ) : null}
-      </div>
-
       {devices.length === 0 ? (
         <div className="card">
           {filter.q || filter.state ? (
@@ -316,6 +280,37 @@ export function FleetPage() {
               ))}
             </tbody>
           </table>
+          {/* The count and the controls, in the table's own scroll container and stuck to its bottom. Above the table
+              they scrolled out of reach after eleven rows, which on a 1,900-device fleet is the same as not having
+              them. A plain block rather than a `tfoot`: a table cell is laid out by the table's algorithm, and sticky
+              inside that is a promise the browser does not keep. */}
+          <div className="table-foot-bar">
+            <span className="muted" data-testid="fleet-count">
+              {devices.length.toLocaleString()} of {total.toLocaleString()} device
+              {total === 1 ? '' : 's'}
+              {filter.q ? ` matching “${filter.q}”` : ''} loaded
+            </span>
+            {hasNextPage ? (
+              <>
+                <button
+                  className="btn"
+                  onClick={() => void fetchNextPage()}
+                  disabled={isFetchingNextPage || loadingAll}
+                >
+                  {isFetchingNextPage && !loadingAll ? 'Loading…' : 'Load 200 more'}
+                </button>
+                <button
+                  className="btn btn--quiet"
+                  onClick={() => void loadAll()}
+                  disabled={isFetchingNextPage || loadingAll}
+                >
+                  {loadingAll
+                    ? `Loading ${devices.length.toLocaleString()} of ${total.toLocaleString()}…`
+                    : `Load the other ${(total - devices.length).toLocaleString()}`}
+                </button>
+              </>
+            ) : null}
+          </div>
 </TableFrame>
       )}
 

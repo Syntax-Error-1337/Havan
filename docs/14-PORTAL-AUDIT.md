@@ -53,8 +53,11 @@ duration answers *is it alive* and the timestamp answers *was it alive when the 
 
 - **Status and Firmware do not sort.** Status is now split in two, so the question got smaller; firmware is mostly absent
   across the demo fleet and has no defensible ordering yet.
-- **Load controls are above the table by design** — deliberate, because at 1,900 devices the footer is two hundred rows
-  away — but they scroll out of reach just the same. A sticky footer is the fix.
+- Nothing about paging. The controls now live in a bar **inside the table's own scroll container, stuck to its bottom**:
+  count on the left, actions on the right. Measured at 1440 × 900 mid-list — the bar's bottom edge equals the frame's
+  (527 px) while `scrollTop` is 9,759, so it is a footer in reach rather than a row above the fold. It is a plain block,
+  not a `tfoot`: a table cell is laid out by the table's algorithm and `position: sticky` on it is a promise the browser
+  does not keep — the first attempt silently did nothing at all.
 
 ## What was not found
 
