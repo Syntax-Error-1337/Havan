@@ -559,6 +559,38 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
         Ok(invite.home_id)
     }
 
+    /// Join every home this address was invited to while it had no account.
+    ///
+    /// The invitation exists precisely because the person had not signed up yet, so making them hunt for the link after
+    /// they finally do is the wrong ending. A live invitation addressed to them is consent the admin already gave; the
+    /// token only ever proved the address, and registering proves it better.
+    pub async fn accept_pending(&self, user_id: Uuid, email: &str) -> Result<usize, AppError> {
+        let email = crate::identity::normalize_email(email);
+        let pending = self.repo.invites_for_email(&email).await?;
+        let mut joined = 0;
+
+        for invite in pending {
+            if !invite.is_live(kernel::now()) || !invite.email.eq_ignore_ascii_case(&email) {
+                continue;
+            }
+            self.repo
+                .add_member(
+                    invite.home_id,
+                    user_id,
+                    invite.role,
+                    invite.role.can_manage(),
+                )
+                .await?;
+            // Best effort per invitation: one row already accepted must not stop the others, and the caller is a
+            // registration that has already succeeded.
+            if self.repo.accept_invite(invite.id, user_id).await.is_ok() {
+                joined += 1;
+            }
+        }
+
+        Ok(joined)
+    }
+
     pub async fn revoke_invite(
         &self,
         home_id: Uuid,

@@ -57,6 +57,9 @@ async fn register(
     let key = format!("rl:register:{}", peer.key());
     limits::check(&state, &key, limits::REGISTER).await?;
 
+    // Kept for the invitation check below: the body is consumed by `register`.
+    let email = body.email.clone();
+
     let result = state
         .identity
         .register(RegisterInput {
@@ -67,7 +70,19 @@ async fn register(
         .await;
 
     match result {
-        Ok(tokens) => Ok((StatusCode::CREATED, Json(tokens))),
+        Ok(tokens) => {
+            // Any home that invited this address while it had no account: join them now. Best effort — a registration
+            // that succeeded must not fail because an invitation could not be accepted, and the person can still use the
+            // link they were sent.
+            if let Ok(claims) = state.identity.verify_access(&tokens.access) {
+                match state.homes.accept_pending(claims.sub, &email).await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(joined = n, "joined homes from pending invitations"),
+                    Err(e) => tracing::warn!(error = ?e, "could not accept pending invitations"),
+                }
+            }
+            Ok((StatusCode::CREATED, Json(tokens)))
+        }
         Err(e) => {
             limits::record(&state, &key, limits::REGISTER).await;
             Err(ApiError(e))

@@ -209,7 +209,8 @@ export function MembersPage() {
                   <Box gap="xs">
                     <AppText weight="600">Invitation ready for {inviteLink.email}</AppText>
                     <AppText variant="caption" tone="muted">
-                      Send them this link. It works once, for that address only, and stops working on{' '}
+                      Send them this link, or simply ask them to sign up with that address — either way they join
+                      automatically. The link works once, for that address only, and stops working on{' '}
                       {new Date(inviteLink.expiresAt).toLocaleDateString()}.
                     </AppText>
                     <Box

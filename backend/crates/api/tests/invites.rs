@@ -105,22 +105,9 @@ async fn an_invitation_joins_the_house_after_the_account_exists() {
         "the hash must never leave the service"
     );
 
-    // Now the person signs up — after the invitation, which is the whole point — and accepts.
+    // Now the person signs up — after the invitation, which is the whole point. Registering proves the address, so the
+    // invitation is accepted on the spot: no link to find, and the address is proven better than a token proves it.
     let guest = register(&base, &guest_email).await;
-    let accepted: serde_json::Value = client
-        .post(format!("{base}/v1/invitations/accept"))
-        .bearer_auth(&guest)
-        .json(&serde_json::json!({ "token": token.clone() }))
-        .send()
-        .await
-        .expect("accept")
-        .json()
-        .await
-        .expect("json");
-    assert_eq!(
-        accepted["home_id"].as_str().expect("home"),
-        home_id.to_string()
-    );
 
     let members: serde_json::Value = client
         .get(format!("{base}/v1/homes/{home_id}/members"))
@@ -133,7 +120,8 @@ async fn an_invitation_joins_the_house_after_the_account_exists() {
         .expect("json");
     assert_eq!(members.as_array().map(|m| m.len()), Some(2));
 
-    // One invitation, one join: the same token a second time is refused rather than adding them twice.
+    // One invitation, one join: the token was spent by the registration, so presenting it afterwards is refused
+    // rather than adding them twice.
     let again = client
         .post(format!("{base}/v1/invitations/accept"))
         .bearer_auth(&guest)
@@ -182,18 +170,89 @@ async fn an_invitation_is_bound_to_the_address_it_was_sent_to() {
         .expect("accept");
     assert_eq!(refused.status().as_u16(), 403);
 
-    // And inviting an address that does have an account still adds them straight away.
+    // And the invitation is still there for the person it was addressed to: registering joins them, no link needed.
     let guest = register(&base, &guest_email).await;
-    let _ = guest;
-    let added: serde_json::Value = client
+    let homes: serde_json::Value = client
+        .get(format!("{base}/v1/homes"))
+        .bearer_auth(&guest)
+        .send()
+        .await
+        .expect("homes")
+        .json()
+        .await
+        .expect("json");
+    assert!(
+        homes
+            .as_array()
+            .expect("array")
+            .iter()
+            .any(|h| h["id"] == home_id.to_string()),
+        "the stranger's refusal did not spend the invitation"
+    );
+}
+
+#[tokio::test]
+async fn signing_up_joins_the_homes_that_invited_the_address() {
+    let Some((base, _state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+    let client = reqwest::Client::new();
+    let owner = register(&base, &format!("owner3-{}@haven.dev", Uuid::now_v7())).await;
+    let home_id = home(&base, &owner).await;
+    let guest_email = format!("invited-{}@haven.dev", Uuid::now_v7());
+
+    // Invited before the account exists - the whole reason invitations exist.
+    let _invited: serde_json::Value = client
         .post(format!("{base}/v1/homes/{home_id}/members"))
         .bearer_auth(&owner)
         .json(&serde_json::json!({ "email": guest_email, "role": "member" }))
         .send()
         .await
-        .expect("invite again")
+        .expect("invite")
         .json()
         .await
         .expect("json");
-    assert_eq!(added["outcome"], "added");
+
+    // They sign up. No token, no link: registering proves the address better than any link does.
+    let guest: serde_json::Value = client
+        .post(format!("{base}/v1/auth/register"))
+        .json(&serde_json::json!({ "email": guest_email, "password": "invites-Password-2" }))
+        .send()
+        .await
+        .expect("register")
+        .json()
+        .await
+        .expect("tokens");
+    let guest_token = guest["access"].as_str().expect("access");
+
+    let homes: serde_json::Value = client
+        .get(format!("{base}/v1/homes"))
+        .bearer_auth(guest_token)
+        .send()
+        .await
+        .expect("homes")
+        .json()
+        .await
+        .expect("json");
+    assert!(
+        homes
+            .as_array()
+            .expect("array")
+            .iter()
+            .any(|h| h["id"] == home_id.to_string()),
+        "the new account is in the home it was invited to: {homes}"
+    );
+
+    // And the invitation is spent, so the old link cannot add somebody else later.
+    let pending: serde_json::Value = client
+        .get(format!("{base}/v1/homes/{home_id}/invitations"))
+        .bearer_auth(&owner)
+        .send()
+        .await
+        .expect("invitations")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(pending.as_array().map(|p| p.len()), Some(0));
 }
