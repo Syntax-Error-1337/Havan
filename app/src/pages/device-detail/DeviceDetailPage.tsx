@@ -11,6 +11,8 @@ import {
   AreaChart,
   iconForCategory,
   QueryError,
+  Row,
+  Section,
   useConfirm,
 } from '../../shared/ui';
 import { PointControl } from '../../entities/device';
@@ -38,6 +40,7 @@ import {
 import type { DevicePoint } from '../../entities/device';
 import { canManage, useHomes, useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
+import { useToast } from '../../shared/ui/Toast';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
 import { reading, valueWithUnit } from '../../shared/ui/units';
 import { chartBand } from '../../entities/device/model/chart';
@@ -45,6 +48,7 @@ import { chartBand } from '../../entities/device/model/chart';
 export function DeviceDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { color, dark } = useTheme();
+  const toast = useToast();
   const { data: device, isPending, isError, refetch } = useDevice(id);
   const accent = accentFor(device?.category, color.accent, dark);
   const glow = glowFor(device?.category, color.glow);
@@ -89,7 +93,7 @@ export function DeviceDetailPage() {
 
   // Hooks above the early returns, as always: `device` is undefined until the query resolves.
   const nameEdit = useInlineEdit(device?.name ?? '', (name) => {
-    if (id) rename.mutate({ deviceId: id, name });
+    if (id) rename.mutate({ deviceId: id, name }, { onSuccess: () => toast(`Renamed to ${name}`) });
   });
   const { data: rooms } = useRooms(device?.home_id ?? undefined);
   const { data: homes } = useHomes(false);
@@ -335,6 +339,25 @@ export function DeviceDetailPage() {
           </AppText>
         ) : null}
 
+        {/* The facts a support call starts with, which this screen had none of: the serial printed on the box, what
+            product it is, what firmware it runs and when it last said anything. All of it was already in the payload —
+            it was simply never shown, so "what is this device" could only be answered by the vendor's portal. */}
+        <Section title="About this device">
+          <Row title="Serial" value={device.serial || '—'} />
+          <Row title="Product" value={device.product_key || '—'} />
+          <Row title="Firmware" value={device.fw_version ?? 'Not reported'} />
+          <Row
+            title="Last reported"
+            value={device.last_seen_at ? relative(device.last_seen_at) : 'Never'}
+          />
+          <Row
+            title="Reports every"
+            value={
+              device.report_interval_secs ? `${device.report_interval_secs} s` : 'Not declared'
+            }
+          />
+        </Section>
+
         {/* Configuration last. This used to sit between the offline banner and the readings, so the
             first thing under "this device has stopped reporting" was a list of rooms — a setting nobody
             opened the screen to change, in front of the numbers they did. */}
@@ -355,7 +378,15 @@ export function DeviceDetailPage() {
                 <Pressable
                   key={room.id ?? 'none'}
                   disabled={setRoom.isPending}
-                  onPress={() => setRoom.mutate({ deviceId: device.id, roomId: room.id })}
+                  onPress={() =>
+                    setRoom.mutate(
+                      { deviceId: device.id, roomId: room.id },
+                      {
+                        onSuccess: () =>
+                          toast(room.id ? `Moved to ${room.name}` : 'Moved out of its room'),
+                      },
+                    )
+                  }
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
                   style={{ minHeight: tokens.touch.min, justifyContent: 'center' }}

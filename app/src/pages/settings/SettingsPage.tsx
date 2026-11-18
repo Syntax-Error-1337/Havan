@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
+import { RoomRow } from './RoomRow';
+
 import {
   canManage,
   formatLocation,
@@ -21,6 +23,7 @@ import {
   Section,
   Toggle,
   useConfirm,
+  useToast,
 } from '../../shared/ui';
 import { usePreferences, type Appearance } from '../../entities/preferences';
 import {
@@ -55,6 +58,7 @@ export function SettingsPage() {
   const router = useRouter();
   const { brand, color } = useTheme();
   const appearance = usePreferences((s) => s.appearance);
+  const toast = useToast();
   const setAppearance = usePreferences((s) => s.setAppearance);
   const setTimeZone = useSetTimeZone();
   const setLocation = useSetLocation();
@@ -125,7 +129,11 @@ export function SettingsPage() {
             value={home?.name ?? ''}
             placeholder="Home name"
             onSave={(name) => {
-              if (home) renameHome.mutate({ id: home.id, name });
+              if (home)
+                renameHome.mutate(
+                  { id: home.id, name },
+                  { onSuccess: () => toast(`Home renamed to ${name}`) },
+                );
             }}
           />
           {/* Read-only until now, which meant a home created before the first-run screen asked (every
@@ -137,7 +145,10 @@ export function SettingsPage() {
             placeholder="Europe/Berlin"
             onSave={(value) => {
               if (!home) return;
-              setTimeZone.mutate({ id: home.id, timezone: value });
+              setTimeZone.mutate(
+                { id: home.id, timezone: value },
+                { onSuccess: () => toast(`Time zone set to ${value}`) },
+              );
             }}
             right={
               home && home.timezone !== deviceTimeZone() ? (
@@ -172,7 +183,11 @@ export function SettingsPage() {
             }
             onSave={(next) => {
               if (!home) return;
-              setLocation.mutate({ id: home.id, lat: next?.lat ?? null, lon: next?.lon ?? null });
+              setLocation.mutate(
+                { id: home.id, lat: next?.lat ?? null, lon: next?.lon ?? null },
+                // Clearing is a change too, and a silent one would look like a failed save.
+                { onSuccess: () => toast(next ? 'Location saved' : 'Location cleared') },
+              );
             }}
           />
           {/* `home.role` is not in the payload, so the rule comes from the homes list. */}
@@ -188,6 +203,9 @@ export function SettingsPage() {
                 ? String(dashboard?.devices_total ?? home?.device_count)
                 : '—'
             }
+            // Members navigated and Devices did not, two rows apart in the same section — a count you cannot open is
+            // a number that answers "how many" and nothing else.
+            onPress={() => router.push('/')}
           />
           {/* The count was the whole story until now: the API has served the member list, invitations and role
               changes since the first version, and the screen that shows "2 members" was where the story stopped. */}
@@ -493,67 +511,3 @@ function EditableRow({
   );
 }
 
-/** One room: tap the name to rename it, Delete to remove it (with a confirmation). */
-function RoomRow({
-  id,
-  name,
-  homeId,
-  canManage: mayManage,
-}: {
-  id: string;
-  name: string;
-  homeId?: string;
-  /** A member sees the room, not the controls that would 403. */
-  canManage: boolean;
-}) {
-  const renameRoom = useRenameRoom(homeId);
-  const deleteRoom = useDeleteRoom(homeId);
-  const { ask, sheet } = useConfirm();
-
-  const confirmDelete = () => {
-    // Deleting a room does not delete its devices — they become unassigned — but it
-    // is still the one action here a person can regret, so it asks.
-    // `Alert.alert` is a no-op under react-native-web, so this confirmation never appeared and the room
-    // was never deleted in the web build. The in-app sheet behaves the same everywhere.
-    ask({
-      title: `Delete ${name}?`,
-      message: 'The devices in it stay, and become unassigned.',
-      confirmLabel: 'Delete',
-      destructive: true,
-      onConfirm: () => deleteRoom.mutate(id),
-    });
-  };
-
-  // A member gets the fact, not a control that would refuse: the row is not an editor and wears no
-  // chevron, because there is nowhere for it to go.
-  if (!mayManage) return <Row title={name} chevron={false} />;
-
-  return (
-    <>
-      {sheet}
-      <EditableRow
-        title={name}
-        value=""
-        placeholder="Room name"
-      onSave={(next) => {
-        if (mayManage) renameRoom.mutate({ id, name: next });
-      }}
-      right={
-        mayManage ? (
-          <Pressable
-            onPress={confirmDelete}
-            accessibilityRole="button"
-            accessibilityLabel={`Delete ${name}`}
-            // A word 20 points tall is not a target a thumb finds. The row is the frame; this is the hit.
-            style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }}
-          >
-            <AppText tone="danger" variant="subhead">
-              Delete
-            </AppText>
-          </Pressable>
-        ) : null
-      }
-      />
-    </>
-  );
-}

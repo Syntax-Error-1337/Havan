@@ -105,17 +105,21 @@ describe('settings', () => {
     expect(view.queryByText('0')).toBeNull();
   });
 
-  it('renames a room in place, with the name it was given', async () => {
+  it('opens the room in a sheet, pre-filled, and sends the name it was given', async () => {
     const calls = stubApi();
     const view = await renderPage();
 
+    // Tapping the room opens a sheet. It used to open an *inline* editor handed `value=""`, so the field arrived
+    // blank over a room called "Kitchen" and Save on a blank field was a silent no-op. The pre-fill is the point.
     await fireEvent.press(await view.findByText('Kitchen', {}, { timeout: 5000 }));
-    const input = await view.findByPlaceholderText('Room name', {}, { timeout: 5000 });
+    expect(await view.findByText('Edit room', {}, { timeout: 5000 })).toBeTruthy();
+    const input = await view.findByLabelText('Room name', {}, { timeout: 5000 });
+    expect(input.props.value).toBe('Kitchen');
+
     // `fireEvent` returns a promise in this version of RNTL: without the await the
     // state update is not flushed and the assertion blames the wrong line.
     await fireEvent.changeText(input, 'Pantry');
-    expect(view.getByPlaceholderText('Room name').props.value).toBe('Pantry');
-    await fireEvent.press(view.getByText('Save'));
+    await fireEvent.press(view.getByLabelText('Save room name'));
 
     await waitFor(() => {
       const patch = calls.find((c) => c.method === 'PATCH' && c.url.includes('/rooms/room-1'));
@@ -130,6 +134,8 @@ describe('settings', () => {
   it('asks before deleting a room, because devices fall out of it', async () => {
     const calls = stubApi();
     const view = await renderPage();
+    // The delete control lives inside the edit sheet now, next to the name it is about.
+    await fireEvent.press(await view.findByText('Kitchen', {}, { timeout: 5000 }));
     await fireEvent.press(await view.findByLabelText('Delete Kitchen', {}, { timeout: 5000 }));
 
     // An in-app sheet, not `Alert.alert`: react-native-web implements the native alert as a no-op, so

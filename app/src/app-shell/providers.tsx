@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { ApiError } from '../shared/api/client';
+import { ToastProvider } from '../shared/ui/Toast';
 import { PlatformThemeProvider, ThemeProvider, tokens } from './theme';
 import { installRefreshHandler, useSession } from '../entities/session';
 
@@ -73,7 +74,11 @@ export function Providers({ children }: { children: ReactNode }) {
           preference.
         */}
         <PlatformThemeProvider>
-          <SessionBoot>{children}</SessionBoot>
+          {/* Inside the theme, because a toast is drawn in the operator's colours; outside the screens, because it must
+              survive a navigation — a confirmation that disappears because the list re-rendered is not a confirmation. */}
+          <ToastProvider>
+            <SessionBoot>{children}</SessionBoot>
+          </ToastProvider>
         </PlatformThemeProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

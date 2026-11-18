@@ -27,6 +27,7 @@ import {
 } from '../../entities/home';
 import { useMe } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
+import { useToast } from '../../shared/ui/Toast';
 
 /**
  * The people in the home.
@@ -51,6 +52,7 @@ export function MembersPage() {
   const invite = useInviteMember();
   const changeRole = useSetMemberRole();
   const remove = useRemoveMember();
+  const toast = useToast();
   const confirm = useConfirm();
 
   const [email, setEmail] = useState('');
@@ -92,7 +94,12 @@ export function MembersPage() {
                   if (!homeId) return;
                   changeRole.mutate(
                     { homeId, userId: member.user_id, role: next },
-                    { onSuccess: () => setEditing(null) },
+                    {
+                      onSuccess: () => {
+                        setEditing(null);
+                        toast(`${member.display_name} is now ${next === 'admin' ? 'an admin' : `a ${next}`}`);
+                      },
+                    },
                   );
                 }}
                 onRemove={() => {
@@ -102,7 +109,11 @@ export function MembersPage() {
                     message: 'They lose access to this home and to every device in it.',
                     confirmLabel: 'Remove',
                     destructive: true,
-                    onConfirm: () => remove.mutate({ homeId, userId: member.user_id }),
+                    onConfirm: () =>
+                      remove.mutate(
+                        { homeId, userId: member.user_id },
+                        { onSuccess: () => toast(`${member.display_name} no longer has access`) },
+                      ),
                   });
                 }}
               />
@@ -168,7 +179,12 @@ export function MembersPage() {
                   if (!homeId || !email.trim()) return;
                   invite.mutate(
                     { homeId, email: email.trim(), role: inviteRole },
-                    { onSuccess: () => setEmail('') },
+                    {
+                      onSuccess: () => {
+                        toast(`Invitation sent to ${email.trim()}`);
+                        setEmail('');
+                      },
+                    },
                   );
                 }}
                 loading={invite.isPending}
@@ -191,7 +207,8 @@ export function MembersPage() {
                   message: 'You lose access to this home and to every device in it.',
                   confirmLabel: 'Leave',
                   destructive: true,
-                  onConfirm: () => remove.mutate({ homeId, userId: me.id }),
+                  onConfirm: () =>
+                    remove.mutate({ homeId, userId: me.id }, { onSuccess: () => toast('You left this home') }),
                 });
               }}
             />
