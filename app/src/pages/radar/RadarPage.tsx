@@ -3,7 +3,7 @@ import { Animated, Easing, Platform, Pressable, ScrollView, TextInput, View } fr
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 
-import { Box, AppText, Button, Glass, Icon, Screen } from '../../shared/ui';
+import { Box, AppText, Button, Glass, Icon, Screen, ScreenScroll } from '../../shared/ui';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { withAlpha } from '../../shared/config/tokens';
 import { request } from '../../shared/api/client';
@@ -151,10 +151,7 @@ export function PhoneHandoff() {
   // Scrolls, because a handoff is four blocks of text on a screen that might be 667 points tall with the
   // customer's text size turned up. A dead end that is also cut off is worse than the dead end it replaced.
   return (
-    <ScrollView
-      contentContainerStyle={{ gap: 20, paddingBottom: tokens.layout.tabBarClearance }}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScreenScroll gap={20}>
       <Glass style={{ padding: 16, alignItems: 'center', gap: 8 }} accent={color.accent}>
         <Box
           center
@@ -220,7 +217,7 @@ export function PhoneHandoff() {
           Back to your home
         </AppText>
       </Pressable>
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 

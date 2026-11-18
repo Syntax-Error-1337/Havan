@@ -8,6 +8,7 @@ import {
   ChipPicker,
   Screen,
   ScreenHeader,
+  ScreenScroll,
   ValueField,
   defaultPointValue,
   QueryError,
@@ -105,13 +106,8 @@ export function ScenesPage() {
       {/* The screen had no header and no way out: it is pushed from the dashboard's scene strip and the
           tab bar's Automations destination, and the only exit was the platform's own gesture. */}
       <ScreenHeader title="Scenes" />
-      <ScrollView
-        contentContainerStyle={{
-          padding: tokens.space.lg,
-          gap: tokens.space.md,
-          paddingBottom: tokens.layout.tabBarClearance,
-        }}
-      >
+      {/* The shared body: bottom clearance, taps that land while the keyboard is up, and avoidance. */}
+      <ScreenScroll gap={tokens.space.md}>
         <Box gap="xs">
           <AppText variant="caption" tone="muted">
             One press, several devices. A scene cannot be scheduled — that is what automations are for.
@@ -290,7 +286,7 @@ export function ScenesPage() {
             onPress={save}
           />
         </Box>
-      </ScrollView>
+      </ScreenScroll>
     </Screen>
   );
 }

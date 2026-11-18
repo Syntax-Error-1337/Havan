@@ -152,6 +152,31 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### Three phone behaviours, remembered per screen
+
+The login screen had `KeyboardAvoidingView`. Every other screen with a `TextInput` — scenes, automations, settings,
+homes, the radar handoff, the device rename — did not, so a form at the bottom of the screen ended up behind the
+keyboard. None of them had `keyboardShouldPersistTaps` either, which on iOS means a tap while the keyboard is up
+is regarded as *"dismiss the keyboard"* and **swallowed**: naming a scene and then tapping a device chip did
+nothing until you tapped it a second time.
+
+`ScreenScroll` is now the shared scroll body, with the mobile-correct defaults built in:
+
+- **bottom clearance** — the inset seven screens were each remembering for themselves, and the one that forgot
+  (device detail) hid its destructive action below the viewport;
+- **`keyboardShouldPersistTaps="handled"`** — a press lands, and a tap on empty space still dismisses;
+- **keyboard avoidance** — `behavior="padding"` on iOS only, because Android already resizes the window and
+  padding there double-counts the keyboard.
+
+Adopted by scenes, automations, settings, homes, radar and the device detail; the dashboard's `FlatList` takes the
+two keyboard props directly. Verified the migrated screens at 390×844: content `paddingTop` 16, `paddingBottom`
+148, `gap` 12 — the same numbers as before the migration, which is the whole point of a refactor that also fixes
+something.
+
+One thing the screenshot review flagged that is *not* a bug: the header sits at y = 36 with no top inset, because
+there is no inset on the web. `Screen` wraps everything in `SafeAreaView edges={['top', …]}`, which adds 47–59 pt
+on a device; adding a manual inset as well would double it there.
+
 ### A phone is not a browser
 
 The device detail screen had eleven controls and **no scroll container**. On the web that looks fine, because

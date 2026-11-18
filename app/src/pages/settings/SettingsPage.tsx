@@ -9,6 +9,7 @@ import {
   Row,
   Screen,
   ScreenHeader,
+  ScreenScroll,
   ChipPicker,
   Section,
   Toggle,
@@ -87,12 +88,8 @@ export function SettingsPage() {
 
   return (
     <Screen>
-      <ScrollView
-        contentContainerStyle={{
-          paddingTop: tokens.space.lg,
-          paddingBottom: tokens.layout.tabBarClearance,
-        }}
-      >
+      {/* `padded={false}`: this body draws its own sections edge to edge, and its header scrolls with it. */}
+      <ScreenScroll padded={false} paddingTop={tokens.space.lg}>
         <ScreenHeader title="Settings" />
 
         <Section title="Account">
@@ -285,7 +282,7 @@ export function SettingsPage() {
         <AppText variant="caption" tone="muted" style={{ textAlign: 'center' }}>
           {brand.productName} 0.1.0
         </AppText>
-      </ScrollView>
+      </ScreenScroll>
     </Screen>
   );
 }

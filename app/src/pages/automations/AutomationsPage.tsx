@@ -8,6 +8,7 @@ import {
   Button,
   ChipPicker,
   Screen,
+  ScreenScroll,
   ValueField,
   defaultPointValue,
   readablePoint,
@@ -48,13 +49,7 @@ export function AutomationsPage() {
 
   return (
     <Screen>
-      <ScrollView
-        contentContainerStyle={{
-          padding: tokens.space.lg,
-          gap: tokens.space.md,
-          paddingBottom: tokens.layout.tabBarClearance,
-        }}
-      >
+      <ScreenScroll gap={tokens.space.md}>
         {/* At 200% zoom a 195-point row cannot hold a display-size title and a button side by side; wrapping
             puts the button underneath instead of past the right edge. */}
         <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
@@ -171,7 +166,7 @@ export function AutomationsPage() {
             {toggle.error.message}
           </AppText>
         ) : null}
-      </ScrollView>
+      </ScreenScroll>
     </Screen>
   );
 }

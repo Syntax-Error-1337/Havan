@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { AppText, Button, Glass, Icon, Screen, ScreenHeader } from '../../shared/ui';
+import { AppText, Button, Glass, Icon, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
 import { useCreateHome, useHomes } from '../../entities/home';
 import { useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -62,13 +62,7 @@ export function HomesPage() {
     <Screen>
       <ScreenHeader title="Homes" onBack={leave} />
 
-      <ScrollView
-        contentContainerStyle={{
-          padding: tokens.space.lg,
-          gap: tokens.space.md,
-          paddingBottom: tokens.layout.tabBarClearance,
-        }}
-      >
+      <ScreenScroll gap={tokens.space.md}>
         {isPending ? (
           <AppText variant="caption" tone="muted">
             Loading your homes…
@@ -216,7 +210,7 @@ export function HomesPage() {
             </AppText>
           ) : null}
         </View>
-      </ScrollView>
+      </ScreenScroll>
     </Screen>
   );
 }

@@ -313,6 +313,10 @@ export function DashboardPage() {
         keyExtractor={(row) => row.key}
         contentContainerStyle={{ paddingBottom: tokens.layout.tabBarClearance + tokens.space.xl }}
         showsVerticalScrollIndicator={false}
+        // Typing a search and then tapping a filter chip fired only "dismiss the keyboard" on iOS: the press was
+        // swallowed, and the customer had to tap the same chip twice.
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         // Pull to refresh: the live socket keeps values current, but a person who has just plugged
         // something in wants to ask again by hand, and a screen with no gesture for that feels stuck.
         refreshControl={

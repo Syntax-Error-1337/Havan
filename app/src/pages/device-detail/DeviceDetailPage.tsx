@@ -127,6 +127,8 @@ export function DeviceDetailPage() {
       <ScrollView
         contentContainerStyle={{ padding: tokens.space.lg, paddingBottom: tokens.layout.tabBarClearance, gap: tokens.space.lg }}
         showsVerticalScrollIndicator={false}
+        // The rename field lives in here; without this a tap on a room chip while renaming only dismisses.
+        keyboardShouldPersistTaps="handled"
       >
         {/* Every screen that was pushed onto the stack needs a way back off it, and this one had none: the
             only exits were the tab bar (which loses your place) and the platform's own gesture, which a
