@@ -9,6 +9,7 @@ import {
   ChipPicker,
   ListSkeleton,
   QueryError,
+  useConfirm,
   Skeleton,
   Screen,
   ScreenScroll,
@@ -45,6 +46,7 @@ export function AutomationsPage() {
   const toggle = useToggleAutomation(homeId);
   const run = useRunAutomation();
   const { color } = useTheme();
+  const { ask, sheet } = useConfirm();
   const remove = useDeleteAutomation(homeId);
 
   const [open, setOpen] = useState<string | null>(null);
@@ -52,6 +54,7 @@ export function AutomationsPage() {
 
   return (
     <Screen>
+      {sheet}
       <ScreenScroll gap={tokens.space.md}>
         {/* At 200% zoom a 195-point row cannot hold a display-size title and a button side by side; wrapping
             puts the button underneath instead of past the right edge. */}
@@ -164,8 +167,19 @@ export function AutomationsPage() {
                   {open === rule.id ? 'Hide history' : 'History'}
                 </AppText>
               </Pressable>
+              {/* Delete asks first, and says what goes with it: the rule's run history is CASCADE in the
+                  database, so "delete" removes the evidence of what it did as well as the rule. It also sits
+                  a centimetre from "Run now" and "History" on a screen used with a thumb. */}
               <Pressable
-                onPress={() => remove.mutate(rule.id)}
+                onPress={() =>
+                  ask({
+                    title: `Delete “${rule.name}”?`,
+                    message: 'The devices keep their current settings; the rule stops running. Its run history goes with it.',
+                    confirmLabel: 'Delete',
+                    destructive: true,
+                    onConfirm: () => remove.mutate(rule.id),
+                  })
+                }
                 disabled={remove.isPending}
                 accessibilityRole="button"
                 accessibilityLabel={`Delete ${rule.name}`}

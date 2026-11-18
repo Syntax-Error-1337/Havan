@@ -163,9 +163,14 @@ Deleting a scene had no confirmation, on a screen where **Delete sits a centimet
 is used with a thumb. It asks now — *"Delete 'Evening'? The devices keep their current settings; only the shortcut
 goes."* — through the same `useConfirm` sheet the device screen uses.
 
+**The automations screen had the same hole, and a worse consequence.** Its Delete sat beside *Run now* and
+*History*, one press, no question — and `automation_runs.automation_id` is `ON DELETE CASCADE`, so the rule **and
+the record of everything it did** went together. The sheet says so: *"The devices keep their current settings; the
+rule stops running. Its run history goes with it."*
+
 That change needed `{sheet}` to be rendered: `useConfirm` returns a dialog, and a hook whose dialog is never
-rendered is a button that silently does nothing. The existing test caught it — it pressed Delete, saw no request,
-and failed — and the updated test now asserts both halves: **nothing is deleted on the first press**, and the
+rendered is a button that silently does nothing. The existing scenes test caught it — it pressed Delete, saw no
+request, and failed — and both tests now assert the two halves: **nothing is deleted on the first press**, and the
 sheet's own button is the one that deletes.
 
 One finding that was not a defect. Reviewing the confirmation sheet, two vision passes reported text bleeding

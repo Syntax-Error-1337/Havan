@@ -115,6 +115,26 @@ describe('automations', () => {
     expect(view.getByText(/set switch\.power = true/)).toBeTruthy();
   });
 
+  it('asks before deleting a rule, and says the run history goes with it', async () => {
+    const calls = stubApi((url) => (url.endsWith('/automations') ? [rule] : [home]));
+
+    const view = await renderPage();
+    await view.findByText('Bathroom fan');
+
+    // Delete sits beside "Run now" and "History"; one press used to remove the rule outright.
+    await fireEvent.press(view.getByLabelText('Delete Bathroom fan'));
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+
+    // The database cascades runs on delete, so the sheet says so rather than letting the customer find out.
+    expect(await view.findByText('Delete “Bathroom fan”?')).toBeTruthy();
+    expect(
+      view.getByText(/Its run history goes with it\./),
+    ).toBeTruthy();
+
+    await fireEvent.press(view.getByTestId('confirm-accept'));
+    await waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true));
+  });
+
   it('says a rule has never run instead of showing an empty box', async () => {
     stubApi((url) => (url.includes('/runs') ? [] : url.endsWith('/automations') ? [rule] : [home]));
 
