@@ -100,6 +100,39 @@ export function patchDeviceIn(
  * move until the socket echoed back: the toggle looked broken on the one screen it is used most, and only
  * looked right on the detail screen that hardly anybody opens.
  */
+/**
+ * The outcome of a command that was already accepted.
+ *
+ * `POST /commands` answers `202` with an id; the device answers later, or does not. Polling the id for a few seconds is
+ * the cheap honest version of that conversation — it stops as soon as the status is terminal, and it stops anyway
+ * after ten tries so a device that never settles does not leave a request running for the life of the screen.
+ */
+export function useCommandOutcome(deviceId: string, commandId: string | null) {
+  return useQuery({
+    queryKey: ['command', commandId],
+    queryFn: () =>
+      request<{ id: string; status: string }>(`/devices/${deviceId}/commands/${commandId}`),
+    enabled: Boolean(commandId),
+    // Terminal states stop the poll; so does the attempt cap.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      // The statuses the schema allows: queued | dispatched | applied | rejected | timeout | unreachable.
+      const terminal =
+        status === 'applied' ||
+        status === 'rejected' ||
+        status === 'timeout' ||
+        status === 'unreachable';
+      if (terminal) return false;
+      return query.state.dataUpdateCount < 10 ? 1_200 : false;
+    },
+    // Without this the poll stops the moment the document is not focused — a background tab, or a phone with the app
+    // behind another one — which is precisely when a silent command matters. It is a handful of small requests with a
+    // hard cap of ten.
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
+}
+
 export function useSetPoint(deviceId: string) {
   const qc = useQueryClient();
   /**

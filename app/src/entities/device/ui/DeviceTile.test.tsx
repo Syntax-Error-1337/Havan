@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { DeviceTile } from './DeviceTile';
@@ -106,5 +106,59 @@ describe('a device that stopped reporting', () => {
 
     const view = await renderTile(plug);
     expect(view.getByLabelText('Coffee Plug, Off, online')).toBeTruthy();
+  });
+});
+
+describe('a command the device never answered', () => {
+  /**
+   * The half of a write that used to be silent.
+   *
+   * `POST /commands` answers `202 accepted`, the optimistic value shows, and then the device times out — the row falls
+   * back to the old number and nothing says why. On this platform every write to a sleeping device does exactly that,
+   * so the failure is the common case, not the edge.
+   */
+  const plug = (over: Partial<Record<string, unknown>> = {}) =>
+    ({
+      ...base,
+      name: 'Coffee Plug',
+      category: 'plug',
+      online: true,
+      last_seen_at: minutesAgo(1),
+      points: [
+        { code: 'switch.power', capability: 'switch', slot: 'power', kind: 'bool', writable: true, value: false },
+        { code: 'energy.watts', capability: 'energy', slot: 'energy', kind: 'number', writable: false, value: 4 },
+      ],
+      ...over,
+    }) as unknown as Device;
+
+  function stubApi(status: string) {
+    globalThis.fetch = jest.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return { ok: true, status: 202, text: async () => JSON.stringify({ command_id: 'c-1' }) } as Response;
+      }
+      if (String(url).includes('/commands/c-1')) {
+        return { ok: true, status: 200, text: async () => JSON.stringify({ id: 'c-1', status }) } as Response;
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify([]) } as Response;
+    }) as unknown as typeof fetch;
+  }
+
+  it('says the device did not answer, once the platform says so', async () => {
+    stubApi('timeout');
+    const view = await renderTile(plug());
+
+    fireEvent.press(view.getByLabelText('Coffee Plug off'));
+
+    expect(await view.findByText('No answer from the device — it may be offline.')).toBeTruthy();
+  });
+
+  it('says nothing while the command is still in flight', async () => {
+    stubApi('dispatched');
+    const view = await renderTile(plug());
+
+    fireEvent.press(view.getByLabelText('Coffee Plug off'));
+
+    // A message that appears the instant you press is a message about the press, not about the device.
+    await waitFor(() => expect(view.queryByText(/No answer/)).toBeNull());
   });
 });

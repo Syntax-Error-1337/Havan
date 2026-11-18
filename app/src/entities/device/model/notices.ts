@@ -27,6 +27,28 @@ export function commandNotice(error: unknown): string {
   }
 }
 
+/**
+ * What to tell a person when the platform accepted a command and the device never answered.
+ *
+ * This is the failure that used to be invisible: the POST returns `202 accepted`, the optimistic value shows, and then
+ * the device times out — the row stays at the old number and nothing says why. A press that silently does nothing is
+ * the failure a customer reports as "the app is broken".
+ */
+export function outcomeNotice(status: string | undefined): string | null {
+  switch (status) {
+    case 'timeout':
+      // Named for the device, not the platform: the hub is fine, the thing in their hand did not reply.
+      return 'No answer from the device — it may be offline.';
+    case 'unreachable':
+      return 'The hub could not reach the device just now.';
+    case 'rejected':
+      return 'The device refused that change.';
+    default:
+      // `queued` and `dispatched` are the platform working, which is not news.
+      return null;
+  }
+}
+
 /** Whether the platform is still trying, as opposed to having given up. */
 export function isRetrying(error: unknown): boolean {
   return error instanceof ApiError && error.code === 'unavailable';

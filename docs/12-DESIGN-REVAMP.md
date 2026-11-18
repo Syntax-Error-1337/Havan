@@ -290,8 +290,8 @@ and the tile grid already carries the switch.
 
 ### 11.5 Gaps left open
 
-- **A timeout is invisible in the UI.** The command is recorded and the value correctly does not change, but nothing
-  on screen says "the device did not answer". Needs a command-status read (poll or push) — the next honest step.
+- ~~**A timeout is invisible in the UI.**~~ **Closed in §15.** The command was recorded and the value correctly did
+  not change, but nothing on screen said "the device did not answer".
 - **`journeys.spec.ts › a rule can be run by hand` is flaky**, not broken: it fails in roughly half of full runs and
   passes standalone in 5–9 s, waiting on the worker's poll rather than on the UI. It should assert on the queued run
   rather than on a label that appears after the worker wakes.
@@ -427,3 +427,30 @@ fix had to be proved against a home that does not exist in the data:
 - **Native motion** — Reduce Motion is honoured in code and proven in the web build only.
 - **A scroll-edge blur** under the tab bar. The gradient fade is there; a real material would need `expo-blur`, and
   the design rule (§3) rations glass to three places, none of which is a full-width bar over a card grid.
+
+## 15. The write that answered nothing
+
+`POST /commands` returns **202 accepted** with a `command_id`. The tile flips optimistically, the device is silent, and
+a minute later the command row reads `timeout` and the value falls back — with nothing on screen having said so. On this
+platform that is the *common* case, not the edge: a battery sensor that reports hourly is asleep most of the day.
+
+The API has served `GET /devices/{id}/commands/{id}` all along. `useCommandOutcome` polls it for up to ten tries, stops
+the moment the status is terminal, and the tile and the hero print the device's answer where the command was given:
+
+| status | message |
+| --- | --- |
+| `timeout` | *No answer from the device — it may be offline.* |
+| `unreachable` | *The hub could not reach the device just now.* |
+| `rejected` | *The device refused that change.* |
+| `queued`, `dispatched`, `applied` | nothing — the platform working is not news |
+
+Two things the first version got wrong and the schema caught:
+
+- the terminal set was guessed as `ack`/`failed`; the column's `CHECK` says `queued|dispatched|applied|rejected|timeout|unreachable`;
+- the poll stopped after its first request, because `refetchInterval` does not run in a backgrounded document — which is
+  exactly when a silent command matters. `refetchIntervalInBackground: true`.
+
+**How this was verified, and what could not be.** Not live: every device in the demo home is asleep, so the tile's
+control is correctly disabled and no write can be issued from the UI at all. The wiring is proved by unit test against
+a stubbed API — a write whose command ends `timeout` shows the message, and one still `dispatched` shows nothing,
+because a message that appears the instant you press is a message about the press rather than about the device.

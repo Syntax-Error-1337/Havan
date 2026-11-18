@@ -65,9 +65,13 @@ test('a device that cannot be loaded offers a way to try again', async ({ page }
     return route.continue();
   });
 
-  // The tile, by id: "Room Sensor" also names the hero card that replaces it once the device opens.
+  // The tile, by id, and then the thing the click is *for*: the device screen.
+  //
+  // This asserted `hero-card` visible, which is a dashboard element — the dashboard stays mounted underneath a pushed
+  // screen, so the assertion passed while the transition was still in flight and failed under load. Twice. A test that
+  // waits on the previous screen cannot tell a navigation from a slow paint.
   await page.getByTestId('device-tile-SEED-SENSOR-1').click();
-  await expect(page.getByTestId('hero-card')).toBeVisible();
+  await expect(page.getByTestId('remove-device')).toBeVisible({ timeout: 15_000 });
 
   // A cold navigation to the device, which is what a push notification does — and what makes this a real
   // request rather than a cache hit.

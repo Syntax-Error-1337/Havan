@@ -8,6 +8,7 @@ export {
   useRemoveDevice,
   useRenameDevice,
   useSetPoint,
+  useCommandOutcome,
   useSetRoom,
 } from './model/queries';
 export { primaryPoint, type Device, type DevicePoint } from './model/types';

@@ -4,8 +4,8 @@ import { useTheme, tokens } from '../../../app-shell/theme';
 import { AppText, Card, DeviceArtField, iconForCategory } from '../../../shared/ui';
 import { accentFor } from '../../../shared/config/tokens';
 import { reading, unitSuffix, valueWithUnit } from '../../../shared/ui/units';
-import { useSetPoint } from '../model/queries';
-import { commandNotice } from '../model/notices';
+import { useCommandOutcome, useSetPoint } from '../model/queries';
+import { commandNotice, outcomeNotice } from '../model/notices';
 import { primaryPoint, type Device } from '../model/types';
 import { freshness, relative, silenceWords } from '../model/silence';
 import { PillSwitch, controlFor } from './controls';
@@ -44,6 +44,8 @@ export function DeviceTile({
 
   const point = primaryPoint(device);
   const setPoint = useSetPoint(device.id);
+  // The command was accepted; the device still has to answer. This is the half of a write that used to be silent.
+  const outcome = useCommandOutcome(device.id, setPoint.data?.command_id ?? null);
   const kind = point ? controlFor(point) : 'readout';
   const on = point?.value === true || (typeof point?.value === 'number' && point.value > 0);
   const numeric = typeof point?.value === 'number';
@@ -109,13 +111,17 @@ export function DeviceTile({
     live ? 'online' : state === 'stale' ? `silent, ${silent ?? 'not heard from'}` : 'offline'
   }`;
 
-  const failure = setPoint.isError ? (
+  const notice = setPoint.isError
+    ? commandNotice(setPoint.error)
+    : outcomeNotice(outcome.data?.status);
+
+  const failure = notice ? (
     <AppText
       variant="tiny"
       numberOfLines={2}
       style={{ paddingHorizontal: tokens.space.md, paddingBottom: tokens.space.sm, color: color.danger }}
     >
-      {commandNotice(setPoint.error)}
+      {notice}
     </AppText>
   ) : null;
 

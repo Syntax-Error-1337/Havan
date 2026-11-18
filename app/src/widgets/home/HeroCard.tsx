@@ -5,12 +5,13 @@ import { AppText, AreaChart, Card, Gauge, Icon, iconForCapability } from '../../
 import { withAlpha } from '../../shared/config/tokens';
 import { reading, valueWithUnit } from '../../shared/ui/units';
 import { accentFor } from '../../shared/config/tokens';
-import { commandNotice } from '../../entities/device/model/notices';
+import { commandNotice, outcomeNotice } from '../../entities/device/model/notices';
 import {
   freshness,
   relative,
   gapHours,
   silenceWords,
+  useCommandOutcome,
   useHistory,
   useSetPoint,
   type Device,
@@ -40,6 +41,8 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
       .find((p) => p !== undefined) ?? numeric[0];
   const { data: history } = useHistory(device.id, point?.code, '1d');
   const setPoint = useSetPoint(device.id);
+  // The command was accepted; the device still has to answer.
+  const outcome = useCommandOutcome(device.id, setPoint.data?.command_id ?? null);
 
   const value = typeof point?.value === 'number' ? point.value : null;
   const state = freshness(device);
@@ -294,13 +297,22 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
 
       {/* The command's own answer, where the command was given. The stepper writes to a device that may not reply —
           and a press that silently does nothing is the failure a customer reports as "the app is broken". */}
-      {setPoint.isError ? (
+      {commandNotice(setPoint.error) && setPoint.isError ? (
         <AppText
           variant="tiny"
           tone="danger"
           style={{ paddingHorizontal: 18, paddingBottom: tokens.space.sm }}
         >
           {commandNotice(setPoint.error)}
+        </AppText>
+      ) : null}
+      {!setPoint.isError && outcomeNotice(outcome.data?.status) ? (
+        <AppText
+          variant="tiny"
+          tone="danger"
+          style={{ paddingHorizontal: 18, paddingBottom: tokens.space.sm }}
+        >
+          {outcomeNotice(outcome.data?.status)}
         </AppText>
       ) : null}
 
