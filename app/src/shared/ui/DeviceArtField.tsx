@@ -23,6 +23,7 @@ import { Icon, type IconName } from './Icon';
 export function DeviceArtField({
   accent,
   glyph,
+  emphasis = 'quiet',
   height = 84,
   dimmed = false,
   style,
@@ -30,6 +31,12 @@ export function DeviceArtField({
 }: {
   accent: string;
   glyph: IconName;
+  /**
+   * How much the glyph is allowed to say. A tile's field is *behind* a reading, so its glyph is furniture (0.16/0.12).
+   * An empty state has no reading — the glyph is the subject — and at tile weight it vanished into the wash in light
+   * mode, which a reviewer described as "an asset that was not tinted for light mode".
+   */
+  emphasis?: 'quiet' | 'subject';
   height?: number;
   /**
    * The device is not reporting.
@@ -86,7 +93,7 @@ export function DeviceArtField({
           position: 'absolute',
           right: -height * 0.1,
           bottom: -height * 0.14,
-          opacity: dark ? 0.16 : 0.12,
+          opacity: emphasis === 'subject' ? (dark ? 0.42 : 0.4) : dark ? 0.16 : 0.12,
         }}
       >
         {/* 0.8 of the field, not 1.05. At full height the glyph was the loudest thing on the card and it sat

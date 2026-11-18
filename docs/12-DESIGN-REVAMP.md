@@ -506,3 +506,43 @@ the glyph, the font rasteriser and the device pixel ratio; a test asserting on i
 ignored — the failure mode this project already refuses ("a check that is always red is a check everyone learns to
 skip"). The arithmetic gate keeps every *token* pair honest; this measurement answers the one question tokens cannot,
 and it should be repeated whenever the field's alpha, the bloom or the numerals change.
+
+## 18. The other four screens, and the two things a review caught
+
+The dashboard got the card system, the reading-first tiles and the dial. Automations, Scenes, Add a device and Settings
+still looked like the app before it — a black rounded rectangle here, a flat `surface` panel there, four empty states
+written by four different people. Four screens, one product: the material is now shared, not re-invented per page.
+
+**What changed, by screen.**
+
+| Screen | Before | Now |
+| --- | --- | --- |
+| Automations | a `#1C1C1E` box, 10-point radius, no edge, no shadow | `EmptyState` — the shared field card: wash, glyph, heading, body, one action |
+| Scenes | a sentence above a form | no hero at all; the form carries the accent and says *Your first scene* |
+| Add a device | a card, but the link it promised was never printed | the link printed, labelled and selectable |
+| Settings | `Section` = flat `surface`, radius 12 | `Card`: radius 22, lit edge, one shadow, separators inset on both sides |
+
+**`EmptyState` is a component now** (`shared/ui/EmptyState.tsx`) because four hand-written empty states had drifted into
+four answers to the same moment, and none of them wore the dashboard's material. It renders the same field as a device
+tile, at `emphasis="subject"` — a tile's glyph is furniture behind a reading (0.16/0.12), an empty state's glyph *is*
+the subject, and at tile weight it disappeared into the wash in light mode, which the review described as "an asset that
+was not tinted for light mode". 0.40 light, 0.42 dark.
+
+**Two defects the review found that the code did not announce.**
+
+- *Two blue actions for one outcome.* On an empty Automations screen the header had **New rule** and the card had
+  **Create your first rule**. The card owns the action when there is nothing to add to; the header button appears with
+  the list.
+- *A comment describing a feature that did not exist.* `PhoneHandoff`'s catch block said "a browser that refuses the
+  clipboard still shows the link below". No link was ever rendered. It is now, selectable, under a label — because
+  centred monospace in a rounded box reads as a disabled button, which the review said in one look.
+
+**A QR code was considered and refused.** It is the obvious answer to "make this handoff seamless", and it would have
+looked better and worked worse: nothing on a phone can open a QR of a custom scheme, and a Universal Link would need an
+associated domain and an installed app — neither of which this build has. A printed string can be sent to yourself; a QR
+to `haven://` is a picture of a dead end. (`react-native-qrcode-svg` was installed, licence-checked MIT, then removed.)
+
+**The scene header promised more than the form showed.** "One press, several devices" sat above a form with a single
+device chip and no visible way to add a second — the *Add another action* button appears only once the current action is
+complete, which is right, but a promise with no visible way to keep it reads as a single-device app. One sentence now
+does the work: *"Set this one, then add more devices to the same scene."*

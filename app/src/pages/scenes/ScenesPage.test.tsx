@@ -134,7 +134,8 @@ describe('scenes', () => {
     });
 
     const view = await renderPage();
-    await view.findByText('New scene');
+    // The fixture home has no scenes, so the form is the first-scene form — it carries the accent and says so.
+    await view.findByText('Your first scene');
 
     await fireEvent.changeText(view.getByPlaceholderText('Good night, Movie time…'), 'Good night');
     // The steps are progressive: the point list only exists once a device is chosen, and its label is the
@@ -159,7 +160,8 @@ describe('scenes', () => {
   it('keeps Create disabled until the scene is complete', async () => {
     stubApi(() => []);
     const view = await renderPage();
-    await view.findByText('New scene');
+    // The fixture home has no scenes, so the form is the first-scene form — it carries the accent and says so.
+    await view.findByText('Your first scene');
 
     await fireEvent.changeText(view.getByPlaceholderText('Good night, Movie time…'), 'Half a scene');
 

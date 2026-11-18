@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText } from './Box';
+import { Card } from './Card';
 
 /**
  * An inset grouped section — the shape iOS uses for a list of related things.
@@ -42,14 +43,10 @@ export function Section({
         </AppText>
       ) : null}
 
-      <View
-        style={{
-          marginHorizontal: tokens.space.lg,
-          borderRadius: tokens.radius.lg,
-          backgroundColor: color.surface,
-          overflow: 'hidden',
-        }}
-      >
+      {/* A section is a card, in the same system as the dashboard: radius 22, a lit top edge and one shadow. It used
+          to be a flat `surface` rectangle with a 12-point radius, which is why Settings looked like a different app. */}
+      <Card padded={false} style={{ marginHorizontal: tokens.space.lg }}>
+        <View style={{ overflow: 'hidden' }}>
         {rows.map((row, index) => (
           <View key={index}>
             {index > 0 ? (
@@ -57,15 +54,18 @@ export function Section({
                 style={{
                   height: StyleSheet.hairlineWidth,
                   backgroundColor: color.border,
-                  // iOS insets the separator to the text, not the card edge.
-                  marginLeft: tokens.space.lg,
+                  // iOS insets a list separator to the text and runs it flush to the trailing edge — but that rule is
+                  // for a full-bleed table. A section is now a floating card with a 22-point radius, and a rule that
+                  // touches one edge and not the other reads as a table caught inside a rounded box. Inset both.
+                  marginHorizontal: tokens.space.lg,
                 }}
               />
             ) : null}
             {row}
           </View>
         ))}
-      </View>
+        </View>
+      </Card>
 
       {footnote ? (
         <AppText

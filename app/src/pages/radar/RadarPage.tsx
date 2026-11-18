@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 
@@ -126,6 +126,9 @@ export function RadarPage() {
  * action copies `haven://add-device` — a deep link the phone app already answers — because the honest next
  * step from a laptop is "open this on your phone", not "try again".
  */
+/** The deep link the phone app answers. One string, so the copy button and the printed link cannot disagree. */
+const LINK = 'haven://add-device';
+
 export function PhoneHandoff() {
   const { color } = useTheme();
   const router = useRouter();
@@ -134,10 +137,11 @@ export function PhoneHandoff() {
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText('haven://add-device');
+      await navigator.clipboard.writeText(LINK);
       setCopied(true);
     } catch {
-      // A browser that refuses the clipboard still shows the link below, so the person can type it.
+      // The link is printed on the screen below, selectable, so a refused clipboard costs a long-press rather than
+      // the whole flow. (The comment here used to claim that and the link was never rendered.)
       setCopied(false);
     }
   };
@@ -207,6 +211,29 @@ export function PhoneHandoff() {
             ? 'Open it on your phone to finish pairing.'
             : 'Copies a link you can send to yourself and open on the phone.'}
         </AppText>
+        {/* The link itself, selectable. A phone cannot follow a QR of a custom scheme — nothing would open — so the
+            handoff is a string the customer can send to themselves, and it has to be visible to be sendable. */}
+        <View style={{ marginTop: 6, gap: 6 }}>
+          {/* A label, because centred monospace in a rounded box reads as a disabled button — it needed to say that it
+              is a string to select, not a control to press. */}
+          <AppText variant="tiny" tone="muted">
+            Or select the link
+          </AppText>
+          <View
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: tokens.radius.md,
+              backgroundColor: color.elevated,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: color.border,
+            }}
+          >
+            <AppText variant="caption" selectable accessibilityLabel={`Link ${LINK}`} style={{ letterSpacing: 0.3 }}>
+              {LINK}
+            </AppText>
+          </View>
+        </View>
       </Box>
 
       <Pressable

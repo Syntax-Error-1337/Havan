@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useTheme } from '../../app-shell/theme';
-import { Pressable, ScrollView, Switch, TextInput } from 'react-native';
+import { Pressable, ScrollView, Switch, TextInput, View } from 'react-native';
 
 import {
   Box,
   AppText,
   Button,
+  Card,
   ChipPicker,
+  EmptyState,
   ListSkeleton,
   QueryError,
   useConfirm,
@@ -70,14 +72,20 @@ export function AutomationsPage() {
                 ? 'Could not load your rules'
                 : rules?.length
                   ? `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}`
-                  : 'Nothing runs on its own yet'}
+                  : // The empty card below already says "nothing yet" and explains what a rule is. Two sentences for one
+                    // fact is how the hero card once said everything twice.
+                    ''}
             </AppText>
           </Box>
-          <Button
-            label={creating ? 'Close' : 'New rule'}
-            variant="ghost"
-            onPress={() => setCreating((v) => !v)}
-          />
+          {/* Two blue actions for one outcome is one too many: on an empty screen the card owns the action, and the
+              header button appears once there is a list to add to. */}
+          {rules?.length === 0 && !creating ? null : (
+            <Button
+              label={creating ? 'Close' : 'New rule'}
+              variant="ghost"
+              onPress={() => setCreating((v) => !v)}
+            />
+          )}
         </Box>
 
         {creating && homeId ? (
@@ -103,27 +111,25 @@ export function AutomationsPage() {
       ) : null}
 
       {!isLoading && !isError && rules?.length === 0 && !creating ? (
-          <Box gap="md" p="lg" radius="md" bg="surface" border>
-            <Box gap="xs">
-              <AppText variant="title">No automations yet</AppText>
-              <AppText tone="muted">
-                A rule is a trigger, an optional condition and one or more actions. Turn a lamp on at
-                sunset, or when a door sensor opens.
-              </AppText>
-            </Box>
-            {/* The only way to start was a ghost "New rule" link in the header, two lines above a card
-                that had just explained what a rule is. An empty state that ends without an action is a
-                screen that ends with the customer's own guess. */}
-            {homeId ? (
-              <Box row>
+          <EmptyState
+            accent={color.accent}
+            glyph="sparkle"
+            title="No rules yet"
+            body="A rule is a trigger, an optional condition and one or more actions. Turn a lamp on at sunset, or when a door sensor opens."
+            // The only way to start was a ghost "New rule" link in the header, two lines above a card that had just
+            // explained what a rule is. An empty state that ends without an action ends with the customer's guess.
+            action={
+              homeId ? (
                 <Button label="Create your first rule" onPress={() => setCreating(true)} />
-              </Box>
-            ) : null}
-          </Box>
+              ) : null
+            }
+            testID="automations-empty"
+          />
         ) : null}
 
         {(rules ?? []).map((rule) => (
-          <Box key={rule.id} gap="sm" p="md" radius="md" bg="surface" border>
+          <Card key={rule.id} accent={rule.enabled ? color.accent : undefined} padded={false}>
+            <View style={{ padding: tokens.space.lg, gap: tokens.space.md }}>
             <Box row gap="md" style={{ alignItems: 'center' }}>
               <Box flex={1} gap="xs">
                 <AppText weight="600">{rule.name}</AppText>
@@ -192,7 +198,8 @@ export function AutomationsPage() {
             </Box>
 
             {open === rule.id ? <History rule={rule} /> : null}
-          </Box>
+            </View>
+          </Card>
         ))}
 
         {toggle.error instanceof Error ? (

@@ -6,6 +6,7 @@ export { QueryError } from './QueryError';
 export { MeshBackground } from './MeshBackground';
 export { TabBar, type TabKey } from './TabBar';
 export { Card } from './Card';
+export { EmptyState } from './EmptyState';
 export { DeviceArtField } from './DeviceArtField';
 export { Gauge } from './Gauge';
 export { elevation } from './elevation';

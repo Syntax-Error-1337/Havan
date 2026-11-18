@@ -5,7 +5,9 @@ import {
   Box,
   AppText,
   Button,
+  Card,
   ChipPicker,
+  EmptyState,
   Screen,
   ScreenHeader,
   useConfirm,
@@ -141,13 +143,14 @@ export function ScenesPage() {
             onRetry={() => void refetch()}
             testID="scenes-unreachable"
           />
-        ) : (scenes ?? []).length === 0 && !isPending ? (
-          <AppText tone="muted">No scenes yet. Build one below.</AppText>
         ) : null}
+        {/* No empty-state hero, on purpose: on this screen the form *is* the task. A big "nothing here" card above it
+            outranked the thing to do — the review called it in one look. The form carries the accent instead. */}
 
         {(scenes ?? []).map((scene) => (
           <Box key={scene.id} gap="xs">
-            <Box row gap="md" p="md" radius="md" bg="surface" border>
+            <Card padded={false}>
+            <Box row gap="md" p="md">
               <Box flex={1} gap="xs">
                 <AppText weight="600">{scene.name}</AppText>
                 <AppText variant="caption" tone="muted">
@@ -190,11 +193,13 @@ export function ScenesPage() {
                 {note.text}
               </AppText>
             ) : null}
+            </Card>
           </Box>
         ))}
 
-        <Box gap="md" p="md" radius="md" bg="elevated" border>
-          <AppText variant="title">New scene</AppText>
+        <Card accent={(scenes ?? []).length === 0 ? color.accent : undefined}>
+        <Box gap="md">
+          <AppText variant="title">{(scenes ?? []).length === 0 ? 'Your first scene' : 'New scene'}</AppText>
 
           <Box gap="xs">
             <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
@@ -295,7 +300,14 @@ export function ScenesPage() {
                 variant="ghost"
                 onPress={() => setActions((rows) => [...rows, emptyAction()])}
               />
-            ) : null}
+            ) : (
+              // The header promises "one press, several devices" and the control that delivers it is hidden until the
+              // first action is finished — deliberate, but a promise with no visible way to keep it reads as a
+              // single-device app. One sentence is cheaper than an enabled button that invites a half-built row.
+              <AppText variant="tiny" tone="muted">
+                Set this one, then add more devices to the same scene.
+              </AppText>
+            )}
             {actions.length > 1 ? (
               <Button
                 label="Remove last"
@@ -330,6 +342,7 @@ export function ScenesPage() {
             onPress={save}
           />
         </Box>
+        </Card>
       </ScreenScroll>
     </Screen>
   );
