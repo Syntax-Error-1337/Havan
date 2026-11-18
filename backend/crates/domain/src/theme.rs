@@ -221,6 +221,31 @@ pub fn on_colour(hex: &str) -> &'static str {
     }
 }
 
+/// Contrast between two colours, kept for the tests that describe the rule `on_colour` applies.
+///
+/// There was going to be a validation gate here refusing an accent whose own button label is unreadable. It
+/// cannot fire: `on_colour` picks the *better* of black and white, and the worst any solid colour can do is
+/// ~4.58:1 — the point where both choices are equally bad is exactly where both still pass. A check that can
+/// never fail is worse than no check, so the rule stays a test on `on_colour` instead of a gate on input.
+#[cfg(test)]
+fn contrast(a: &str, b: &str) -> f64 {
+    let luminance = |hex: &str| {
+        let (r, g, b) = rgb(hex);
+        let lin = |c: f64| {
+            let c = c / 255.0;
+            if c <= 0.040_45 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    };
+    let (la, lb) = (luminance(a), luminance(b));
+    let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
 fn rgb(hex: &str) -> (f64, f64, f64) {
     let clean = hex.trim_start_matches('#');
     let full = format!("{clean}{}", "0".repeat(6usize.saturating_sub(clean.len())));
@@ -274,6 +299,43 @@ mod tests {
         assert_eq!(on_colour("#101820"), "#FFFFFF");
         assert_eq!(on_colour("#2563EB"), "#FFFFFF");
         assert_eq!(on_colour("#0A84FF"), "#000000");
+    }
+
+    #[test]
+    fn every_solid_accent_has_a_readable_label_on_it() {
+        // The property that makes a validation gate unnecessary: whichever of black or white is chosen, the
+        // worst case across the whole colour cube is ~4.58:1. Sampled on a grid rather than proved, because a
+        // test that states the rule is what a future editor reads before adding a gate that cannot fire.
+        let mut worst = f64::INFINITY;
+        let mut worst_hex = String::from("#000000");
+        for r in (0..=255).step_by(15) {
+            for g in (0..=255).step_by(15) {
+                for b in (0..=255).step_by(15) {
+                    let hex = format!("#{r:02X}{g:02X}{b:02X}");
+                    let ratio = contrast(&hex, on_colour(&hex));
+                    if ratio < worst {
+                        worst = ratio;
+                        worst_hex = hex;
+                    }
+                }
+            }
+        }
+        assert!(
+            worst >= 4.5,
+            "the worst solid colour is {worst_hex} at {worst:.2}:1 — a gate would be needed after all"
+        );
+    }
+
+    #[test]
+    fn the_accents_the_platform_actually_uses_still_save() {
+        // The live brand and the two built-ins. A guard that refuses the product's own accent is a guard that
+        // gets deleted in the first week.
+        for accent in ["#146EF5", "#0062CC", "#8B5CF6", "#0A84FF", "#157F3C"] {
+            assert!(
+                AppTheme::from_input(&input(accent, "#22d3ee", "dark")).is_ok(),
+                "{accent} has to remain a valid brand accent"
+            );
+        }
     }
 
     #[test]

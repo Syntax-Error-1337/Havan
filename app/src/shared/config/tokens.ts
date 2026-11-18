@@ -275,10 +275,59 @@ export function applyBrand(
   return {
     ...base,
     accent,
+    // The ink as well as the fill. It was left at the *built-in* value, so a white-label operator who chose
+    // green got green buttons and blue links: every `tone="accent"` label in the app is drawn in `accentInk`,
+    // and it was the one brand colour that never moved.
+    accentInk: brandInk(accent, base === dark),
     onAccent: brand.accentOn ?? base.onAccent,
     accentAlt: brand.accentSecondary ?? base.accentAlt,
     glow: withAlpha(accent, base.glow.includes('0.22') ? 0.22 : 0.14),
   };
+}
+
+/** Relative luminance, WCAG 2.1. */
+function luminance(hex: string): number {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return 0;
+  const channel = (i: number) => {
+    const c = parseInt(clean.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+}
+
+/** Contrast between two colours, 1:1 … 21:1. */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The brand accent, adjusted until it can be used as **text** on this appearance.
+ *
+ * A fill and a label are different jobs: `#8B5CF6` is a fine button and a 3.2:1 caption. The operator picks one
+ * colour; this walks it lighter (on a dark background) or darker (on a light one) in small steps, keeping the
+ * hue, until it clears 4.5:1 — which is the same threshold `check-contrast.mjs` enforces, applied to a colour
+ * that arrives at runtime and cannot be reviewed.
+ */
+export function brandInk(accent: string, darkMode: boolean): string {
+  const background = darkMode ? dark.bg : light.bg;
+  const clean = accent.replace('#', '');
+  if (clean.length !== 6) return accent;
+
+  const toRgb = () => [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
+  const hex = (channels: number[]) =>
+    `#${channels.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+
+  let channels = toRgb();
+  let candidate = hex(channels);
+  // 20 steps of 8 % is enough to walk the darkest blue to a legible tint and the lightest yellow to a legible
+  // shade; the loop stops as soon as the ratio clears, so a good accent is returned unchanged.
+  for (let step = 0; step < 20 && contrastRatio(candidate, background) < 4.5; step += 1) {
+    channels = channels.map((c) => (darkMode ? c + (255 - c) * 0.12 : c * 0.88));
+    candidate = hex(channels);
+  }
+  return candidate;
 }
 
 /**

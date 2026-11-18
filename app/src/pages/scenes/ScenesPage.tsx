@@ -194,6 +194,7 @@ export function ScenesPage() {
 
                 <ChipPicker
                   label=""
+                  columns={2}
                   value={action.deviceId}
                   options={deviceOptions(devices ?? [])}
                   onChange={(id) =>

@@ -152,6 +152,28 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The brand colour that never moved
+
+`applyBrand` moved the accent, the text *on* the accent, and its halo — but not `accentInk`, which is the colour
+every `tone="accent"` label in the app is drawn in. So a white-label operator who chose **green** got green
+buttons and **blue** links: the one brand colour that stayed the system's.
+
+`brandInk(accent, dark)` now walks the accent lighter (on dark) or darker (on light) in 12 % steps, keeping the
+hue, until it clears **4.5:1** against the background — the same threshold `check-contrast.mjs` enforces, applied
+to a colour that arrives at runtime and cannot be reviewed. Measured:
+
+| Brand | Appearance | Ink before | Ink now | Ratio |
+|---|---|---|---|---|
+| `#157F3C` green | light | `#0051A8` (blue) | `#157F3C` | 4.55:1 |
+| `#157F3C` green | dark | `#5AA2FF` (blue) | `#318E53` | 5.12:1 |
+| `#146EF5` live | light | `#0051A8` | `#1261D8` | ≥4.5 |
+| `#146EF5` live | dark | `#5AA2FF` | `#146EF5` | ≥4.5 |
+
+The obvious guard — refusing an accent whose button label is unreadable — turned out to be **impossible to
+write**, and the test proves it: `on_colour` picks the *better* of black and white, and a grid sample of the
+whole colour cube shows the worst solid colour still reaches ~4.58:1. The gate was deleted; a test that states
+the property replaced it, so the next person does not add a check that can never fail.
+
 ### Six screens, one contact sheet
 
 Light mode's remaining screens had never been looked at either, so they were screenshotted as a single sheet and
