@@ -1,5 +1,5 @@
 use crate::pg::Pg;
-use domain::identity::{IdentityRepo, RefreshRow, User, VendorUser};
+use domain::identity::{IdentityRepo, RefreshRow, Session, User, VendorUser};
 use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
 
@@ -19,6 +19,28 @@ impl PgIdentity {
 
 fn db(e: sqlx::Error) -> AppError {
     AppError::Database(Box::new(e))
+}
+
+impl PgIdentity {
+    /// Delete refresh rows that are long dead.
+    ///
+    /// Nothing ever removed them: every sign-in, every rotation and every sign-out left a row behind, so the table grew
+    /// with the life of the account — and the sessions screen lists from exactly this table. Thirty days is longer than
+    /// any token's own expiry, so this never deletes a row that could still be used to authenticate.
+    pub async fn prune_sessions(&self, keep_days: i64) -> Result<u64, AppError> {
+        let affected = sqlx::query(
+            r#"DELETE FROM refresh_tokens
+                WHERE expires_at < now() - ($1 || ' days')::interval
+                   OR (revoked_at IS NOT NULL AND revoked_at < now() - ($1 || ' days')::interval)"#,
+        )
+        .bind(keep_days.to_string())
+        .execute(self.pg.pool())
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        Ok(affected)
+    }
 }
 
 impl IdentityRepo for PgIdentity {
@@ -283,6 +305,75 @@ impl IdentityRepo for PgIdentity {
                 role,
             }),
         )
+    }
+
+    async fn active_sessions(&self, user_id: Uuid) -> Result<Vec<Session>, AppError> {
+        // One row per family, not per token: a refresh token rotates on every use, so counting rows would report a
+        // phone that has been open for a week as fifty sign-ins.
+        let rows = sqlx::query_as::<_, (Uuid, time::OffsetDateTime, time::OffsetDateTime, time::OffsetDateTime)>(
+            r#"SELECT family_id,
+                      min(created_at)  AS started_at,
+                      max(coalesce(used_at, created_at)) AS last_seen_at,
+                      max(expires_at)  AS expires_at
+                 FROM refresh_tokens
+                WHERE user_id = $1
+                  AND revoked_at IS NULL
+                  AND expires_at > now()
+                GROUP BY family_id
+                ORDER BY started_at DESC
+                -- Capped: a customer who signs in from a browser every day has hundreds of families, and a list of
+                -- 856 rows answers nothing. The count in `active_sessions_count` is the number that is shown.
+                LIMIT 20"#,
+        )
+        .bind(user_id)
+        .fetch_all(self.pg.pool())
+        .await
+        .map_err(db)?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(family_id, started_at, last_seen_at, expires_at)| Session {
+                    family_id,
+                    started_at,
+                    last_seen_at,
+                    expires_at,
+                },
+            )
+            .collect())
+    }
+
+    async fn active_sessions_count(&self, user_id: Uuid) -> Result<i64, AppError> {
+        let count: i64 = sqlx::query_scalar(
+            r#"SELECT count(DISTINCT family_id)
+                 FROM refresh_tokens
+                WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()"#,
+        )
+        .bind(user_id)
+        .fetch_one(self.pg.pool())
+        .await
+        .map_err(db)?;
+        Ok(count)
+    }
+
+    async fn revoke_all_except(&self, user_id: Uuid, keep: Option<Uuid>) -> Result<u64, AppError> {
+        // `$2::uuid IS NULL` is "no exception", which is how "sign out everywhere" and "sign out the others" become one
+        // statement instead of two that can drift apart.
+        let affected = sqlx::query(
+            r#"UPDATE refresh_tokens
+                  SET revoked_at = now()
+                WHERE user_id = $1
+                  AND revoked_at IS NULL
+                  AND ($2::uuid IS NULL OR family_id <> $2)"#,
+        )
+        .bind(user_id)
+        .bind(keep)
+        .execute(self.pg.pool())
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        Ok(affected)
     }
 
     async fn revoke_family(&self, family_id: Uuid) -> Result<(), AppError> {

@@ -76,7 +76,7 @@ and leaving.
 | --- | --- |
 | Account, home name, time zone, location, devices, members, at-home, rooms, appearance, about | — |
 | **No Notifications section**: quiet hours, and whether push is actually delivered on this device, are unanswerable in the app while the server sends them | **P1** |
-| **No Security section**: active sessions, sign-out-elsewhere, TOTP — the API has the endpoints for vendor accounts, the consumer side has none | P1 — partly blocked |
+| **No Security section** — *sessions done*: `GET /me/sessions` and `POST /auth/logout-others`, surfaced as "Signed-in devices" plus a confirmed, destructive "Sign out other devices". TOTP is still vendor-only; the consumer side has no second factor | **P1** |
 | Devices row is inert while Members navigates; two rows of the same family behave differently | **P1** — one line |
 | About shows the version only: no licences, no support contact, no status link | P2 |
 | No "leave home" here (it lives on Members) — the honest home of that action is ambiguous | P2 |

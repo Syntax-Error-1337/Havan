@@ -145,7 +145,9 @@ test('appearance follows the customer, not only the operator', async ({ page }) 
 test('signing out returns to the login screen, not to an empty shell', async ({ page }) => {
   await signIn(page);
   await page.goto('/settings');
-  await page.getByText('Sign out').click();
+  // `exact` and a role: Settings now also has "Sign out other devices" under Security, and a substring match for
+  // "Sign out" resolves to both — a strict-mode violation rather than a wrong screen, but the fix is to say which.
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
 
   await expect(page.getByLabel('Email')).toBeVisible();
   await expect(page.getByText('DASHBOARD')).toHaveCount(0);

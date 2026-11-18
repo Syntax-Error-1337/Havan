@@ -18,6 +18,8 @@ pub fn router() -> Router<AppState> {
         .route("/auth/refresh", post(refresh))
         .route("/auth/logout", post(logout))
         .route("/me", get(me))
+        .route("/me/sessions", get(sessions))
+        .route("/auth/logout-others", post(logout_others))
 }
 
 #[derive(Deserialize)]
@@ -118,6 +120,42 @@ async fn logout(
         .await
         .map_err(ApiError)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The devices this account is signed in on.
+///
+/// No device names and no locations: this service never stored them, and inventing "Chrome on macOS" from a user-agent
+/// it does not keep would be a guess dressed as a fact. Started, last refreshed, expires on its own — enough to answer
+/// "is that me?".
+async fn sessions(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<serde_json::Value>> {
+    let (count, sessions) = state
+        .identity
+        .sessions(auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    // `count` is the true number; `sessions` is at most twenty of them, newest first. A screen that printed the length
+    // of the list would under-report an account with hundreds of sign-ins.
+    Ok(Json(serde_json::json!({
+        "count": count,
+        "sessions": sessions,
+    })))
+}
+
+/// Sign out everywhere except the device that asked.
+async fn logout_others(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(body): Json<RefreshBody>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let revoked = state
+        .identity
+        .logout_others(auth.user.id, &body.refresh)
+        .await
+        .map_err(ApiError)?;
+
+    // `revoked: 0` is the normal answer for somebody with one phone — not an error.
+    Ok(Json(serde_json::json!({ "revoked": revoked })))
 }
 
 async fn me(auth: Auth) -> ApiResult<Json<MeBody>> {

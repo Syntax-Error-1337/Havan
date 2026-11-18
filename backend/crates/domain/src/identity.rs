@@ -92,6 +92,24 @@ pub struct RegisterInput {
 
 /// What the slice needs from storage. Kept small on purpose: every method is a
 /// thing a fake must implement for the service tests.
+/// One sign-in, as the settings screen sees it.
+///
+/// No device name, no IP, no location: this service does not store them, and inventing a "Chrome on macOS" from a
+/// user-agent it never recorded would be a guess dressed as a fact. What it does know is when the session started, when
+/// it was last refreshed, and when it will expire on its own.
+#[derive(Debug, Clone, Serialize)]
+pub struct Session {
+    pub family_id: Uuid,
+    /// When this sign-in happened.
+    #[serde(with = "time::serde::rfc3339")]
+    pub started_at: time::OffsetDateTime,
+    /// The most recent token rotation — a proxy for "last used".
+    #[serde(with = "time::serde::rfc3339")]
+    pub last_seen_at: time::OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub expires_at: time::OffsetDateTime,
+}
+
 pub trait IdentityRepo {
     fn find_by_email(
         &self,
@@ -113,6 +131,33 @@ pub trait IdentityRepo {
     fn mark_used(&self, id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
 
     fn revoke_family(&self, family_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Every family of refresh tokens that is still alive, one row per sign-in.
+    ///
+    /// A family is one sign-in on one device: the refresh token rotates, the family does not. This is what a "signed-in
+    /// devices" list is made of — and until now the app could not tell a customer their account was open on a phone they
+    /// no longer have.
+    fn active_sessions(
+        &self,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<Vec<Session>, AppError>> + Send;
+
+    /// How many sign-ins are alive, without listing them. The list is capped at twenty; this is the number the screen
+    /// prints, because "856 devices" and "20 devices" are different answers to the same question.
+    fn active_sessions_count(
+        &self,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<i64, AppError>> + Send;
+
+    /// Revoke every live family except `keep` — "sign out everywhere else".
+    ///
+    /// `keep` is `None` for "sign out everywhere", which includes this device: the customer does that when they think
+    /// the account is compromised, and leaving their own session alive would be the one they cannot see.
+    fn revoke_all_except(
+        &self,
+        user_id: Uuid,
+        keep: Option<Uuid>,
+    ) -> impl Future<Output = Result<u64, AppError>> + Send;
 
     /// Record that this person signed in. Best effort: a login must not fail because a
     /// timestamp could not be written.
@@ -297,6 +342,29 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
 
         self.issue_refresh(None, Some(user.id), kernel::new_id(), Some(user.vendor_id))
             .await
+    }
+
+    /// Every sign-in still alive for this person, newest first, capped at twenty.
+    pub async fn sessions(&self, user_id: Uuid) -> Result<(i64, Vec<Session>), AppError> {
+        let total = self.repo.active_sessions_count(user_id).await?;
+        let list = self.repo.active_sessions(user_id).await?;
+        Ok((total, list))
+    }
+
+    /// Sign out everywhere except this device.
+    ///
+    /// The refresh token is what names "this device": it carries the family id, so the caller does not have to send an
+    /// id it could guess. A malformed or unknown token revokes nothing rather than everything — a typo must not be able
+    /// to end sessions the customer is still using.
+    pub async fn logout_others(&self, user_id: Uuid, refresh_token: &str) -> Result<u64, AppError> {
+        let keep = match split_refresh_token(refresh_token) {
+            Ok((id, _)) => match self.repo.find_refresh(id).await? {
+                Some(row) if row.user_id == Some(user_id) => Some(row.family_id),
+                _ => return Ok(0),
+            },
+            Err(_) => return Ok(0),
+        };
+        self.repo.revoke_all_except(user_id, keep).await
     }
 
     pub async fn logout(&self, refresh_token: &str) -> Result<(), AppError> {
@@ -596,6 +664,63 @@ mod tests {
             }
             self.revocations.lock().unwrap().push(family_id);
             Ok(())
+        }
+
+        async fn active_sessions(&self, user_id: Uuid) -> Result<Vec<Session>, AppError> {
+            // Same rule as the SQL: one row per family, alive only, newest first. A fake that returns rows the real
+            // query hides is a fake that passes the test the bug lives in.
+            let now = kernel::now();
+            let mut seen: Vec<Session> = Vec::new();
+            for row in self.refresh.lock().unwrap().iter() {
+                if row.user_id != Some(user_id) || row.revoked_at.is_some() || row.expires_at <= now
+                {
+                    continue;
+                }
+                if seen.iter().any(|s| s.family_id == row.family_id) {
+                    continue;
+                }
+                seen.push(Session {
+                    family_id: row.family_id,
+                    started_at: now,
+                    last_seen_at: row.used_at.unwrap_or(now),
+                    expires_at: row.expires_at,
+                });
+            }
+            Ok(seen)
+        }
+
+        async fn active_sessions_count(&self, user_id: Uuid) -> Result<i64, AppError> {
+            let now = kernel::now();
+            let mut families: Vec<Uuid> = Vec::new();
+            for row in self.refresh.lock().unwrap().iter() {
+                if row.user_id == Some(user_id)
+                    && row.revoked_at.is_none()
+                    && row.expires_at > now
+                    && !families.contains(&row.family_id)
+                {
+                    families.push(row.family_id);
+                }
+            }
+            Ok(families.len() as i64)
+        }
+
+        async fn revoke_all_except(
+            &self,
+            user_id: Uuid,
+            keep: Option<Uuid>,
+        ) -> Result<u64, AppError> {
+            let now = kernel::now();
+            let mut n = 0;
+            for row in self.refresh.lock().unwrap().iter_mut() {
+                if row.user_id == Some(user_id)
+                    && row.revoked_at.is_none()
+                    && keep.is_none_or(|k| row.family_id != k)
+                {
+                    row.revoked_at = Some(now);
+                    n += 1;
+                }
+            }
+            Ok(n)
         }
     }
 

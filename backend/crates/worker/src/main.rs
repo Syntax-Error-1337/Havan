@@ -220,6 +220,25 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Housekeeping for the identity table. Every sign-in, rotation and sign-out left a refresh row behind and nothing
+    // removed them, so the table grew with the life of the account — and the sessions screen lists from exactly this
+    // table. Once an hour, rows that are thirty days dead are deleted; the sweep is ordinary maintenance, so a failure
+    // is logged and retried rather than fatal.
+    {
+        let identity = infra::PgIdentity::new(pg.clone());
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(3600));
+            loop {
+                tick.tick().await;
+                match identity.prune_sessions(30).await {
+                    Ok(0) => {}
+                    Ok(n) => info!(rows = n, "pruned dead refresh tokens"),
+                    Err(e) => warn!(error = ?e, "session prune failed"),
+                }
+            }
+        });
+    }
+
     // Presence. A device that dies without a will message — power cut, dead radio, a simulator
     // killed at the terminal — stays flagged online forever unless something ages it out, and the
     // health page then reports a fleet that is half imaginary.

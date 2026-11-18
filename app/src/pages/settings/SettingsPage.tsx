@@ -40,7 +40,7 @@ import {
   useSetTimeZone,
 } from '../../entities/home';
 import { deviceTimeZone } from '../../shared/lib/timeZone';
-import { useMe, useSession } from '../../entities/session';
+import { useMe, useSession, useSessions, useSignOutOthers } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
 import licences from '../../shared/config/licences.json';
@@ -64,6 +64,9 @@ export function SettingsPage() {
   const { brand, color, dark } = useTheme();
   const appearance = usePreferences((s) => s.appearance);
   const toast = useToast();
+  const confirm = useConfirm();
+  const { data: sessions } = useSessions();
+  const signOutOthers = useSignOutOthers();
 
   /**
    * Everything a support person asks for in the first message, without the customer hunting for it.
@@ -353,6 +356,53 @@ export function SettingsPage() {
           />
         </Section>
 
+        {/* Security. The refresh-token table has carried a family id and a revocation timestamp since the first
+            migration and nothing in the app could see either, so "I left it signed in on a phone I sold" had no answer
+            inside the product. */}
+        <Section
+          title="Security"
+        >
+          <Row
+            title="Signed-in devices"
+            // "2" under a title reads as a device called 2 without saying what it counts. The subtitle names the
+            // arithmetic: the count includes the phone in the customer's hand.
+            subtitle="This one included"
+            value={sessions?.count !== undefined ? String(sessions.count) : '—'}
+          />
+          <Row
+            title="Sign out other devices"
+            // The consequence, not the arithmetic: the count is one row above, and what a person needs before pressing
+            // a destructive control is what happens to *this* phone.
+            subtitle={
+              sessions?.count === undefined
+                ? 'Checking…'
+                : sessions.count <= 1
+                  ? 'This is the only one'
+                  : 'You stay signed in here'
+            }
+            destructive
+            disabled={sessions === undefined || sessions.count <= 1 || signOutOthers.isPending}
+            onPress={() =>
+              confirm.ask({
+                title: 'Sign out other devices?',
+                message: 'Every other phone and browser signed in to this account will have to sign in again. This one stays.',
+                confirmLabel: 'Sign out',
+                destructive: true,
+                onConfirm: () =>
+                  signOutOthers.mutate(undefined, {
+                    onSuccess: (result) =>
+                      toast(
+                        result.revoked === 0
+                          ? 'No other devices were signed in'
+                          : `Signed out ${result.revoked} ${result.revoked === 1 ? 'device' : 'devices'}`,
+                      ),
+                    onError: () => toast('Could not sign the others out', 'failed'),
+                  }),
+              })
+            }
+          />
+        </Section>
+
         <Section title="About">
           <Row title="App" value={brand.productName} />
           {/* The version was the whole About section. Two things belong beside it: what is in the build (a licence
@@ -372,6 +422,7 @@ export function SettingsPage() {
           {brand.productName} {APP_VERSION}
         </AppText>
       </ScreenScroll>
+      {confirm.sheet}
     </Screen>
   );
 }
