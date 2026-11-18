@@ -133,7 +133,7 @@ export function AutomationsPage() {
               <Switch
                 value={rule.enabled}
                 onValueChange={(enabled) => toggle.mutate({ id: rule.id, enabled })}
-                trackColor={{ true: tokens.color.accent, false: tokens.color.border }}
+                trackColor={{ true: color.accent, false: color.border }}
               />
             </Box>
 
@@ -241,6 +241,7 @@ function History({ rule }: { rule: Automation }) {
  * better an honest small editor than a form that pretends.
  */
 function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void }) {
+  const { color } = useTheme();
   const { data: devices } = useDevices(homeId);
   const create = useCreateAutomation(homeId);
 
@@ -257,13 +258,15 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
   const points = (id: string | null) =>
     (devices ?? []).find((d) => d.id === id)?.points?.filter((p) => p.writable) ?? [];
 
+  // From the theme, not from `tokens.bootPalette`: the legacy name made these fields black boxes with white
+  // text in the light appearance, on a screen nobody had opened in light mode with the editor showing.
   const field = {
-    backgroundColor: tokens.color.bg,
+    backgroundColor: color.elevated,
     borderWidth: 1,
-    borderColor: tokens.color.border,
+    borderColor: color.border,
     borderRadius: tokens.radius.md,
     padding: tokens.space.md,
-    color: tokens.color.text,
+    color: color.text,
     fontSize: tokens.font.body,
   } as const;
 
@@ -309,7 +312,7 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
 
       <TextInput
         placeholder="Name, e.g. Bathroom light at night"
-        placeholderTextColor={tokens.color.muted}
+        placeholderTextColor={color.placeholder}
         value={name}
         onChangeText={setName}
         style={field}
@@ -335,7 +338,7 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
           </AppText>
           <TextInput
             placeholder="5"
-            placeholderTextColor={tokens.color.muted}
+            placeholderTextColor={color.placeholder}
             keyboardType="number-pad"
             value={minutes}
             onChangeText={setMinutes}

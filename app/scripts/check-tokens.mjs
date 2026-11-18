@@ -53,6 +53,17 @@ function stripComments(text) {
   return out;
 }
 
+/**
+ * The boot palette is not a theme.
+ *
+ * `tokens.bootPalette` exists for the one frame drawn before the provider does. Three screens read it as if it
+ * were the theme — the scenes editor, the automations editor and the radar handoff — and each drew black text
+ * fields on a white card in the light appearance. The colour-literal rule below cannot see that mistake: the
+ * token is legitimate, it is the *scope* that is not. So the scope is checked too.
+ */
+const BOOT_OWNER = join(SRC, 'app-shell', 'providers.tsx');
+const BOOT_RE = /\btokens\.bootPalette\b/g;
+
 const findings = [];
 
 for (const file of walk(SRC)) {
@@ -61,6 +72,15 @@ for (const file of walk(SRC)) {
   const lines = text.split('\n');
 
   lines.forEach((line, index) => {
+    if (file !== BOOT_OWNER && BOOT_RE.test(line)) {
+      findings.push({
+        file: relative(ROOT, file),
+        line: index + 1,
+        kind: 'boot-palette',
+        literal: 'tokens.bootPalette',
+      });
+    }
+    BOOT_RE.lastIndex = 0;
     for (const { name, re } of PATTERNS) {
       re.lastIndex = 0;
       const match = re.exec(line);
@@ -89,8 +109,17 @@ console.error(`tokens: ${findings.length} colour literal(s) outside shared/confi
 for (const f of findings) {
   console.error(`  ${f.file}:${f.line}  ${f.literal}`);
 }
-console.error(
-  '\nAdd a named token to src/shared/config/tokens.ts and use it. A screen that hardcodes a colour\n' +
-    'overrides the operator, who owns the brand — and the light appearance is the one that finds out.',
-);
+if (findings.some((f) => f.kind === 'boot-palette')) {
+  console.error(
+    '\ntokens.bootPalette is the palette for the frame drawn before the theme provider exists. A screen\n' +
+      'that reads it is a dark-mode assumption wearing a token\'s clothes: in the light appearance its\n' +
+      'fields and text are the wrong colour. Use `const { color } = useTheme()`.',
+  );
+}
+if (findings.some((f) => f.kind !== 'boot-palette')) {
+  console.error(
+    '\nAdd a named token to src/shared/config/tokens.ts and use it. A screen that hardcodes a colour\n' +
+      'overrides the operator, who owns the brand — and the light appearance is the one that finds out.',
+  );
+}
 process.exit(1);

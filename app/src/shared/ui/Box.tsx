@@ -1,5 +1,6 @@
 import { Platform, StyleSheet, Text, View, type TextProps, type ViewProps } from 'react-native';
 import { useTheme, tokens } from '../../app-shell/theme';
+import type { Palette } from '../config/tokens';
 
 type Space = keyof typeof tokens.space;
 
@@ -8,7 +9,7 @@ export type BoxProps = ViewProps & {
   px?: Space;
   py?: Space;
   gap?: Space;
-  bg?: keyof typeof tokens.color;
+  bg?: keyof Palette;
   radius?: keyof typeof tokens.radius;
   border?: boolean;
   flex?: number;
@@ -38,7 +39,7 @@ export function Box({
         px !== undefined && { paddingHorizontal: tokens.space[px] },
         py !== undefined && { paddingVertical: tokens.space[py] },
         gap !== undefined && { gap: tokens.space[gap] },
-        bg ? { backgroundColor: color[bg] } : null,
+        bg ? { backgroundColor: color[bg as keyof Palette] } : null,
         radius !== undefined && { borderRadius: tokens.radius[radius] },
         border && { borderWidth: StyleSheet.hairlineWidth, borderColor: color.border },
         flex !== undefined && { flex },

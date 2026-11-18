@@ -232,6 +232,7 @@ function ScanView({
   accent: string;
   onPick: (device: NearbyDevice) => void;
 }) {
+  const { color } = useTheme();
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -270,9 +271,9 @@ function ScanView({
             width: 76,
             height: 76,
             borderRadius: 38,
-            backgroundColor: tokens.color.surface,
+            backgroundColor: color.surface,
             borderWidth: 1,
-            borderColor: tokens.color.border,
+            borderColor: color.border,
           }}
         >
           <AppText variant="display">
@@ -335,17 +336,20 @@ function WifiForm({
   onSubmit: (ssid: string, password: string) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { color } = useTheme();
   const [ssid, setSsid] = useState('');
   const [password, setPassword] = useState('');
   const [reveal, setReveal] = useState(false);
 
+  // The theme's palette. From the boot palette these were white boxes with white text in the dark appearance
+  // and black boxes in the light one — a Wi-Fi form is the last place to be unsure which.
   const field = {
-    backgroundColor: tokens.color.surface,
+    backgroundColor: color.elevated,
     borderWidth: 1,
-    borderColor: tokens.color.border,
+    borderColor: color.border,
     borderRadius: tokens.radius.md,
     padding: tokens.space.lg,
-    color: tokens.color.text,
+    color: color.text,
     fontSize: tokens.font.body,
   } as const;
 
@@ -364,7 +368,7 @@ function WifiForm({
         </AppText>
         <TextInput
           placeholder="The name your phone shows"
-          placeholderTextColor={tokens.color.muted}
+          placeholderTextColor={color.placeholder}
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="off"
@@ -388,7 +392,7 @@ function WifiForm({
         <View style={{ justifyContent: 'center' }}>
           <TextInput
             placeholder="The password for that network"
-            placeholderTextColor={tokens.color.muted}
+            placeholderTextColor={color.placeholder}
             secureTextEntry={!reveal}
             autoCapitalize="none"
             autoCorrect={false}

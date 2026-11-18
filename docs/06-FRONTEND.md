@@ -152,6 +152,31 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The theme leak, closed for good
+
+Light mode had been reviewed screen by screen — and three screens still drew **black text fields on white cards**,
+because they read `tokens.color`: the *static dark palette* the file described as "the default for legacy call
+sites". The scenes editor was found by eye; the automations editor and the radar Wi-Fi form were found by reading,
+after the same fix had already been made twice. A defect fixed twice in the same shape is a missing rule, not a
+missing patch.
+
+So the misleading export is gone. It is now `tokens.bootPalette`, named for what it is — the palette for the single
+frame drawn before the provider exists — and `check-tokens.mjs` enforces the scope: **`tokens.bootPalette` may
+appear only in `app-shell/providers.tsx`**. Everything else takes `useTheme()`.
+
+The gate that would have caught all three failures is a scope rule, not a colour rule: the token was legitimate in
+every case, and its *use* was not. Proven by probe — a file containing `tokens.bootPalette` fails with:
+
+```
+tokens: 1 colour literal(s) outside shared/config/tokens.ts
+  src/shared/lib/__probe.ts:1  tokens.bootPalette
+```
+
+and the footer now says why: *"A screen that reads it is a dark-mode assumption wearing a token's clothes."*
+
+Verified in the light appearance at 390×844: the automations editor's two fields render `rgb(242,242,247)` with
+black text, where both were black boxes with white text before.
+
 ### A search that only searched the page
 
 The dashboard's search filtered the devices it had **loaded**. On the 1,200-device demo home that is 200 of them,

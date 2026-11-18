@@ -47,12 +47,12 @@ function SessionBoot({ children }: { children: ReactNode }) {
       <View
         style={{
           flex: 1,
-          backgroundColor: tokens.color.bg,
+          backgroundColor: tokens.bootPalette.bg,
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <ActivityIndicator color={tokens.color.accent} />
+        <ActivityIndicator color={tokens.bootPalette.accent} />
       </View>
     );
   }

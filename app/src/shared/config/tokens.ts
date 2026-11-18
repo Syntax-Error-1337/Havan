@@ -152,9 +152,16 @@ export const dark: Palette = {
 };
 
 export const tokens = {
-  /** Dark is the default value of `tokens.color` for legacy call sites; the
-   *  provider always supplies the real palette. */
-  color: dark as Palette,
+  /**
+   * The palette the app boots into, before the provider exists.
+   *
+   * This used to be `tokens.color`, described as "the default for legacy call sites" — and three screens
+   * believed it: the scenes editor, the automations editor and the radar handoff each drew their text fields
+   * from it, so in the light appearance they were black boxes on white cards. A colour that is not from
+   * `useTheme()` is a dark-mode assumption wearing a token's clothes, so the misleading name is gone: only the
+   * pre-hydration splash may use `bootPalette`, and `check-tokens.mjs` enforces that.
+   */
+  bootPalette: dark as Palette,
   /** The SF text styles this app uses, at default Dynamic Type. */
   font: {
     /** caption2 — the smallest thing that may appear outside a chart. */
