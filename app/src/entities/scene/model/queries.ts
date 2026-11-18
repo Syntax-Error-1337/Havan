@@ -80,6 +80,28 @@ export function useCreateScene(homeId: string | undefined) {
   });
 }
 
+/**
+ * Rename a scene.
+ *
+ * Scenes could be created and deleted with nothing in between, so a typo in a name meant deleting the scene and
+ * rebuilding every action in it. `PATCH /scenes/{id}` takes the name alone and leaves the actions untouched — that is
+ * the whole reason the endpoint takes a partial body.
+ */
+export function useRenameScene(homeId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; name: string }) =>
+      request<void>(`/scenes/${input.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: input.name }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.scenes(homeId ?? 'none') });
+      void qc.invalidateQueries({ queryKey: qk.dashboard(homeId ?? 'none') });
+    },
+  });
+}
+
 export function useDeleteScene(homeId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({

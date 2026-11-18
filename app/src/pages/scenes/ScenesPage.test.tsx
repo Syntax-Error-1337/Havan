@@ -255,4 +255,30 @@ describe('scenes', () => {
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true));
     expect(calls.find((c) => c.method === 'DELETE')?.url).toContain('/scenes/s9');
   });
+
+  it('renames a scene in a sheet that arrives pre-filled, and sends only the name', async () => {
+    const calls = stubApi((url, init) => {
+      if (init?.method === 'PATCH') return {};
+      if (url.includes('/scenes')) {
+        return [{ id: 's1', name: 'Good nihgt', icon: null, actions: [], created_at: new Date().toISOString() }];
+      }
+      return [device];
+    });
+
+    const view = await renderPage();
+    // The name on the row is the control. A separate "Edit" word beside it is a second thing to find, and the row's
+    // name is already the only interesting text on it.
+    await fireEvent.press(await view.findByLabelText('Rename Good nihgt'));
+
+    const field = await view.findByLabelText('Scene name');
+    expect(field.props.value).toBe('Good nihgt');
+
+    await fireEvent.changeText(field, 'Good night');
+    await fireEvent.press(view.getByLabelText('Save scene name'));
+
+    await waitFor(() => {
+      const patch = calls.find((c) => c.method === 'PATCH' && c.url.includes('/scenes/s1'));
+      expect(patch?.body).toBe(JSON.stringify({ name: 'Good night' }));
+    });
+  });
 });

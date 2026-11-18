@@ -3,7 +3,7 @@ use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
-use domain::scenes::{ActionFailure, Activation, Scene, SceneAction, SceneRepo};
+use domain::scenes::{ActionFailure, Activation, Scene, SceneAction, SceneChange, SceneRepo};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -15,7 +15,7 @@ use crate::routes::devices::publish_command;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/homes/{id}/scenes", get(list).post(create))
-        .route("/scenes/{scene_id}", delete(remove))
+        .route("/scenes/{scene_id}", delete(remove).patch(update))
         .route("/scenes/{scene_id}/activate", post(activate))
 }
 
@@ -89,6 +89,52 @@ async fn list(
             .await
             .map_err(ApiError)?,
     ))
+}
+
+/// Everything optional: a rename sends `name`, an editor sends `actions`, and a field nobody sent is a field nobody
+/// touched. `Option<Option<String>>` for the icon is the difference between "leave it" (`null` in JSON is missing) and
+/// "clear it" (`""`), which matters because a cleared icon is a real choice.
+#[derive(Deserialize)]
+struct UpdateBody {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    actions: Option<Vec<SceneAction>>,
+}
+
+async fn update(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(scene_id): Path<Uuid>,
+    Json(body): Json<UpdateBody>,
+) -> ApiResult<Json<serde_json::Value>> {
+    if let Some(name) = &body.name
+        && name.trim().is_empty()
+    {
+        return Err(ApiError(kernel::AppError::validation(
+            "a scene needs a name",
+        )));
+    }
+
+    let change = SceneChange {
+        name: body.name.map(|n| n.trim().to_string()),
+        icon: None,
+        actions: body.actions,
+    };
+
+    if change.is_empty() {
+        return Err(ApiError(kernel::AppError::validation(
+            "nothing to change: send a name or the actions",
+        )));
+    }
+
+    state
+        .scenes
+        .update(scene_id, auth.user.id, change)
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(serde_json::json!({ "updated": true })))
 }
 
 async fn remove(

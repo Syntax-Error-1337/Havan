@@ -68,7 +68,7 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Create, run, delete; the form carries the accent on an empty screen | done |
-| **No rename and no edit** of an existing scene: you delete and rebuild | **P1** |
+| **No rename** — *done*: the row's name is the control that renames it, opening a sheet that arrives pre-filled; `PATCH /scenes/{id}` takes the name alone and leaves the actions untouched. Editing the actions of an existing scene is still a rebuild | **P1** |
 | No scene reordering, and no "run from the dashboard" shortcut for a scene you use daily | P2 |
 
 ### Settings (`/settings`)

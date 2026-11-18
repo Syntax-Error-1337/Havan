@@ -270,3 +270,88 @@ async fn creating_a_scene_needs_a_manager_and_the_hook_needs_its_token() {
         .expect("hook");
     assert_eq!(right.status().as_u16(), 202, "armed, not run");
 }
+
+#[tokio::test]
+async fn a_scene_can_be_renamed_without_losing_its_actions() {
+    let Some(f) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("{}/v1/homes/{}/scenes", f.base, f.home_id))
+        .bearer_auth(&f.token)
+        .json(&serde_json::json!({
+            "name": "Good night",
+            "actions": [{
+                "type": "set_device",
+                "device_id": f.device_id,
+                "code": "switch.power",
+                "value": false,
+            }],
+        }))
+        .send()
+        .await
+        .expect("create")
+        .json()
+        .await
+        .expect("scene");
+    let scene_id = created["id"].as_str().expect("id").to_string();
+
+    // A rename carries one field. The six devices behind the name - the reason the scene exists - must survive it,
+    // which is exactly what a naive "replace the row" update gets wrong.
+    let renamed = client
+        .patch(format!("{}/v1/scenes/{scene_id}", f.base))
+        .bearer_auth(&f.token)
+        .json(&serde_json::json!({ "name": "  Bedtime  " }))
+        .send()
+        .await
+        .expect("rename");
+    assert_eq!(renamed.status().as_u16(), 200);
+
+    let listed: serde_json::Value = client
+        .get(format!("{}/v1/homes/{}/scenes", f.base, f.home_id))
+        .bearer_auth(&f.token)
+        .send()
+        .await
+        .expect("list")
+        .json()
+        .await
+        .expect("scenes");
+    let scene = listed
+        .as_array()
+        .expect("array")
+        .iter()
+        .find(|s| s["id"] == scene_id.as_str())
+        .expect("the scene is still there");
+    assert_eq!(
+        scene["name"], "Bedtime",
+        "trimmed, and only the name changed"
+    );
+    assert_eq!(
+        scene["actions"].as_array().map(|a| a.len()),
+        Some(1),
+        "the action survived a rename"
+    );
+
+    // An empty name is refused rather than stored: a scene with no name is a row nobody can press.
+    let blank = client
+        .patch(format!("{}/v1/scenes/{scene_id}", f.base))
+        .bearer_auth(&f.token)
+        .json(&serde_json::json!({ "name": "   " }))
+        .send()
+        .await
+        .expect("blank");
+    assert_eq!(blank.status().as_u16(), 400);
+
+    // And a PATCH with no fields is not a write, so it cannot be used to probe which ids exist.
+    let nothing = client
+        .patch(format!("{}/v1/scenes/{scene_id}", f.base))
+        .bearer_auth(&f.token)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .expect("nothing");
+    assert_eq!(nothing.status().as_u16(), 400);
+}

@@ -21,6 +21,21 @@ pub enum SceneAction {
     },
 }
 
+/// A partial change to a scene. Every field is optional because the two callers differ: a rename sends `name`, and an
+/// editor that reorders actions sends `actions`. A field that is absent is a field nobody touched.
+#[derive(Debug, Clone, Default)]
+pub struct SceneChange {
+    pub name: Option<String>,
+    pub icon: Option<Option<String>>,
+    pub actions: Option<Vec<SceneAction>>,
+}
+
+impl SceneChange {
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none() && self.icon.is_none() && self.actions.is_none()
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Scene {
     pub id: Uuid,
@@ -72,6 +87,18 @@ pub trait SceneRepo {
     ) -> impl Future<Output = Result<Option<Scene>, AppError>> + Send;
 
     fn delete(&self, id: Uuid, user_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Change the name, the icon, or the actions of a scene that already exists.
+    ///
+    /// A scene could be created and deleted and nothing in between, so a typo in a scene's name meant deleting it and
+    /// rebuilding every action in it. `None` leaves a field alone — a PATCH that carried only a name must not empty
+    /// the actions, and a customer renaming "Good night" should not lose the six devices behind it.
+    fn update(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+        change: SceneChange,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
 }
 
 #[cfg(test)]

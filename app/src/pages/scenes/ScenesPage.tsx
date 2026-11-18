@@ -17,7 +17,8 @@ import {
   QueryError,
   readablePoint,
 } from '../../shared/ui';
-import { tokens, useTheme } from '../../app-shell/theme';
+import { useTheme, tokens } from '../../app-shell/theme';
+import { RenameSceneSheet } from './RenameSceneSheet';
 import type { Palette } from '../../shared/config/tokens';
 import { useCurrentHome } from '../../entities/home';
 import { useDevices, type Device } from '../../entities/device';
@@ -51,6 +52,8 @@ export function ScenesPage() {
   const { ask, sheet } = useConfirm();
   /** What the last press did, in the same words the dashboard's strip uses. */
   const [note, setNote] = useState<{ sceneId: string; text: string; bad: boolean } | null>(null);
+  // Which scene's rename sheet is open. The row's name is the control, so there is no second affordance to find.
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
 
   const run = async (sceneId: string) => {
     setNote(null);
@@ -151,12 +154,19 @@ export function ScenesPage() {
           <Box key={scene.id} gap="xs">
             <Card padded={false}>
             <Box row gap="md" p="md">
-              <Box flex={1} gap="xs">
+              {/* The name is the control that renames it: a scene list where the one editable thing on each row is a
+                  word in a separate slot makes you hunt for it. */}
+              <Pressable
+                onPress={() => setRenaming(scene)}
+                accessibilityRole="button"
+                accessibilityLabel={`Rename ${scene.name}`}
+                style={{ flex: 1, gap: tokens.space.xs, minHeight: tokens.touch.min, justifyContent: 'center' }}
+              >
                 <AppText weight="600">{scene.name}</AppText>
                 <AppText variant="caption" tone="muted">
                   {`${scene.actions.length} action${scene.actions.length === 1 ? '' : 's'}`}
                 </AppText>
-              </Box>
+              </Pressable>
               <Button
                 label="Run"
                 variant="ghost"
@@ -177,7 +187,9 @@ export function ScenesPage() {
                 }
                 accessibilityRole="button"
                 accessibilityLabel={`Delete ${scene.name}`}
-                style={{ minHeight: tokens.touch.min, justifyContent: 'center' }}
+                // Both dimensions: making the name a press target took width away from this one, and the a11y gate
+                // measured it at 38×44 on the next run.
+                style={{ minHeight: tokens.touch.min, minWidth: tokens.touch.min, alignItems: 'flex-end', justifyContent: 'center' }}
               >
                 <AppText variant="caption" tone="danger">
                   Delete
@@ -344,6 +356,15 @@ export function ScenesPage() {
         </Box>
         </Card>
       </ScreenScroll>
+
+      {renaming ? (
+        <RenameSceneSheet
+          sceneId={renaming.id}
+          name={renaming.name}
+          homeId={homeId ?? undefined}
+          onClose={() => setRenaming(null)}
+        />
+      ) : null}
     </Screen>
   );
 }

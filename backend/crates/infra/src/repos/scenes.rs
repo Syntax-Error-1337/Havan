@@ -1,4 +1,4 @@
-use domain::scenes::{Scene, SceneAction, SceneRepo};
+use domain::scenes::{Scene, SceneAction, SceneChange, SceneRepo};
 use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
 
@@ -123,6 +123,52 @@ impl SceneRepo for PgScenes {
             .rows_affected();
         tx.commit().await.map_err(db)?;
 
+        if n == 0 {
+            return Err(AppError::not_found("scene"));
+        }
+        Ok(())
+    }
+
+    async fn update(&self, id: Uuid, user_id: Uuid, change: SceneChange) -> Result<(), AppError> {
+        if change.is_empty() {
+            // Nothing to do is not a failure, but it is also not a write: a PATCH with no fields must not bump a row
+            // that a second phone is reading.
+            return Ok(());
+        }
+
+        let mut tx = self.tx(user_id).await?;
+
+        let actions = match &change.actions {
+            Some(list) => Some(
+                serde_json::to_value(list)
+                    .map_err(|e| AppError::Internal(format!("scene actions: {e}")))?,
+            ),
+            None => None,
+        };
+
+        // `COALESCE` per column rather than a query built by string concatenation: three optional fields would be
+        // eight shapes to build, test and get wrong, and the row-level policy already answers "is this yours".
+        let n = sqlx::query(
+            r#"UPDATE scenes
+                  SET name    = COALESCE($2, name),
+                      icon    = CASE WHEN $3 THEN $4 ELSE icon END,
+                      actions = COALESCE($5, actions)
+                WHERE id = $1"#,
+        )
+        .bind(id)
+        .bind(&change.name)
+        .bind(change.icon.is_some())
+        .bind(change.icon.clone().flatten())
+        .bind(&actions)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        tx.commit().await.map_err(db)?;
+
+        // Zero rows means either "no such scene" or "not yours" — the policy cannot tell the caller which, and it must
+        // not: an id from another home reads as missing, exactly like a delete of one.
         if n == 0 {
             return Err(AppError::not_found("scene"));
         }
