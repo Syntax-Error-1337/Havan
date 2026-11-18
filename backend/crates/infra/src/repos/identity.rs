@@ -343,6 +343,20 @@ impl IdentityRepo for PgIdentity {
             .collect())
     }
 
+    async fn set_password_hash(&self, user_id: Uuid, hash: &str) -> Result<(), AppError> {
+        let n = sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1")
+            .bind(user_id)
+            .bind(hash)
+            .execute(self.pg.pool())
+            .await
+            .map_err(db)?
+            .rows_affected();
+        if n == 0 {
+            return Err(AppError::not_found("account"));
+        }
+        Ok(())
+    }
+
     async fn active_sessions_count(&self, user_id: Uuid) -> Result<i64, AppError> {
         let count: i64 = sqlx::query_scalar(
             r#"SELECT count(DISTINCT family_id)

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 
 import { RoomRow } from './RoomRow';
+import { ChangePasswordSheet } from './ChangePasswordSheet';
 
 import {
   canManage,
@@ -111,6 +112,7 @@ export function SettingsPage() {
   const setPresence = useSetPresence(homeId ?? undefined);
   // Local until the server confirms; the switch must move when the finger does.
   const [atHome, setAtHome] = useState(true);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [roomName, setRoomName] = useState('');
 
@@ -144,6 +146,9 @@ export function SettingsPage() {
           <Row title="Email" value={me?.email ?? '—'} />
           <Row title="Name" value={me?.display_name ?? '—'} />
           {/* The rights live one tap from the account they belong to, not buried in a web page. */}
+          {/* The app could not change a password at all: the only way out of a leaked one was to delete the
+              account. This row is the fix, and the sheet behind it ends every other session. */}
+          <Row title="Password" subtitle="Change it, and sign out every other device" onPress={() => setPasswordOpen(true)} />
           <Row
             title="Privacy"
             subtitle="A copy of your data, or delete your account"
@@ -466,6 +471,7 @@ export function SettingsPage() {
           {brand.productName} {APP_VERSION}
         </AppText>
       </ScreenScroll>
+      {passwordOpen ? <ChangePasswordSheet onClose={() => setPasswordOpen(false)} /> : null}
       {confirm.sheet}
     </Screen>
   );

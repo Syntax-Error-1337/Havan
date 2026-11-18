@@ -159,6 +159,13 @@ pub trait IdentityRepo {
         keep: Option<Uuid>,
     ) -> impl Future<Output = Result<u64, AppError>> + Send;
 
+    /// Replace the stored password hash.
+    fn set_password_hash(
+        &self,
+        user_id: Uuid,
+        hash: &str,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
     /// Record that this person signed in. Best effort: a login must not fail because a
     /// timestamp could not be written.
     fn touch_vendor_login(
@@ -349,6 +356,51 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
         let total = self.repo.active_sessions_count(user_id).await?;
         let list = self.repo.active_sessions(user_id).await?;
         Ok((total, list))
+    }
+
+    /// Change a password, having proved the old one.
+    ///
+    /// Every other session is ended: a password change is the one moment a customer can act on "somebody else may have
+    /// this", and leaving the session that the other person holds alive would make the new password theatre. The device
+    /// that made the change keeps its session — it just proved the password twice.
+    pub async fn change_password(
+        &self,
+        user_id: Uuid,
+        current: &str,
+        next: &str,
+        keep_refresh_token: Option<&str>,
+    ) -> Result<u64, AppError> {
+        let Some(user) = self.repo.find_by_id(user_id).await? else {
+            return Err(invalid_credentials());
+        };
+        let Some(hash) = user.password_hash.as_deref() else {
+            return Err(AppError::validation(
+                "this account has no password to change",
+            ));
+        };
+        if !verify_password(current, hash) {
+            return Err(invalid_credentials());
+        }
+        if verify_password(next, hash) {
+            return Err(AppError::validation("the new password is the current one"));
+        }
+        validate_password(next)?;
+
+        self.repo
+            .set_password_hash(user_id, &hash_password(next)?)
+            .await?;
+
+        // Keep the caller's own family, if it named one: signing the person out of the phone they just changed the
+        // password on is a punishment for doing the right thing.
+        let keep = match keep_refresh_token.map(split_refresh_token) {
+            Some(Ok((id, _))) => match self.repo.find_refresh(id).await? {
+                Some(row) if row.user_id == Some(user_id) => Some(row.family_id),
+                _ => None,
+            },
+            _ => None,
+        };
+
+        self.repo.revoke_all_except(user_id, keep).await
     }
 
     /// Sign out everywhere except this device.
@@ -687,6 +739,15 @@ mod tests {
                 });
             }
             Ok(seen)
+        }
+
+        async fn set_password_hash(&self, user_id: Uuid, hash: &str) -> Result<(), AppError> {
+            let mut users = self.users.lock().unwrap();
+            let Some(user) = users.iter_mut().find(|u| u.id == user_id) else {
+                return Err(AppError::not_found("account"));
+            };
+            user.password_hash = Some(hash.to_string());
+            Ok(())
         }
 
         async fn active_sessions_count(&self, user_id: Uuid) -> Result<i64, AppError> {

@@ -31,6 +31,28 @@ export function useSessions() {
 }
 
 /**
+ * Change the password, with the old one as proof.
+ *
+ * The request carries this device's refresh token so the server can keep this session and end the others: signing the
+ * person out of the phone they just fixed their password on is a punishment for doing the right thing.
+ */
+export function useChangePassword() {
+  const qc = useQueryClient();
+  const refresh = useSession((s) => s.refresh);
+
+  return useMutation({
+    mutationFn: (input: { current: string; next: string }) =>
+      request<{ signed_out: number }>('/auth/password', {
+        method: 'POST',
+        body: JSON.stringify({ ...input, refresh }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.sessions });
+    },
+  });
+}
+
+/**
  * Sign out everywhere except this device.
  *
  * The refresh token names "this device" — it carries the family id — so the caller never sends an id it could guess. A

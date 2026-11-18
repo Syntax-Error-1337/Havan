@@ -207,3 +207,97 @@ async fn a_broken_refresh_token_does_not_sign_anybody_out() {
         .expect("json");
     assert_eq!(after["count"].as_u64().expect("count"), count);
 }
+
+#[tokio::test]
+async fn changing_the_password_needs_the_old_one_and_ends_the_other_sessions() {
+    let Some((base, _state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+    let client = reqwest::Client::new();
+    let email = format!("password-{}@haven.dev", uuid::Uuid::now_v7());
+    let old = "password-Old-1";
+
+    client
+        .post(format!("{base}/v1/auth/register"))
+        .json(&serde_json::json!({ "email": email, "password": old }))
+        .send()
+        .await
+        .expect("register");
+
+    // Two sessions: the phone and a laptop somebody else may be holding.
+    let phone = sign_in(&base, &email, old).await;
+    let laptop = sign_in(&base, &email, old).await;
+    let phone_access = phone["access"].as_str().expect("access").to_string();
+    let phone_refresh = phone["refresh"].as_str().expect("refresh").to_string();
+    let laptop_refresh = laptop["refresh"].as_str().expect("refresh").to_string();
+
+    // The old password is the proof, and a wrong one changes nothing.
+    let wrong = client
+        .post(format!("{base}/v1/auth/password"))
+        .bearer_auth(&phone_access)
+        .json(&serde_json::json!({ "current": "not-the-password", "next": "password-New-1" }))
+        .send()
+        .await
+        .expect("wrong");
+    assert_eq!(wrong.status().as_u16(), 401);
+
+    // The new password is the current one is refused before anything is written.
+    let same = client
+        .post(format!("{base}/v1/auth/password"))
+        .bearer_auth(&phone_access)
+        .json(&serde_json::json!({ "current": old, "next": old }))
+        .send()
+        .await
+        .expect("same");
+    assert_eq!(same.status().as_u16(), 422);
+
+    let changed: serde_json::Value = client
+        .post(format!("{base}/v1/auth/password"))
+        .bearer_auth(&phone_access)
+        .json(&serde_json::json!({ "current": old, "next": "password-New-1", "refresh": phone_refresh }))
+        .send()
+        .await
+        .expect("change")
+        .json()
+        .await
+        .expect("json");
+    // The laptop's session, and the one registration created.
+    assert_eq!(changed["signed_out"], 2);
+
+    // The laptop cannot refresh; the phone can.
+    let laptop_try = client
+        .post(format!("{base}/v1/auth/refresh"))
+        .json(&serde_json::json!({ "refresh": laptop_refresh }))
+        .send()
+        .await
+        .expect("refresh laptop");
+    assert_eq!(laptop_try.status().as_u16(), 401);
+    let phone_try = client
+        .post(format!("{base}/v1/auth/refresh"))
+        .json(&serde_json::json!({ "refresh": phone["refresh"].as_str().expect("r") }))
+        .send()
+        .await
+        .expect("refresh phone");
+    assert_eq!(
+        phone_try.status().as_u16(),
+        200,
+        "the device that changed it stays signed in"
+    );
+
+    // And the sign-in itself moved: old fails, new works.
+    let old_login = client
+        .post(format!("{base}/v1/auth/login"))
+        .json(&serde_json::json!({ "email": email, "password": old }))
+        .send()
+        .await
+        .expect("login old");
+    assert_eq!(old_login.status().as_u16(), 401);
+    let new_login = client
+        .post(format!("{base}/v1/auth/login"))
+        .json(&serde_json::json!({ "email": email, "password": "password-New-1" }))
+        .send()
+        .await
+        .expect("login new");
+    assert_eq!(new_login.status().as_u16(), 200);
+}

@@ -20,6 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/me", get(me))
         .route("/me/sessions", get(sessions))
         .route("/auth/logout-others", post(logout_others))
+        .route("/auth/password", post(change_password))
 }
 
 #[derive(Deserialize)]
@@ -155,6 +156,38 @@ async fn sessions(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<s
         "count": count,
         "sessions": sessions,
     })))
+}
+
+#[derive(Deserialize)]
+struct PasswordBody {
+    current: String,
+    next: String,
+    /// The caller's own refresh token, when it has one: the device that made the change keeps its session.
+    #[serde(default)]
+    refresh: Option<String>,
+}
+
+/// `POST /v1/auth/password` — change the password, with the old one as proof.
+///
+/// Every other session is revoked. A password change is the one moment somebody can act on "I think another person has
+/// this", and leaving those sessions alive would make the new password theatre.
+async fn change_password(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(body): Json<PasswordBody>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let revoked = state
+        .identity
+        .change_password(
+            auth.user.id,
+            &body.current,
+            &body.next,
+            body.refresh.as_deref(),
+        )
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(serde_json::json!({ "signed_out": revoked })))
 }
 
 /// Sign out everywhere except the device that asked.
