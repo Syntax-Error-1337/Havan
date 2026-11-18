@@ -81,6 +81,34 @@ pub struct Member {
     pub can_pair: bool,
 }
 
+/// An invitation to a home, for somebody who may not have an account yet.
+///
+/// `token_hash` never leaves the service: the plaintext token is returned to the inviter once, at creation, and the row
+/// keeps only its SHA-256. `HomeInvite` is serialised to the app without the hash field at all (see `#[serde(skip)]`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HomeInvite {
+    pub id: Uuid,
+    pub home_id: Uuid,
+    pub email: String,
+    pub role: Role,
+    #[serde(skip)]
+    pub token_hash: String,
+    pub invited_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub expires_at: time::OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub accepted_at: Option<time::OffsetDateTime>,
+}
+
+impl HomeInvite {
+    /// Whether this invitation can still be accepted: not accepted, not expired.
+    pub fn is_live(&self, now: time::OffsetDateTime) -> bool {
+        self.accepted_at.is_none() && self.expires_at > now
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Room {
     pub id: Uuid,
@@ -191,6 +219,75 @@ pub trait HomeRepo {
         room_id: Uuid,
         home_id: Uuid,
     ) -> impl Future<Output = Result<bool, AppError>> + Send;
+
+    // ---- invitations --------------------------------------------------------------------------------------------
+
+    /// Create (or replace) the live invitation for one address in one home. Returns the row's id.
+    fn create_invite(
+        &self,
+        invite: &HomeInvite,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    fn invites(
+        &self,
+        home_id: Uuid,
+    ) -> impl Future<Output = Result<Vec<HomeInvite>, AppError>> + Send;
+
+    /// Pending invitations for one address, across every home. Used when somebody signs up: an invitation that
+    /// arrived before the account did should not need a second email to be useful.
+    fn invites_for_email(
+        &self,
+        email: &str,
+    ) -> impl Future<Output = Result<Vec<HomeInvite>, AppError>> + Send;
+
+    /// The live invitation behind a token hash, if it is unaccepted and unexpired.
+    fn invite_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> impl Future<Output = Result<Option<HomeInvite>, AppError>> + Send;
+
+    fn accept_invite(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    fn revoke_invite(
+        &self,
+        home_id: Uuid,
+        id: Uuid,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+}
+
+/// How long an invitation lives. A week is long enough to survive a weekend and short enough that a link forwarded by
+/// mistake stops working.
+pub const INVITE_DAYS: i64 = 7;
+
+/// What `invite` did: added an existing account, or created an invitation for an address that has none.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum InviteOutcome {
+    Added,
+    Invited {
+        /// Shown once. The platform has no mail transport, so the person who created it sends the link.
+        token: String,
+        #[serde(with = "time::serde::rfc3339")]
+        expires_at: time::OffsetDateTime,
+    },
+}
+
+fn token() -> String {
+    use base64::Engine;
+    use rand::RngCore;
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+fn hash_token(secret: &str) -> String {
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(secret.as_bytes()))
 }
 
 pub struct HomeService<R> {
@@ -359,13 +456,19 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
     /// Invite by email. The invitee must already have an account in v1 —
     /// pending invitations are Phase 6, and pretending otherwise silently
     /// creates orphan rows.
+    /// Add somebody to a home, or invite them if they have no account yet.
+    ///
+    /// The old behaviour was the first half only: `POST /homes/{id}/members` required the address to belong to an
+    /// existing account and returned 404 otherwise — so the person you actually want in your family home, the one who has
+    /// never installed the app, could not be added at all. Now an unknown address gets an invitation with a token, shown
+    /// once because there is still no mail transport.
     pub async fn invite(
         &self,
         home_id: Uuid,
         actor: Uuid,
         email: &str,
         role: Role,
-    ) -> Result<(), AppError> {
+    ) -> Result<InviteOutcome, AppError> {
         let home = self.require(home_id, actor).await?;
         if !home.role.can_manage() {
             return Err(AppError::forbidden("only an admin can invite members"));
@@ -382,15 +485,93 @@ impl<R: HomeRepo + Send + Sync> HomeService<R> {
         }
 
         let email = crate::identity::normalize_email(email);
-        let target = self
+        if let Some(target) = self.repo.find_member_by_email(home_id, &email).await? {
+            self.repo
+                .add_member(home_id, target, role, role.can_manage())
+                .await?;
+            return Ok(InviteOutcome::Added);
+        }
+
+        // No account yet: an invitation instead of a 404. The token is the credential, so it is generated here, hashed
+        // for storage and returned once — the same shape as a vendor invitation, for the same reason.
+        let token = crate::homes::token();
+        let now = kernel::now();
+        let invite = HomeInvite {
+            id: kernel::new_id(),
+            home_id,
+            email,
+            role,
+            token_hash: crate::homes::hash_token(&token),
+            invited_by: actor,
+            created_at: now,
+            expires_at: now + time::Duration::days(INVITE_DAYS),
+            accepted_at: None,
+        };
+
+        self.repo.create_invite(&invite).await?;
+        Ok(InviteOutcome::Invited {
+            token,
+            expires_at: invite.expires_at,
+        })
+    }
+
+    /// Pending invitations for a home. Admin-only: a guest does not need to know who is being asked to join.
+    pub async fn invites(&self, home_id: Uuid, actor: Uuid) -> Result<Vec<HomeInvite>, AppError> {
+        let home = self.require(home_id, actor).await?;
+        if !home.role.can_manage() {
+            return Err(AppError::forbidden("only an admin can see invitations"));
+        }
+        self.repo.invites(home_id).await
+    }
+
+    /// Accept an invitation by its token.
+    ///
+    /// The address has to match the signed-in account: the token is a bearer credential, and without this check a
+    /// forwarded link would let the wrong person into somebody's home.
+    pub async fn accept_invite(
+        &self,
+        actor: Uuid,
+        actor_email: &str,
+        token: &str,
+    ) -> Result<Uuid, AppError> {
+        let hash = crate::homes::hash_token(token);
+        let invite = self
             .repo
-            .find_member_by_email(home_id, &email)
+            .invite_by_hash(&hash)
             .await?
-            .ok_or_else(|| AppError::not_found("account with that email"))?;
+            .ok_or_else(|| AppError::not_found("invitation"))?;
+
+        if !invite.is_live(kernel::now()) {
+            return Err(AppError::validation(
+                "that invitation has expired or was already used",
+            ));
+        }
+        if crate::identity::normalize_email(actor_email) != invite.email {
+            return Err(AppError::forbidden(
+                "this invitation was sent to a different address",
+            ));
+        }
 
         self.repo
-            .add_member(home_id, target, role, role.can_manage())
-            .await
+            .add_member(invite.home_id, actor, invite.role, invite.role.can_manage())
+            .await?;
+        self.repo.accept_invite(invite.id, actor).await?;
+        Ok(invite.home_id)
+    }
+
+    pub async fn revoke_invite(
+        &self,
+        home_id: Uuid,
+        actor: Uuid,
+        id: Uuid,
+    ) -> Result<(), AppError> {
+        let home = self.require(home_id, actor).await?;
+        if !home.role.can_manage() {
+            return Err(AppError::forbidden(
+                "only an admin can revoke an invitation",
+            ));
+        }
+        self.repo.revoke_invite(home_id, id).await
     }
 
     pub async fn set_role(
@@ -570,6 +751,7 @@ mod tests {
         homes: Mutex<Vec<Home>>,
         members: Mutex<Vec<(Uuid, Uuid, Role)>>,
         rooms: Mutex<Vec<Room>>,
+        invites: Mutex<Vec<HomeInvite>>,
     }
 
     impl HomeRepo for FakeRepo {
@@ -745,6 +927,68 @@ mod tests {
             self.rooms.lock().unwrap().retain(|r| r.id != room_id);
             Ok(())
         }
+        async fn create_invite(&self, invite: &HomeInvite) -> Result<(), AppError> {
+            // Re-inviting replaces the live invitation for that address, like the real one.
+            self.invites.lock().unwrap().retain(|i| {
+                !(i.home_id == invite.home_id
+                    && i.email.eq_ignore_ascii_case(&invite.email)
+                    && i.accepted_at.is_none())
+            });
+            self.invites.lock().unwrap().push(invite.clone());
+            Ok(())
+        }
+        async fn invites(&self, home_id: Uuid) -> Result<Vec<HomeInvite>, AppError> {
+            Ok(self
+                .invites
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|i| i.home_id == home_id && i.accepted_at.is_none())
+                .cloned()
+                .collect())
+        }
+        async fn invites_for_email(&self, email: &str) -> Result<Vec<HomeInvite>, AppError> {
+            Ok(self
+                .invites
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|i| {
+                    i.email.eq_ignore_ascii_case(email)
+                        && i.accepted_at.is_none()
+                        && i.expires_at > kernel::now()
+                })
+                .cloned()
+                .collect())
+        }
+        async fn invite_by_hash(&self, token_hash: &str) -> Result<Option<HomeInvite>, AppError> {
+            Ok(self
+                .invites
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|i| i.token_hash == token_hash)
+                .cloned())
+        }
+        async fn accept_invite(&self, id: Uuid, _: Uuid) -> Result<(), AppError> {
+            let mut invites = self.invites.lock().unwrap();
+            let Some(row) = invites.iter_mut().find(|i| i.id == id) else {
+                return Err(AppError::not_found("invitation"));
+            };
+            if row.accepted_at.is_some() {
+                return Err(AppError::validation("that invitation was already used"));
+            }
+            row.accepted_at = Some(kernel::now());
+            Ok(())
+        }
+        async fn revoke_invite(&self, home_id: Uuid, id: Uuid) -> Result<(), AppError> {
+            self.invites
+                .lock()
+                .unwrap()
+                .retain(|i| !(i.id == id && i.home_id == home_id));
+            Ok(())
+        }
+
         async fn room_belongs_to(&self, room_id: Uuid, home_id: Uuid) -> Result<bool, AppError> {
             Ok(self
                 .rooms

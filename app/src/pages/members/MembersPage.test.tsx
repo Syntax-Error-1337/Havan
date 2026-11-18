@@ -41,7 +41,12 @@ function stubApi(over: { home?: unknown; members?: unknown[] } = {}) {
 
     let payload: unknown = [];
     if (String(url).endsWith('/homes')) payload = [over.home ?? home];
-    else if (String(url).includes('/members')) payload = over.members ?? members;
+    else if (String(url).includes('/members') && method === 'POST') {
+      // The invite endpoint now answers with what it did: `added` for an existing account, `invited` plus a token for an
+      // address with none. A 204 here would be a server this app no longer talks to.
+      payload = { outcome: 'added' };
+    } else if (String(url).includes('/members')) payload = over.members ?? members;
+    else if (String(url).includes('/invitations')) payload = [];
     else if (String(url).endsWith('/me')) payload = { id: 'u-me', email: 'grace@example.com', display_name: 'Grace Hopper', locale: 'en' };
 
     return {

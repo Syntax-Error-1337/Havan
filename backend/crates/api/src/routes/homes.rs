@@ -2,8 +2,8 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::routing::{get, patch};
-use domain::homes::{Home, Member, Role, Room};
+use axum::routing::{delete, get, patch, post};
+use domain::homes::{Home, InviteOutcome, Member, Role, Room};
 use domain::notification::NotificationRepo;
 use domain::scenes::SceneRepo;
 use serde::Deserialize;
@@ -18,6 +18,12 @@ pub fn router() -> Router<AppState> {
         .route("/homes", get(list).post(create))
         .route("/homes/{id}", get(one).patch(rename).delete(remove))
         .route("/homes/{id}/members", get(members).post(invite))
+        .route("/homes/{id}/invitations", get(invitations))
+        .route(
+            "/homes/{id}/invitations/{invite_id}",
+            delete(revoke_invitation),
+        )
+        .route("/invitations/accept", post(accept_invitation))
         .route(
             "/homes/{id}/members/{user_id}",
             patch(set_role).delete(remove_member),
@@ -218,19 +224,77 @@ async fn members(
     ))
 }
 
+/// Add somebody to a home — or invite them, if the address has no account yet.
+///
+/// The response says which happened, because they need different follow-ups: `added` means the person is in the home
+/// now, `invited` carries a token that has to be sent to them, and it is the only time it is ever shown.
 async fn invite(
     State(state): State<AppState>,
     auth: Auth,
     Path(id): Path<Uuid>,
     Json(body): Json<InviteBody>,
-) -> ApiResult<StatusCode> {
+) -> ApiResult<Json<InviteOutcome>> {
     let role = parse_role(&body.role)?;
+    Ok(Json(
+        state
+            .homes
+            .invite(id, auth.user.id, &body.email, role)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+async fn invitations(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<Vec<domain::homes::HomeInvite>>> {
+    Ok(Json(
+        state
+            .homes
+            .invites(id, auth.user.id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+async fn revoke_invitation(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path((id, invite_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<StatusCode> {
     state
         .homes
-        .invite(id, auth.user.id, &body.email, role)
+        .revoke_invite(id, auth.user.id, invite_id)
         .await
         .map_err(ApiError)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct AcceptBody {
+    token: String,
+}
+
+/// `POST /v1/invitations/accept` — join a home from the link somebody sent.
+async fn accept_invitation(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(body): Json<AcceptBody>,
+) -> ApiResult<Json<serde_json::Value>> {
+    // The signed-in address is what the invitation is bound to: a forwarded link must not let the wrong person in.
+    let email = auth
+        .user
+        .email
+        .as_deref()
+        .ok_or_else(|| ApiError(kernel::AppError::forbidden("this account has no address")))?;
+
+    let home = state
+        .homes
+        .accept_invite(auth.user.id, email, &body.token)
+        .await
+        .map_err(ApiError)?;
+    Ok(Json(serde_json::json!({ "home_id": home })))
 }
 
 async fn set_role(

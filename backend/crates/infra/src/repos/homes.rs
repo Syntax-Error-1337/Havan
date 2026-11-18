@@ -1,4 +1,4 @@
-use domain::homes::{Home, HomeRepo, Member, Role, Room};
+use domain::homes::{Home, HomeInvite, HomeRepo, Member, Role, Room};
 use kernel::AppError;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -10,6 +10,20 @@ pub struct PgHomes {
 impl PgHomes {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// A transaction that may cross tenant boundaries, the same way `Pg::scoped(system)` does.
+    ///
+    /// Invitations need it for one specific reason: the person accepting is not a member of the home yet, so a policy
+    /// keyed on membership cannot see the row they are accepting. The service has already checked the token's address
+    /// against the signed-in account — this is plumbing, not the authority.
+    async fn system_tx(&self) -> Result<sqlx::Transaction<'_, sqlx::Postgres>, AppError> {
+        let mut tx = self.pool.begin().await.map_err(db)?;
+        sqlx::query("SET LOCAL ROLE haven_system")
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        Ok(tx)
     }
 
     /// Run a homes query with the caller's identity in place.
@@ -34,6 +48,43 @@ impl PgHomes {
 
 fn db(e: sqlx::Error) -> AppError {
     AppError::Database(Box::new(e))
+}
+
+type InviteRow = (
+    Uuid,
+    Uuid,
+    String,
+    String,
+    String,
+    Uuid,
+    time::OffsetDateTime,
+    time::OffsetDateTime,
+    Option<time::OffsetDateTime>,
+);
+
+fn invite_of(row: InviteRow) -> HomeInvite {
+    let (id, home_id, email, role, token_hash, invited_by, created_at, expires_at, accepted_at) =
+        row;
+    HomeInvite {
+        id,
+        home_id,
+        email,
+        role: role_of(&role),
+        token_hash,
+        invited_by,
+        created_at,
+        expires_at,
+        accepted_at,
+    }
+}
+
+fn role_str(role: Role) -> &'static str {
+    match role {
+        Role::Owner => "owner",
+        Role::Admin => "admin",
+        Role::Member => "member",
+        Role::Guest => "guest",
+    }
 }
 
 fn role_of(s: &str) -> Role {
@@ -425,6 +476,124 @@ impl HomeRepo for PgHomes {
             .await
             .map_err(db)?;
         tx.commit().await.map_err(db)
+    }
+
+    async fn create_invite(&self, invite: &HomeInvite) -> Result<(), AppError> {
+        // One live invitation per address per home: re-inviting replaces the old one rather than stacking, because two
+        // working links for the same person is how "which one did I send?" starts. Two statements in one transaction
+        // rather than `ON CONFLICT`, which needs the partial index's predicate to be inferred exactly — a failure that
+        // shows up as "a dependency is unavailable" at the edge and as nothing at all in a log.
+        let mut tx = self.system_tx().await?;
+        sqlx::query(
+            r#"DELETE FROM home_invites
+                WHERE home_id = $1 AND lower(email) = lower($2) AND accepted_at IS NULL"#,
+        )
+        .bind(invite.home_id)
+        .bind(&invite.email)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        sqlx::query(
+            r#"INSERT INTO home_invites (id, home_id, email, role, token_hash, invited_by, created_at, expires_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"#,
+        )
+        .bind(invite.id)
+        .bind(invite.home_id)
+        .bind(&invite.email)
+        .bind(role_str(invite.role))
+        .bind(&invite.token_hash)
+        .bind(invite.invited_by)
+        .bind(invite.created_at)
+        .bind(invite.expires_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
+    async fn invites(&self, home_id: Uuid) -> Result<Vec<HomeInvite>, AppError> {
+        let rows = sqlx::query_as::<_, InviteRow>(
+            r#"SELECT id, home_id, email, role, token_hash, invited_by, created_at, expires_at, accepted_at
+                 FROM home_invites
+                WHERE home_id = $1 AND accepted_at IS NULL
+                ORDER BY created_at DESC"#,
+        )
+        .bind(home_id)
+        .fetch_all(&mut *self.system_tx().await?)
+        .await
+        .map_err(db)?;
+        Ok(rows.into_iter().map(invite_of).collect())
+    }
+
+    async fn invites_for_email(&self, email: &str) -> Result<Vec<HomeInvite>, AppError> {
+        let rows = sqlx::query_as::<_, InviteRow>(
+            r#"SELECT id, home_id, email, role, token_hash, invited_by, created_at, expires_at, accepted_at
+                 FROM home_invites
+                WHERE lower(email) = lower($1) AND accepted_at IS NULL AND expires_at > now()
+                ORDER BY created_at DESC"#,
+        )
+        .bind(email)
+        .fetch_all(&mut *self.system_tx().await?)
+        .await
+        .map_err(db)?;
+        Ok(rows.into_iter().map(invite_of).collect())
+    }
+
+    async fn invite_by_hash(&self, token_hash: &str) -> Result<Option<HomeInvite>, AppError> {
+        let row = sqlx::query_as::<_, InviteRow>(
+            r#"SELECT id, home_id, email, role, token_hash, invited_by, created_at, expires_at, accepted_at
+                 FROM home_invites
+                WHERE token_hash = $1"#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&mut *self.system_tx().await?)
+        .await
+        .map_err(db)?;
+        Ok(row.map(invite_of))
+    }
+
+    async fn accept_invite(&self, id: Uuid, user_id: Uuid) -> Result<(), AppError> {
+        // The transaction has to be committed, not merely dropped: a `SET LOCAL ROLE` transaction that is dropped
+        // rolls back, and the first version of this method reported success while leaving the invitation live — which
+        // a second accept then happily joined twice.
+        let mut tx = self.system_tx().await?;
+        let n = sqlx::query(
+            "UPDATE home_invites SET accepted_at = now(), accepted_user_id = $2
+              WHERE id = $1 AND accepted_at IS NULL",
+        )
+        .bind(id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+        tx.commit().await.map_err(db)?;
+
+        // Accepting twice is a second tap, not an error — but a row that was already accepted must not silently
+        // re-add somebody who was later removed from the home.
+        if n == 0 {
+            return Err(AppError::validation("that invitation was already used"));
+        }
+        Ok(())
+    }
+
+    async fn revoke_invite(&self, home_id: Uuid, id: Uuid) -> Result<(), AppError> {
+        let mut tx = self.system_tx().await?;
+        let n = sqlx::query("DELETE FROM home_invites WHERE id = $1 AND home_id = $2")
+            .bind(id)
+            .bind(home_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?
+            .rows_affected();
+        tx.commit().await.map_err(db)?;
+        if n == 0 {
+            return Err(AppError::not_found("invitation"));
+        }
+        Ok(())
     }
 
     async fn room_belongs_to(&self, room_id: Uuid, home_id: Uuid) -> Result<bool, AppError> {

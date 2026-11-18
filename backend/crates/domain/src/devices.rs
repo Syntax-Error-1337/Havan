@@ -658,6 +658,14 @@ mod tests {
         members: Mutex<Vec<(Uuid, Uuid, Role)>>,
     }
 
+    /// The invitation half of `HomeRepo` is exercised in `homes.rs` and against the database; these tests are about
+    /// device state, so the invite methods answer as an empty house rather than pretending.
+    impl FakeHomes {
+        fn no_invites(&self) -> Result<Vec<crate::homes::HomeInvite>, AppError> {
+            Ok(vec![])
+        }
+    }
+
     impl HomeRepo for FakeHomes {
         async fn create_home(&self, home: &Home) -> Result<(), AppError> {
             self.homes.lock().unwrap().push(home.clone());
@@ -745,6 +753,31 @@ mod tests {
         async fn delete_room(&self, _: Uuid) -> Result<(), AppError> {
             Ok(())
         }
+        async fn create_invite(&self, _: &crate::homes::HomeInvite) -> Result<(), AppError> {
+            Ok(())
+        }
+        async fn invites(&self, _: Uuid) -> Result<Vec<crate::homes::HomeInvite>, AppError> {
+            self.no_invites()
+        }
+        async fn invites_for_email(
+            &self,
+            _: &str,
+        ) -> Result<Vec<crate::homes::HomeInvite>, AppError> {
+            self.no_invites()
+        }
+        async fn invite_by_hash(
+            &self,
+            _: &str,
+        ) -> Result<Option<crate::homes::HomeInvite>, AppError> {
+            Ok(None)
+        }
+        async fn accept_invite(&self, _: Uuid, _: Uuid) -> Result<(), AppError> {
+            Ok(())
+        }
+        async fn revoke_invite(&self, _: Uuid, _: Uuid) -> Result<(), AppError> {
+            Ok(())
+        }
+
         async fn room_belongs_to(&self, _: Uuid, _: Uuid) -> Result<bool, AppError> {
             Ok(true)
         }

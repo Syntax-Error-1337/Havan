@@ -6,6 +6,7 @@ import {
   AppText,
   Box,
   Button,
+  Card,
   ChipPicker,
   QueryError,
   Row,
@@ -13,13 +14,16 @@ import {
   ScreenHeader,
   ScreenScroll,
   Section,
+  TouchText,
   useConfirm,
 } from '../../shared/ui';
 import {
   canManage,
   useCurrentHome,
   useInviteMember,
+  useInvitations,
   useMembers,
+  useRevokeInvitation,
   useRemoveMember,
   useSetMemberRole,
   type Member,
@@ -56,6 +60,8 @@ export function MembersPage() {
   const confirm = useConfirm();
 
   const [email, setEmail] = useState('');
+  // The invitation link, shown exactly once: there is no mail transport, so the admin has to carry it to the person.
+  const [inviteLink, setInviteLink] = useState<{ email: string; token: string; expiresAt: string } | null>(null);
   const [inviteRole, setInviteRole] = useState<Role>('member');
   const [editing, setEditing] = useState<string | null>(null);
 
@@ -64,6 +70,8 @@ export function MembersPage() {
   const ownerId = home?.owner_id ?? members?.find((m) => m.role === 'owner')?.user_id ?? null;
   const listFailure = changeRole.error ?? remove.error ?? null;
   const inviteFailure = invite.error ? inviteWords(invite.error) : null;
+  const { data: invites } = useInvitations(homeId ?? undefined);
+  const revoke = useRevokeInvitation(homeId ?? undefined);
 
   return (
     <Screen>
@@ -168,6 +176,61 @@ export function MembersPage() {
                 ]}
                 onChange={(next) => setInviteRole(next as Role)}
               />
+              {(invites ?? []).length > 0 ? (
+                <Box gap="xs">
+                  <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
+                    WAITING TO ACCEPT
+                  </AppText>
+                  {(invites ?? []).map((invite) => (
+                    <Box key={invite.id} row gap="md" style={{ alignItems: 'center', minHeight: tokens.touch.min }}>
+                      <Box flex={1} gap="xs">
+                        <AppText numberOfLines={1}>{invite.email}</AppText>
+                        <AppText variant="tiny" tone="muted">
+                          {`Invited as ${invite.role}, expires ${new Date(invite.expires_at).toLocaleDateString()}`}
+                        </AppText>
+                      </Box>
+                      <TouchText
+                        label={`Revoke the invitation for ${invite.email}`}
+                        onPress={() =>
+                          revoke.mutate(invite.id, { onSuccess: () => toast('Invitation revoked') })
+                        }
+                      >
+                        <AppText variant="caption" tone="danger">
+                          Revoke
+                        </AppText>
+                      </TouchText>
+                    </Box>
+                  ))}
+                </Box>
+              ) : null}
+
+              {inviteLink ? (
+                <Card accent={color.accent} testID="invite-created">
+                  <Box gap="xs">
+                    <AppText weight="600">Invitation ready for {inviteLink.email}</AppText>
+                    <AppText variant="caption" tone="muted">
+                      Send them this link. It works once, for that address only, and stops working on{' '}
+                      {new Date(inviteLink.expiresAt).toLocaleDateString()}.
+                    </AppText>
+                    <Box
+                      style={{
+                        paddingVertical: tokens.space.sm,
+                        paddingHorizontal: tokens.space.md,
+                        borderRadius: tokens.radius.md,
+                        backgroundColor: color.elevated,
+                        borderWidth: 1,
+                        borderColor: color.border,
+                      }}
+                    >
+                      <AppText variant="caption" selectable accessibilityLabel="Invitation link">
+                        {`haven://join?token=${inviteLink.token}`}
+                      </AppText>
+                    </Box>
+                    <Button label="Done" variant="ghost" onPress={() => setInviteLink(null)} />
+                  </Box>
+                </Card>
+              ) : null}
+
               {inviteFailure ? (
                 <AppText variant="tiny" tone="danger">
                   {inviteFailure}
@@ -180,9 +243,22 @@ export function MembersPage() {
                   invite.mutate(
                     { homeId, email: email.trim(), role: inviteRole },
                     {
-                      onSuccess: () => {
-                        toast(`Invitation sent to ${email.trim()}`);
+                      onSuccess: (result) => {
                         setEmail('');
+                        // "Added" and "invited" are different facts and need different next steps. The invitation case
+                        // is the one that used to be a 404, and its link has to be seen now: there is no email.
+                        // Only an explicit `invited` opens the link card: anything else — a 204 from an older server, a
+                        // body a proxy stripped — means the person is in the home, which is what "added" has always
+                        // meant. The other way round would show a link with no token in it.
+                        if (result?.outcome !== 'invited') {
+                          toast('Added to this home');
+                          return;
+                        }
+                        setInviteLink({
+                          email: email.trim(),
+                          token: result.token,
+                          expiresAt: result.expires_at,
+                        });
                       },
                     },
                   );

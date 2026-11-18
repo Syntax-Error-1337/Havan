@@ -73,21 +73,82 @@ export function useSetTimeZone() {
   * to an address in this platform is a membership, not an email, and there is no mail transport to send one. The
   * screen says so rather than promising a letter.
   */
- export function useInviteMember() {
-   const qc = useQueryClient();
-   return useMutation({
-     mutationFn: (input: { homeId: string; email: string; role: Role }) =>
-       request<void>(`/homes/${input.homeId}/members`, {
-         method: 'POST',
-         body: JSON.stringify({ email: input.email, role: input.role }),
-       }),
-     onSuccess: (_data, input) => {
-       void qc.invalidateQueries({ queryKey: qk.members(input.homeId) });
-       // The count on the homes list and on Settings comes from the home row.
-       void qc.invalidateQueries({ queryKey: qk.homes });
-     },
-   });
- }
+ /**
+ * What inviting somebody did.
+ *
+ * `added` means the address already had an account and is in the home now. `invited` means it did not, and carries the
+ * token that is the only way for them to get in — shown once, because there is still no mail transport.
+ */
+export type InviteResult =
+  | { outcome: 'added' }
+  | { outcome: 'invited'; token: string; expires_at: string };
+
+export function useInviteMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { homeId: string; email: string; role: Role }) =>
+      request<InviteResult>(`/homes/${input.homeId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ email: input.email, role: input.role }),
+      }),
+    onSuccess: (_data, input) => {
+      void qc.invalidateQueries({ queryKey: qk.members(input.homeId) });
+      void qc.invalidateQueries({ queryKey: qk.invitations(input.homeId) });
+      // The count on the homes list and on Settings comes from the home row.
+      void qc.invalidateQueries({ queryKey: qk.homes });
+    },
+  });
+}
+
+/** The invitation waiting to be accepted for a home. */
+export type PendingInvite = {
+  id: string;
+  home_id: string;
+  email: string;
+  role: Role;
+  created_at: string;
+  expires_at: string;
+};
+
+export function useInvitations(homeId: string | undefined) {
+  return useQuery({
+    queryKey: qk.invitations(homeId ?? 'none'),
+    queryFn: () => request<PendingInvite[]>(`/homes/${homeId}/invitations`),
+    enabled: Boolean(homeId),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Accept an invitation. The home comes back, so the caller can open it.
+ *
+ * The address has to match the one the invitation was sent to — the server refuses otherwise, because a forwarded link
+ * is a forward, not a key.
+ */
+export function useAcceptInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) =>
+      request<{ home_id: string }>('/invitations/accept', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.homes });
+    },
+  });
+}
+
+export function useRevokeInvitation(homeId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/homes/${homeId}/invitations/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.invitations(homeId ?? 'none') });
+    },
+  });
+}
 
  export function useSetMemberRole() {
    const qc = useQueryClient();

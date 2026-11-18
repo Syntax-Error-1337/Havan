@@ -5,6 +5,7 @@
 export const qk = {
   me: ['me'] as const,
   sessions: ['me', 'sessions'] as const,
+  invitations: (homeId: string) => ['home', homeId, 'invitations'] as const,
   pushTokens: ['notifications', 'tokens'] as const,
   homes: ['homes'] as const,
   home: (id: string) => ['home', id] as const,
