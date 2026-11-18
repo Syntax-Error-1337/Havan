@@ -515,6 +515,11 @@ impl HomeRepo for PgHomes {
     }
 
     async fn invites(&self, home_id: Uuid) -> Result<Vec<HomeInvite>, AppError> {
+        // The transaction is bound and committed rather than built inline: a temporary one is dropped at the end of the
+        // statement, and the rollback it issues lands on a connection that is already back in the pool — which is where
+        // "there is no transaction in progress" in the server log came from. Harmless for a read, and still the exact
+        // shape that hid a real bug in `accept_invite`.
+        let mut tx = self.system_tx().await?;
         let rows = sqlx::query_as::<_, InviteRow>(
             r#"SELECT id, home_id, email, role, token_hash, invited_by, created_at, expires_at, accepted_at
                  FROM home_invites
@@ -522,13 +527,15 @@ impl HomeRepo for PgHomes {
                 ORDER BY created_at DESC"#,
         )
         .bind(home_id)
-        .fetch_all(&mut *self.system_tx().await?)
+        .fetch_all(&mut *tx)
         .await
         .map_err(db)?;
+        tx.commit().await.map_err(db)?;
         Ok(rows.into_iter().map(invite_of).collect())
     }
 
     async fn invites_for_email(&self, email: &str) -> Result<Vec<HomeInvite>, AppError> {
+        let mut tx = self.system_tx().await?;
         let rows = sqlx::query_as::<_, InviteRow>(
             r#"SELECT id, home_id, email, role, token_hash, invited_by, created_at, expires_at, accepted_at
                  FROM home_invites
@@ -536,22 +543,25 @@ impl HomeRepo for PgHomes {
                 ORDER BY created_at DESC"#,
         )
         .bind(email)
-        .fetch_all(&mut *self.system_tx().await?)
+        .fetch_all(&mut *tx)
         .await
         .map_err(db)?;
+        tx.commit().await.map_err(db)?;
         Ok(rows.into_iter().map(invite_of).collect())
     }
 
     async fn invite_by_hash(&self, token_hash: &str) -> Result<Option<HomeInvite>, AppError> {
+        let mut tx = self.system_tx().await?;
         let row = sqlx::query_as::<_, InviteRow>(
             r#"SELECT id, home_id, email, role, token_hash, invited_by, created_at, expires_at, accepted_at
                  FROM home_invites
                 WHERE token_hash = $1"#,
         )
         .bind(token_hash)
-        .fetch_optional(&mut *self.system_tx().await?)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(db)?;
+        tx.commit().await.map_err(db)?;
         Ok(row.map(invite_of))
     }
 
