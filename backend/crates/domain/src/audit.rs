@@ -106,6 +106,12 @@ pub struct AuditRow {
     pub ts: OffsetDateTime,
     pub actor_kind: String,
     pub actor_id: Option<Uuid>,
+    /// The actor's address, when they are a person and the address still exists.
+    ///
+    /// A uuid prefix is not an answer to "who did this": the person reading an audit trail is usually answering that
+    /// question for somebody else, and cannot be expected to look an id up somewhere. Absent for an API key, for
+    /// automation, and for a member who has since been removed — which is itself worth seeing.
+    pub actor_email: Option<String>,
     pub action: String,
     pub target_kind: String,
     pub target_id: Option<Uuid>,
@@ -264,6 +270,7 @@ mod tests {
             ts: kernel::now(),
             actor_kind: "user".into(),
             actor_id: None,
+            actor_email: None,
             action: "product.published".into(),
             target_kind: "product".into(),
             target_id: None,

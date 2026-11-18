@@ -19,6 +19,8 @@ type Row = (
     time::OffsetDateTime,
     String,
     Option<Uuid>,
+    // The actor's email, resolved at read time: the log stores who acted, not what they were called then.
+    Option<String>,
     String,
     String,
     Option<Uuid>,
@@ -79,13 +81,14 @@ impl AuditRepo for PgAudit {
         let mut tx = self.pg.scoped(&TenantCtx::system("audit-read-all")).await?;
 
         let rows: Vec<Row> = sqlx::query_as(
-            r#"SELECT id, ts, actor_kind, actor_id, action, target_kind, target_id,
-                      request_id, host(ip), detail
-                 FROM audit_log
-                WHERE ($1::uuid IS NULL OR vendor_id = $1)
+            r#"SELECT a.id, a.ts, a.actor_kind, a.actor_id, u.email, a.action, a.target_kind, a.target_id,
+                      a.request_id, host(a.ip), a.detail
+                 FROM audit_log a
+                 LEFT JOIN vendor_users u ON u.id = a.actor_id AND u.vendor_id = a.vendor_id
+                WHERE ($1::uuid IS NULL OR a.vendor_id = $1)
                   AND ($2::uuid IS NULL
-                       OR (ts, id) < (SELECT ts, id FROM audit_log WHERE id = $2))
-                ORDER BY ts DESC, id DESC
+                       OR (a.ts, a.id) < (SELECT ts, id FROM audit_log WHERE id = $2))
+                ORDER BY a.ts DESC, a.id DESC
                 LIMIT $3"#,
         )
         .bind(vendor)
@@ -114,13 +117,16 @@ impl AuditRepo for PgAudit {
         // Keyset on (ts, id): two entries in the same millisecond would otherwise be
         // skipped or repeated between pages.
         let rows: Vec<Row> = sqlx::query_as(
-            r#"SELECT id, ts, actor_kind, actor_id, action, target_kind, target_id,
-                      request_id, host(ip), detail
-                 FROM audit_log
-                WHERE vendor_id = $1
+            // The join is a read-time lookup on purpose: an audit row records the actor's id, and the address belongs
+            // to the account. A member who has since been removed leaves no email, which is the truth and is visible.
+            r#"SELECT a.id, a.ts, a.actor_kind, a.actor_id, u.email, a.action, a.target_kind, a.target_id,
+                      a.request_id, host(a.ip), a.detail
+                 FROM audit_log a
+                 LEFT JOIN vendor_users u ON u.id = a.actor_id AND u.vendor_id = a.vendor_id
+                WHERE a.vendor_id = $1
                   AND ($2::uuid IS NULL
-                       OR (ts, id) < (SELECT ts, id FROM audit_log WHERE id = $2))
-                ORDER BY ts DESC, id DESC
+                       OR (a.ts, a.id) < (SELECT ts, id FROM audit_log WHERE id = $2))
+                ORDER BY a.ts DESC, a.id DESC
                 LIMIT $3"#,
         )
         .bind(vendor_id)
@@ -138,13 +144,26 @@ impl AuditRepo for PgAudit {
 
 /// One shape, two readers: a vendor's page and the operator's page are the same rows.
 fn into_row(
-    (id, ts, actor_kind, actor_id, action, target_kind, target_id, request_id, ip, detail): Row,
+    (
+        id,
+        ts,
+        actor_kind,
+        actor_id,
+        actor_email,
+        action,
+        target_kind,
+        target_id,
+        request_id,
+        ip,
+        detail,
+    ): Row,
 ) -> AuditRow {
     AuditRow {
         id,
         ts,
         actor_kind,
         actor_id,
+        actor_email,
         action,
         target_kind,
         target_id,

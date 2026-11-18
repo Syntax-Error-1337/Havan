@@ -328,9 +328,10 @@ async fn subscribe_webhook(
         ))));
     }
 
+    let url = body.url.trim().to_string();
     let (id, secret) = state
         .webhooks
-        .create(vendor.vendor_id, body.url.trim(), body.events)
+        .create(vendor.vendor_id, &url, body.events)
         .await
         .map_err(ApiError)?;
 
@@ -345,7 +346,10 @@ async fn subscribe_webhook(
             )
             .by(vendor.user_id)
             .on(id)
-            .with_request(&vendor.request_id),
+            .with_request(&vendor.request_id)
+            // The destination, not just the id: "which webhook was that" is the first question anybody asks of this
+            // row, and an audit entry that cannot answer it is a pointer to a table the reader may no longer have.
+            .detail(serde_json::json!({ "url": url })),
         )
         .await;
 

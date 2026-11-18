@@ -93,6 +93,17 @@ async fn revoke(
     peer: crate::limits::Peer,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
+    // Read the name before the key is gone: "which key was revoked" is the question this row will be asked later, and
+    // a revoked key cannot be looked up to answer it.
+    let name = state
+        .api_keys
+        .list(vendor.vendor_id)
+        .await
+        .map_err(ApiError)?
+        .into_iter()
+        .find(|key| key.id == id)
+        .map(|key| key.name);
+
     state
         .api_keys
         .revoke(vendor.vendor_id, id)
@@ -112,7 +123,8 @@ async fn revoke(
             .by(vendor.user_id)
             .on(id)
             .with_request(&vendor.request_id)
-            .from_ip(peer.ip()),
+            .from_ip(peer.ip())
+            .detail(serde_json::json!({ "name": name })),
         )
         .await;
 

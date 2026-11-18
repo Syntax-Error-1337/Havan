@@ -7,6 +7,8 @@ export type AuditEntry = {
   ts: string;
   actor_kind: 'user' | 'api_key' | 'system';
   actor_id: string | null;
+  /** The actor's address, resolved at read time. Null for a key, for automation, or for a member since removed. */
+  actor_email: string | null;
   action: string;
   target_kind: string;
   target_id: string | null;

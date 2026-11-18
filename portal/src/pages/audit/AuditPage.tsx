@@ -56,13 +56,14 @@ export function AuditPage() {
                   <td className="nowrap muted">{when(entry.ts)}</td>
                   <td>
                     <span className="mono">{entry.action}</span>
-                    <Detail detail={entry.detail} />
+                    {/* The target column already names what was acted on; repeating it here as `url=…` is the same
+                        fact twice on one row. */}
+                    <Detail detail={entry.detail} already={targetLabel(entry)} />
                   </td>
-                  <td className="muted">
-                    {entry.target_kind}
-                    {entry.target_id ? (
-                      <span className="mono"> {entry.target_id.slice(0, 8)}</span>
-                    ) : null}
+                  {/* What was acted on, in the words a person would use. "vendor_webhook 01a1eba6" is a row in a
+                      table, not an answer; the id stays in the title for when it is the right level of detail. */}
+                  <td className="muted" title={entry.target_id ?? undefined}>
+                    {targetLabel(entry)}
                   </td>
                   <td className="muted">{who(entry)}</td>
                   <td className="mono muted">{entry.ip ?? '—'}</td>
@@ -82,10 +83,17 @@ export function AuditPage() {
   );
 }
 
-/** "who" in words: a person, a vendor's server, or a job nobody pressed a button for. */
+/**
+ * "who" in words: a person, a vendor's server, or a job nobody pressed a button for.
+ *
+ * The address first, because "who did this" is the question an audit trail exists to answer and nobody can answer it
+ * from a uuid prefix. The id stays as the fallback for a person whose account has since been removed — which is itself
+ * a fact worth seeing in a trail.
+ */
 export function who(entry: AuditEntry): string {
   switch (entry.actor_kind) {
     case 'user':
+      if (entry.actor_email) return entry.actor_email;
       return entry.actor_id ? `user ${entry.actor_id.slice(0, 8)}` : 'a user';
     case 'api_key':
       return 'an API key';
@@ -94,10 +102,36 @@ export function who(entry: AuditEntry): string {
   }
 }
 
+/**
+ * What the action was done to, named rather than numbered.
+ *
+ * The audit row carries the resource's kind and id; the human label lives in the detail the action recorded. Where there
+ * is none — an old row, or an action whose subject has no name — the kind and a short id are still better than nothing,
+ * because at least they say which sort of thing changed.
+ */
+export function targetLabel(entry: AuditEntry): string {
+  const detail = (entry.detail ?? {}) as Record<string, unknown>;
+  const named = [detail.url, detail.name, detail.email, detail.serial].find(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
+  if (named) return named;
+
+  const kind = entry.target_kind.replace(/_/g, ' ');
+  return entry.target_id ? `${kind} ${entry.target_id.slice(0, 8)}` : kind;
+}
+
 /** The details that fit on one line, as `key=value` pairs. */
-function Detail({ detail }: { detail: Record<string, unknown> }) {
+function Detail({
+  detail,
+  already,
+}: {
+  detail: Record<string, unknown>;
+  /** A value shown elsewhere in the row, so it is not printed twice. */
+  already?: string;
+}) {
   const pairs = Object.entries(detail ?? {}).filter(
-    ([, v]) => v !== null && v !== undefined && typeof v !== 'object',
+    ([, v]) =>
+      v !== null && v !== undefined && typeof v !== 'object' && String(v) !== already,
   );
   if (pairs.length === 0) return null;
   return (
@@ -108,8 +142,16 @@ function Detail({ detail }: { detail: Record<string, unknown> }) {
 }
 
 /** Local time, to the minute: an audit row is read to place an incident, not to the ms. */
+/**
+ * To the second, in local time.
+ *
+ * Minutes were not enough to order a trail: four entries shared 06:35, so "newest first" could not be checked against
+ * the screen. Seconds do not make it a proof — the row's own id and timestamp are in its title for that.
+ */
 export function when(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
+    d.getMinutes(),
+  )}:${pad(d.getSeconds())}`;
 }

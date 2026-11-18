@@ -59,6 +59,24 @@ duration answers *is it alive* and the timestamp answers *was it alive when the 
   not a `tfoot`: a table cell is laid out by the table's algorithm and `position: sticky` on it is a promise the browser
   does not keep — the first attempt silently did nothing at all.
 
+## Audit — found and fixed
+
+The trail answered "when" and "what action" and nothing else. A reviewer's first question is *who*, and the column said
+**`user 01a1cdb7`** — a uuid prefix that cannot be resolved without leaving the screen.
+
+| What | Why it mattered | Now |
+| --- | --- | --- |
+| `Who` was a uuid prefix | "Who did this" is the question an audit trail exists to answer, and the person reading it is usually answering it for somebody else | The actor's **email**, resolved at read time by joining `vendor_users`. A member since removed keeps the id — which is itself worth seeing in a trail |
+| Timestamps to the minute | Four entries shared `06:35`, so "newest first" could not be checked against the screen | To the **second**, in local time |
+| `Target` was `vendor_webhook 01a1eba6` | A kind and an id is a row in a table, not an answer | The **url / name / email** the action recorded, with the id in the title |
+| `webhook.created` and `api_key.revoked` recorded no subject at all | The trail could not say *which* webhook or key; the detail was never written, so nothing downstream could recover it | Both record `url` and `name` when written. The key's name is read **before** the key is revoked, because a revoked key cannot be looked up |
+
+Old rows keep their old detail. There is no honest way to backfill what was never recorded, and inventing one would be
+worse than the gap.
+
+Still open on this screen: no filter by action or actor, no search, and no export — an auditor with a specific question
+still reads the whole feed.
+
 ## What was not found
 
 The rest of the portal held up: Licences states the model in one sentence ("charged when a device is activated, not when
