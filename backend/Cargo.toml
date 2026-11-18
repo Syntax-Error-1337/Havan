@@ -61,7 +61,7 @@ base64 = "0.22"
 # Secrets that must be readable again (a TOTP seed), so hashing is not an option and a plain column is not either.
 # AES-256-GCM keyed from HAVEN_VAULT_KEY. MIT/Apache-2.0 (RustCrypto).
 aes-gcm = "0.10"
-ed25519-dalek = { version = "2", features = ["rand_core"] }
+ed25519-dalek = { version = "3", features = ["rand_core"] }
 jsonwebtoken = "9"
 # Certificate issuance. MIT/Apache-2.0, which is why it is allowed and openssl is not
 # (openssl is Apache-2.0 for the crate but pulls a system library with its own history).
