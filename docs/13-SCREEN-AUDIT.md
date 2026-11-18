@@ -76,7 +76,7 @@ and leaving.
 | --- | --- |
 | Account, home name, time zone, location, devices, members, at-home, rooms, appearance, about | — |
 | **No Notifications section** — *done, without quiet hours*: `GET /notifications/tokens` (count + platform, never the delivery address) and `DELETE /notifications/tokens`, surfaced as "Phones receiving alerts" and a confirmed "Turn off alerts everywhere". Quiet hours still needs server-side enforcement before it can be offered honestly | **P1** |
-| **No Security section** — *sessions done*: `GET /me/sessions` and `POST /auth/logout-others`, surfaced as "Signed-in devices" plus a confirmed, destructive "Sign out other devices". TOTP is still vendor-only; the consumer side has no second factor | **P1** |
+| **No Security section** — *sessions and second factor done on the server*: `GET /me/sessions` and `POST /auth/logout-others` are surfaced as "Signed-in devices" plus a confirmed, destructive "Sign out other devices"; `GET/POST/DELETE /me/totp` and `POST /me/totp/confirm` give the customer a real second factor (`second_factor_required` on sign-in, replayed codes refused, seed sealed with `HAVEN_VAULT_KEY`). The **screen for it is not written yet**, so it is a curl call today | **P1** — screen next |
 | Devices row is inert while Members navigates; two rows of the same family behave differently | **P1** — one line |
 | About shows the version only: no licences, no support contact, no status link | P2 |
 | No "leave home" here (it lives on Members) — the honest home of that action is ambiguous | P2 |

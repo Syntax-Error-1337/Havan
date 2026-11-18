@@ -21,6 +21,11 @@ pub fn router() -> Router<AppState> {
         .route("/me/sessions", get(sessions))
         .route("/auth/logout-others", post(logout_others))
         .route("/auth/password", post(change_password))
+        .route(
+            "/me/totp",
+            get(totp_state).post(start_totp).delete(disable_totp),
+        )
+        .route("/me/totp/confirm", post(confirm_totp))
 }
 
 #[derive(Deserialize)]
@@ -35,6 +40,10 @@ struct RegisterBody {
 struct LoginBody {
     email: String,
     password: String,
+    /// The second factor, when the account has one. Optional in the shape and required in the service for those
+    /// accounts, so a phone that has never enrolled sends the same body it always did.
+    #[serde(default)]
+    code: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -102,7 +111,11 @@ async fn login(
     let key = format!("rl:login:{}:{}", peer.key(), body.email.to_lowercase());
     limits::check(&state, &key, limits::LOGIN).await?;
 
-    match state.identity.login(&body.email, &body.password).await {
+    match state
+        .identity
+        .login_with_code(&body.email, &body.password, body.code.as_deref())
+        .await
+    {
         Ok(tokens) => Ok(Json(tokens)),
         Err(e) => {
             // Only failures are counted, and only after the credentials were proven
@@ -188,6 +201,75 @@ async fn change_password(
         .map_err(ApiError)?;
 
     Ok(Json(serde_json::json!({ "signed_out": revoked })))
+}
+
+#[derive(Deserialize)]
+struct ConfirmBody {
+    code: String,
+}
+
+/// `GET /v1/me/totp` — off, half-on, or on.
+async fn totp_state(
+    State(state): State<AppState>,
+    user: Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    let state_word = state
+        .identity
+        .totp_state(user.user.id)
+        .await
+        .map_err(ApiError)?;
+    Ok(Json(serde_json::json!({ "state": state_word })))
+}
+
+/// `POST /v1/me/totp` — begin an enrolment.
+///
+/// The seed is in this response and nowhere else it can be read: an endpoint that could hand a seed back later would be a
+/// second factor the server can be asked to disable.
+async fn start_totp(
+    State(state): State<AppState>,
+    user: Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    let started = state
+        .identity
+        .start_totp(
+            user.user.id,
+            user.user.email.as_deref().unwrap_or("your Haven account"),
+        )
+        .await
+        .map_err(ApiError)?;
+
+    Ok(Json(serde_json::json!({
+        "secret": started.secret,
+        "uri": started.uri,
+    })))
+}
+
+/// `POST /v1/me/totp/confirm` — prove the authenticator works before it starts gating sign-ins.
+async fn confirm_totp(
+    State(state): State<AppState>,
+    user: Auth,
+    Json(body): Json<ConfirmBody>,
+) -> ApiResult<Json<serde_json::Value>> {
+    state
+        .identity
+        .confirm_totp(user.user.id, &body.code)
+        .await
+        .map_err(ApiError)?;
+
+    tracing::info!(user = %user.user.id, "second factor confirmed");
+    Ok(Json(serde_json::json!({ "state": "on" })))
+}
+
+/// `DELETE /v1/me/totp` — turn it off again.
+async fn disable_totp(State(state): State<AppState>, user: Auth) -> ApiResult<StatusCode> {
+    state
+        .identity
+        .disable_totp(user.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    tracing::info!(user = %user.user.id, "second factor turned off");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Sign out everywhere except the device that asked.

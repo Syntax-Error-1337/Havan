@@ -35,6 +35,37 @@ pub struct User {
     pub locale: String,
 }
 
+/// What the account's second factor is doing, in the three states a screen can render.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TotpState {
+    Off,
+    /// A seed exists and the person has not yet proved their app produces the right codes.
+    Pending,
+    On,
+}
+
+/// The one moment the seed can be handed over: at enrolment, before it is ever used to check a sign-in.
+pub struct StartedTotp {
+    pub secret: String,
+    pub uri: String,
+}
+
+/// One TOTP enrolment: the sealed seed, whether the person proved their authenticator works, and the last step a code
+/// was accepted for.
+#[derive(Debug, Clone)]
+pub struct UserTotp {
+    pub sealed_secret: String,
+    pub confirmed_at: Option<time::OffsetDateTime>,
+    pub last_step: Option<i64>,
+}
+
+impl UserTotp {
+    pub fn is_confirmed(&self) -> bool {
+        self.confirmed_at.is_some()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RefreshRow {
     pub id: Uuid,
@@ -166,6 +197,34 @@ pub trait IdentityRepo {
         hash: &str,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
 
+    /// Store (or replace) an enrolment that has not been confirmed yet.
+    fn start_totp(
+        &self,
+        user_id: Uuid,
+        sealed_secret: &str,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// The enrolment, sealed. `None` when the person has never turned the second factor on.
+    fn totp(
+        &self,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<Option<UserTotp>, AppError>> + Send;
+
+    /// Mark the enrolment proved. Only a confirmed enrolment gates a sign-in.
+    fn confirm_totp(&self, user_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Record the step a code was accepted for, refusing a repeat.
+    ///
+    /// Returns `false` when that step has already been spent — the difference between "valid code" and "valid code that
+    /// somebody is reusing", which is the whole reason the column exists.
+    fn spend_totp_step(
+        &self,
+        user_id: Uuid,
+        step: i64,
+    ) -> impl Future<Output = Result<bool, AppError>> + Send;
+
+    fn delete_totp(&self, user_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
+
     /// Record that this person signed in. Best effort: a login must not fail because a
     /// timestamp could not be written.
     fn touch_vendor_login(
@@ -197,6 +256,9 @@ pub struct IdentityService<R> {
     repo: Arc<R>,
     encoding: EncodingKey,
     decoding: DecodingKey,
+    /// For the one secret that has to be read back: a TOTP seed. Absent in tests that never touch it, which is why the
+    /// methods that need it say so rather than defaulting to an unsealed column.
+    vault_key: Option<kernel::config::Secret>,
 }
 
 impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
@@ -205,7 +267,20 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
             repo,
             encoding: EncodingKey::from_secret(secret.as_bytes()),
             decoding: DecodingKey::from_secret(secret.as_bytes()),
+            vault_key: None,
         }
+    }
+
+    /// The second factor is unusable without the vault key, so it is wired in explicitly rather than assumed.
+    pub fn with_vault_key(mut self, key: kernel::config::Secret) -> Self {
+        self.vault_key = Some(key);
+        self
+    }
+
+    fn vault(&self) -> Result<&kernel::config::Secret, AppError> {
+        self.vault_key
+            .as_ref()
+            .ok_or_else(|| AppError::Internal("the vault key is not configured".into()))
     }
 
     pub async fn register(&self, input: RegisterInput) -> Result<Tokens, AppError> {
@@ -255,6 +330,126 @@ impl<R: IdentityRepo + Send + Sync> IdentityService<R> {
         }
 
         self.issue_session(user.id).await
+    }
+
+    /// Sign in, with the second factor when the account has one.
+    ///
+    /// The password is checked first and the code second, so a wrong code on a wrong password still says "wrong password":
+    /// there is nothing to gain from telling an attacker which half they got right. When the code is missing the answer
+    /// is `second_factor_required` rather than a generic refusal, because "wrong password" would send somebody who has a
+    /// working password to reset it.
+    pub async fn login_with_code(
+        &self,
+        email: &str,
+        password: &str,
+        code: Option<&str>,
+    ) -> Result<Tokens, AppError> {
+        let email = normalize_email(email);
+        let user = self.repo.find_by_email(&email).await?;
+
+        let Some(user) = user else {
+            let _ = verify_password(password, dummy_hash());
+            return Err(invalid_credentials());
+        };
+
+        let Some(hash) = user.password_hash.as_deref() else {
+            return Err(invalid_credentials());
+        };
+        if !verify_password(password, hash) {
+            return Err(invalid_credentials());
+        }
+
+        if let Some(enrolment) = self.repo.totp(user.id).await?
+            && enrolment.is_confirmed()
+        {
+            let Some(code) = code else {
+                return Err(AppError::code(
+                    ErrorCode::SecondFactorRequired,
+                    "this account has a second factor: send the code from your authenticator",
+                ));
+            };
+            self.check_second_factor(user.id, &enrolment, code).await?;
+        }
+
+        self.issue_session(user.id).await
+    }
+
+    /// The second factor as a person sees it: on, half-on, or off.
+    pub async fn totp_state(&self, user_id: Uuid) -> Result<TotpState, AppError> {
+        Ok(match self.repo.totp(user_id).await? {
+            Some(row) if row.is_confirmed() => TotpState::On,
+            Some(_) => TotpState::Pending,
+            None => TotpState::Off,
+        })
+    }
+
+    /// Begin an enrolment: a fresh seed, stored sealed and unconfirmed, plus the URI the authenticator app scans.
+    ///
+    /// The seed is returned to the caller because it is the one time it can be — after this the server will only ever
+    /// answer codes. It is not a confirmation: until the person proves a code works, a sign-in is not gated, because a
+    /// second factor nobody has set up is a way to lock yourself out of your own house.
+    pub async fn start_totp(&self, user_id: Uuid, account: &str) -> Result<StartedTotp, AppError> {
+        let secret = domain_totp::new_secret();
+        self.repo
+            .start_totp(
+                user_id,
+                &kernel::seal::seal(self.vault()?, secret.as_bytes())?,
+            )
+            .await?;
+
+        Ok(StartedTotp {
+            secret: secret.clone(),
+            uri: domain_totp::enrolment_uri("Haven", account, &secret),
+        })
+    }
+
+    pub async fn confirm_totp(&self, user_id: Uuid, code: &str) -> Result<(), AppError> {
+        let Some(enrolment) = self.repo.totp(user_id).await? else {
+            return Err(AppError::code(
+                ErrorCode::Conflict,
+                "start an enrolment first: there is no secret to confirm",
+            ));
+        };
+        self.check_second_factor(user_id, &enrolment, code).await?;
+        self.repo.confirm_totp(user_id).await
+    }
+
+    pub async fn disable_totp(&self, user_id: Uuid) -> Result<(), AppError> {
+        self.repo.delete_totp(user_id).await
+    }
+
+    /// Verify a code and spend its 30-second step.
+    ///
+    /// The step is recorded because a code stays valid for one step either side of now: without it, six digits seen over a
+    /// shoulder keep working for ninety seconds after they were used.
+    async fn check_second_factor(
+        &self,
+        user_id: Uuid,
+        enrolment: &UserTotp,
+        code: &str,
+    ) -> Result<(), AppError> {
+        let secret = kernel::seal::open(self.vault()?, &enrolment.sealed_secret)?;
+        let secret = String::from_utf8(secret)
+            .map_err(|_| AppError::Internal("the stored TOTP secret is not text".into()))?;
+        let now = kernel::now().unix_timestamp();
+
+        let code = code.trim().replace(' ', "");
+        // The step the code belongs to, not the step the clock is on: recording "now" would refuse a good code from the
+        // next step (the drift window allows it) and would accept a code twice if the clock had moved on.
+        let Some(step) = domain_totp::matching_step(&secret, &code, now) else {
+            return Err(AppError::code(
+                ErrorCode::Unauthorized,
+                "that code does not match; check the clock on your phone",
+            ));
+        };
+        if !self.repo.spend_totp_step(user_id, step).await? {
+            return Err(AppError::code(
+                ErrorCode::Unauthorized,
+                "that code has already been used; wait for the next one",
+            ));
+        }
+
+        Ok(())
     }
 
     /// Exchange a refresh token. A token that was already used means the
@@ -628,9 +823,12 @@ mod tests {
         users: Mutex<Vec<User>>,
         refresh: Mutex<Vec<RefreshRow>>,
         revocations: Mutex<Vec<Uuid>>,
-        /// The member's second factor: `(secret, confirmed)`. Defaults to none, which is what most
+        /// The vendor's second factor: `(secret, confirmed)`. Defaults to none, which is what most
         /// of these tests exercise.
         totp: Mutex<Option<(String, bool)>>,
+        /// The customer's own second factor. Kept apart from the vendor one: they are different principals, and a test
+        /// that confused them would pass while the portal and the app checked each other's rows.
+        user_totp: Mutex<Option<UserTotp>>,
         /// The portal account, if a test needs one to exist.
         vendor_user: Mutex<Option<VendorUser>>,
     }
@@ -739,6 +937,45 @@ mod tests {
                 });
             }
             Ok(seen)
+        }
+
+        async fn start_totp(&self, _user_id: Uuid, sealed_secret: &str) -> Result<(), AppError> {
+            *self.user_totp.lock().unwrap() = Some(UserTotp {
+                sealed_secret: sealed_secret.to_string(),
+                confirmed_at: None,
+                last_step: None,
+            });
+            Ok(())
+        }
+
+        async fn totp(&self, _user_id: Uuid) -> Result<Option<UserTotp>, AppError> {
+            Ok(self.user_totp.lock().unwrap().clone())
+        }
+
+        async fn confirm_totp(&self, _user_id: Uuid) -> Result<(), AppError> {
+            let mut row = self.user_totp.lock().unwrap();
+            let Some(enrolment) = row.as_mut() else {
+                return Err(AppError::not_found("enrolment"));
+            };
+            enrolment.confirmed_at = Some(kernel::now());
+            Ok(())
+        }
+
+        async fn spend_totp_step(&self, _user_id: Uuid, step: i64) -> Result<bool, AppError> {
+            let mut row = self.user_totp.lock().unwrap();
+            let Some(enrolment) = row.as_mut() else {
+                return Ok(false);
+            };
+            if enrolment.last_step.is_some_and(|last| last >= step) {
+                return Ok(false);
+            }
+            enrolment.last_step = Some(step);
+            Ok(true)
+        }
+
+        async fn delete_totp(&self, _user_id: Uuid) -> Result<(), AppError> {
+            *self.user_totp.lock().unwrap() = None;
+            Ok(())
         }
 
         async fn set_password_hash(&self, user_id: Uuid, hash: &str) -> Result<(), AppError> {

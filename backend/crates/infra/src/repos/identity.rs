@@ -1,5 +1,5 @@
 use crate::pg::Pg;
-use domain::identity::{IdentityRepo, RefreshRow, Session, User, VendorUser};
+use domain::identity::{IdentityRepo, RefreshRow, Session, User, UserTotp, VendorUser};
 use kernel::{AppError, TenantCtx};
 use uuid::Uuid;
 
@@ -341,6 +341,88 @@ impl IdentityRepo for PgIdentity {
                 },
             )
             .collect())
+    }
+
+    async fn start_totp(&self, user_id: Uuid, sealed_secret: &str) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("user-totp")).await?;
+        // Re-enrolling replaces an open enrolment. A confirmed one is not kept: the person asked for a new seed, and a
+        // row that holds two would be a second way in that nobody can see on a screen.
+        sqlx::query(
+            r#"INSERT INTO user_totp (user_id, sealed_secret, confirmed_at, last_step)
+               VALUES ($1, $2, NULL, NULL)
+               ON CONFLICT (user_id) DO UPDATE
+                 SET sealed_secret = EXCLUDED.sealed_secret,
+                     confirmed_at = NULL,
+                     last_step = NULL,
+                     created_at = now()"#,
+        )
+        .bind(user_id)
+        .bind(sealed_secret)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)
+    }
+
+    async fn totp(&self, user_id: Uuid) -> Result<Option<UserTotp>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("user-totp")).await?;
+        let row = sqlx::query_as::<_, (String, Option<time::OffsetDateTime>, Option<i64>)>(
+            "SELECT sealed_secret, confirmed_at, last_step FROM user_totp WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(
+            row.map(|(sealed_secret, confirmed_at, last_step)| UserTotp {
+                sealed_secret,
+                confirmed_at,
+                last_step,
+            }),
+        )
+    }
+
+    async fn confirm_totp(&self, user_id: Uuid) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("user-totp")).await?;
+        let n = sqlx::query("UPDATE user_totp SET confirmed_at = now() WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?
+            .rows_affected();
+        tx.commit().await.map_err(db)?;
+        if n == 0 {
+            return Err(AppError::not_found("enrolment"));
+        }
+        Ok(())
+    }
+
+    async fn spend_totp_step(&self, user_id: Uuid, step: i64) -> Result<bool, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("user-totp")).await?;
+        // One statement, so two requests arriving in the same step cannot both win: the `WHERE` is the lock.
+        let n = sqlx::query(
+            "UPDATE user_totp SET last_step = $2 WHERE user_id = $1 AND (last_step IS NULL OR last_step < $2)",
+        )
+        .bind(user_id)
+        .bind(step)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+        tx.commit().await.map_err(db)?;
+        Ok(n == 1)
+    }
+
+    async fn delete_totp(&self, user_id: Uuid) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("user-totp")).await?;
+        sqlx::query("DELETE FROM user_totp WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        tx.commit().await.map_err(db)
     }
 
     async fn set_password_hash(&self, user_id: Uuid, hash: &str) -> Result<(), AppError> {

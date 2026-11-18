@@ -11,6 +11,9 @@ pub enum ErrorCode {
     Unauthorized,
     InvalidCredentials,
     TokenExpired,
+    /// The password was right and the sign-in still needs the code from the person's authenticator. A 401 with its own
+    /// name, because "wrong password" would send them to reset a password that is fine.
+    SecondFactorRequired,
     // 403
     Forbidden,
     // 404
@@ -46,6 +49,7 @@ impl ErrorCode {
             ErrorCode::Unauthorized => "unauthorized",
             ErrorCode::InvalidCredentials => "invalid_credentials",
             ErrorCode::TokenExpired => "token_expired",
+            ErrorCode::SecondFactorRequired => "second_factor_required",
             ErrorCode::Forbidden => "forbidden",
             ErrorCode::NotFound => "not_found",
             ErrorCode::Conflict => "conflict",
@@ -65,9 +69,10 @@ impl ErrorCode {
     pub fn status(self) -> u16 {
         match self {
             ErrorCode::BadRequest => 400,
-            ErrorCode::Unauthorized | ErrorCode::InvalidCredentials | ErrorCode::TokenExpired => {
-                401
-            }
+            ErrorCode::Unauthorized
+            | ErrorCode::InvalidCredentials
+            | ErrorCode::TokenExpired
+            | ErrorCode::SecondFactorRequired => 401,
             ErrorCode::Forbidden => 403,
             ErrorCode::NotFound => 404,
             ErrorCode::Conflict | ErrorCode::AlreadyClaimed => 409,

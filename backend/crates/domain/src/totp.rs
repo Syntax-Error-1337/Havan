@@ -101,6 +101,35 @@ pub fn current(secret_b32: &str, unix_seconds: i64) -> Option<String> {
     Some(code_at(&secret, counter_at(unix_seconds)))
 }
 
+/// Which step a code belongs to, if any.
+///
+/// `verify` answers yes or no; a second factor that must not be replayed needs the step, because the step is what gets
+/// recorded. Spending "now" instead would refuse a perfectly good code from the next step and let a code from the
+/// previous one through twice.
+///
+/// Every candidate is still compared, so the time taken does not say which step matched.
+pub fn matching_step(secret_b32: &str, code: &str, unix_seconds: i64) -> Option<i64> {
+    let secret = base32_decode(secret_b32)?;
+    let code = code.trim();
+    if code.len() != DIGITS as usize || !code.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+
+    let now = counter_at(unix_seconds) as i64;
+    let mut found = None;
+    for step in -DRIFT_STEPS..=DRIFT_STEPS {
+        let counter = now + step;
+        if counter < 0 {
+            continue;
+        }
+        let candidate = code_at(&secret, counter as u64);
+        if constant_time_eq(candidate.as_bytes(), code.as_bytes()) {
+            found = Some(counter);
+        }
+    }
+    found
+}
+
 /// Does this code belong to this secret, within the drift window?
 ///
 /// Compared in constant time and over every candidate step, so the answer does not depend on

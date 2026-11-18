@@ -75,10 +75,15 @@ impl AppState {
     pub fn new(cfg: Arc<Config>, pg: Pg, cache: Cache, mqtt: Mqtt) -> Self {
         let pool = pg.pool().clone();
         let cfg_redis = cfg.redis_url.clone();
-        let identity = Arc::new(IdentityService::new(
-            Arc::new(PgIdentity::new(pg.clone())),
-            cfg.jwt_secret.expose(),
-        ));
+        let identity = Arc::new(
+            IdentityService::new(
+                Arc::new(PgIdentity::new(pg.clone())),
+                cfg.jwt_secret.expose(),
+            )
+            // The customer's second factor: a seed has to be read back to check a code, so it is sealed with the key that
+            // exists for secrets we must be able to open.
+            .with_vault_key(cfg.vault_key.clone()),
+        );
         let homes = Arc::new(HomeService::new(Arc::new(PgHomes::new(pool.clone()))));
         let devices = Arc::new(DeviceService::new(
             Arc::new(PgDevices::new(pg.clone())),
