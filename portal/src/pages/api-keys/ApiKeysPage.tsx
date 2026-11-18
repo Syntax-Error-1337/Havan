@@ -10,6 +10,16 @@ import { TableFrame } from '../../shared/ui/TableFrame';
  */
 export function ApiKeysPage() {
   const { data: keys, isPending, error } = useApiKeys();
+  /**
+   * Keys that still work first, newest first inside each group.
+   *
+   * Rotating a credential starts by finding the ones in use: mixing revoked keys through the list makes the reader scan
+   * past history to find the two rows they can actually act on.
+   */
+  const ordered = [...(keys ?? [])].sort((a, b) => {
+    const revoked = Number(Boolean(a.revoked_at)) - Number(Boolean(b.revoked_at));
+    return revoked !== 0 ? revoked : b.created_at.localeCompare(a.created_at);
+  });
   const create = useCreateApiKey();
   const revoke = useRevokeApiKey();
 
@@ -119,7 +129,7 @@ export function ApiKeysPage() {
                 </tr>
               </thead>
               <tbody>
-                {keys.map((key) => {
+                {ordered.map((key) => {
                   const state = keyState(key);
                   return (
                     <tr key={key.id}>
@@ -136,18 +146,34 @@ export function ApiKeysPage() {
                           : 'never'}
                       </td>
                       <td>
-                        <span className={`badge badge--${state === 'revoked' ? 'halted' : 'running'}`}>
+                        <span
+                          className={`badge badge--${state === 'revoked' ? 'halted' : 'running'}`}
+                          title={
+                            state === 'revoked'
+                              ? 'Revoked: this key cannot be used again, and cannot be restored'
+                              : 'Active: it works until it is revoked'
+                          }
+                        >
                           {state}
                         </span>
                       </td>
                       <td>
-                        {state === 'revoked' ? (
-                          <span className="muted">—</span>
-                        ) : (
+                        {/* A revoked key has nothing to revoke. The dash said "no actions"; the badge beside it already
+                            says why, and the button is not drawn for something that cannot be done twice. */}
+                        {state === 'revoked' ? null : (
                           <button
                             className="btn"
                             disabled={revoke.isPending}
-                            onClick={() => revoke.mutate(key.id)}
+                            onClick={() => {
+                              // Revoking breaks whatever is using the key, immediately and for good.
+                              if (
+                                window.confirm(
+                                  `Revoke ${key.name} (hv_${key.prefix}_…)? Anything using it stops working now, and the key cannot be restored.`,
+                                )
+                              ) {
+                                revoke.mutate(key.id);
+                              }
+                            }}
                           >
                             Revoke
                           </button>

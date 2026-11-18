@@ -90,6 +90,15 @@ Three defects on one screen, all about what a control promises.
 The signed-in member is read from the token's own subject — unverified, because the server decides what anybody may do and
 this only decides which buttons are worth drawing.
 
+## API keys — found and fixed
+
+| What | Why it mattered | Now |
+| --- | --- | --- |
+| The State column said **`unused`** | That is a *usage* fact sitting in the *state* column, beside a "Last used: never" cell saying the same thing — and it left the reader to work out whether an unused key still worked | State is **`active`** or **`revoked`**; "never used" belongs to the column that means it. Each badge carries a title saying what the state implies |
+| Revoked keys were mixed through the list | Rotating a credential starts by finding the keys in use; history pushed the two actionable rows off the first screen | Active first, newest first inside each group |
+| **Revoke** had no confirmation | It breaks whatever is using the key, immediately and for good | Asks first, naming the key, its prefix, and that it cannot be restored |
+| A revoked row showed `—` under Actions | A dash in a column called Actions reads as "no actions, and no reason" | Nothing is drawn — the badge beside it already says why |
+
 ## Webhooks — found and fixed
 
 | What | Why it mattered | Now |

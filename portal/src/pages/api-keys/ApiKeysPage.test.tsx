@@ -54,7 +54,7 @@ describe('api keys', () => {
 
     expect(await screen.findByText('factory line 2')).toBeInTheDocument();
     expect(screen.getByText('hv_a1b2c3d4_…')).toBeInTheDocument();
-    expect(screen.getByText('live')).toBeInTheDocument();
+    expect(screen.getByText('active')).toBeInTheDocument();
   });
 
   it('says a key has never been used, rather than implying it works', async () => {
@@ -62,7 +62,7 @@ describe('api keys', () => {
     renderPage();
 
     expect(await screen.findByText('never')).toBeInTheDocument();
-    expect(screen.getByText('unused')).toBeInTheDocument();
+    expect(screen.getByText('active')).toBeInTheDocument();
   });
 
   it('reveals the secret once, with a warning, right after minting', async () => {
@@ -105,7 +105,8 @@ describe('api keys', () => {
     expect(screen.queryByText('Copied')).toBeNull();
   });
 
-  it('revokes through the API and hides the button', async () => {
+  it('revokes through the API and hides the button, after asking first', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true));
     const calls = stubFetch((_url, init) =>
       init?.method === 'DELETE' ? null : [key()],
     );
@@ -123,5 +124,23 @@ describe('api keys', () => {
 
     expect(await screen.findByText('revoked')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument();
+  });
+});
+
+describe('rotation order', () => {
+  it('puts the keys that still work first, newest first', async () => {
+    stubFetch(() => [
+      key({ id: 'k-old-revoked', name: 'old-revoked', revoked_at: '2026-03-01T00:00:00Z' }),
+      key({ id: 'k-older-live', name: 'older-live', created_at: '2026-11-01T00:00:00Z' }),
+      key({ id: 'k-newer-live', name: 'newer-live', created_at: '2026-11-15T00:00:00Z' }),
+    ]);
+    renderPage();
+
+    // Rotating a credential starts by finding the ones in use; mixing revoked keys through the list makes the reader
+    // scan past history to find the rows they can act on.
+    const names = (await screen.findAllByRole('row'))
+      .slice(1)
+      .map((row) => row.querySelector('td')?.textContent);
+    expect(names).toEqual(['newer-live', 'older-live', 'old-revoked']);
   });
 });

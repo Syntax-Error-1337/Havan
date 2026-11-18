@@ -47,8 +47,12 @@ export function useRevokeApiKey() {
 }
 
 /** A key that never says otherwise is live; say so plainly in the table. */
-export function keyState(key: ApiKey): 'live' | 'revoked' | 'unused' {
-  if (key.revoked_at) return 'revoked';
-  if (!key.last_used_at) return 'unused';
-  return 'live';
+/**
+ * The lifecycle state of a key: `active` until it is revoked, and nothing else.
+ *
+ * It used to return `unused` for a key nobody had called yet, which put a *usage* fact in the *state* column and left the
+ * reader to work out whether an unused key still worked. Whether it has been used is the column beside it.
+ */
+export function keyState(key: ApiKey): 'active' | 'revoked' {
+  return key.revoked_at ? 'revoked' : 'active';
 }
