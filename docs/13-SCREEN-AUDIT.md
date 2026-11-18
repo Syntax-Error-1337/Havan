@@ -75,7 +75,7 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Account, home name, time zone, location, devices, members, at-home, rooms, appearance, about | — |
-| **No Notifications section**: quiet hours, and whether push is actually delivered on this device, are unanswerable in the app while the server sends them | **P1** |
+| **No Notifications section** — *done, without quiet hours*: `GET /notifications/tokens` (count + platform, never the delivery address) and `DELETE /notifications/tokens`, surfaced as "Phones receiving alerts" and a confirmed "Turn off alerts everywhere". Quiet hours still needs server-side enforcement before it can be offered honestly | **P1** |
 | **No Security section** — *sessions done*: `GET /me/sessions` and `POST /auth/logout-others`, surfaced as "Signed-in devices" plus a confirmed, destructive "Sign out other devices". TOTP is still vendor-only; the consumer side has no second factor | **P1** |
 | Devices row is inert while Members navigates; two rows of the same family behave differently | **P1** — one line |
 | About shows the version only: no licences, no support contact, no status link | P2 |

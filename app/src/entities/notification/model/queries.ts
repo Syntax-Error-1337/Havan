@@ -24,6 +24,38 @@ export function useNotifications(limit = 50) {
 }
 
 /**
+ * Which phones will buzz for this account.
+ *
+ * Registration existed since the push sender landed and nothing could read it back, so Settings could not answer the
+ * question people actually ask — "is this phone going to notify me?" — which they usually ask because it is not.
+ */
+export function usePushTokens() {
+  return useQuery({
+    queryKey: qk.pushTokens,
+    queryFn: () => request<{ count: number; devices: { platform: string; app_version: string | null }[] }>('/notifications/tokens'),
+    // Push registration changes when somebody installs or uninstalls the app, not on a timer.
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Turn alerts off on every phone.
+ *
+ * Deliberately not a toggle: a toggle implies a state this app cannot read back per device, and a control whose position
+ * depends on a guess is worse than a button that says what it did. The confirmation says the honest part — alerts still
+ * appear in the app.
+ */
+export function useTurnOffAlerts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<{ turned_off: number }>('/notifications/tokens', { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.pushTokens });
+    },
+  });
+}
+
+/**
  * Throw one alert away.
  *
  * The feed could only be marked read, never shortened: an alert list that only grows is a list people stop opening.

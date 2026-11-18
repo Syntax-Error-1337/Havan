@@ -41,6 +41,7 @@ import {
 } from '../../entities/home';
 import { deviceTimeZone } from '../../shared/lib/timeZone';
 import { useMe, useSession, useSessions, useSignOutOthers } from '../../entities/session';
+import { usePushTokens, useTurnOffAlerts } from '../../entities/notification';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
 import licences from '../../shared/config/licences.json';
@@ -66,6 +67,8 @@ export function SettingsPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const { data: sessions } = useSessions();
+  const { data: pushTokens } = usePushTokens();
+  const turnOffAlerts = useTurnOffAlerts();
   const signOutOthers = useSignOutOthers();
 
   /**
@@ -353,6 +356,47 @@ export function SettingsPage() {
             ]}
             value={appearance}
             onChange={(id) => void setAppearance(id as Appearance)}
+          />
+        </Section>
+
+        {/* Notifications. Push registration has existed since the sender landed and nothing could read it back, so the
+            one question people ask — "will this phone buzz?" — had no answer anywhere in the app. */}
+        <Section
+          // "Alerts", not "Notifications": the screen that lists them is called Alerts, and one product should not have
+          // two words for the same thing depending on which screen you are on.
+          title="Alerts"
+          footnote="Turning alerts off stops the push to your phones. The alert list in the app keeps filling."
+        >
+          <Row
+            title="Phones receiving alerts"
+            subtitle={pushTokens?.count === 0 ? 'Alerts appear in the app only' : undefined}
+            value={pushTokens?.count !== undefined ? String(pushTokens.count) : '—'}
+          />
+          <Row
+            // "Everywhere" says the scope without claiming it reaches other people's phones: this is the account's own
+            // devices, and the subtitle says the part a person needs before pressing — the in-app list survives.
+            title="Turn off alerts everywhere"
+            subtitle={pushTokens?.count ? 'Your phones only — the list keeps working' : 'No phone is registered'}
+            destructive
+            disabled={!pushTokens?.count || turnOffAlerts.isPending}
+            onPress={() =>
+              confirm.ask({
+                title: 'Turn off alerts on your phones?',
+                message: 'You will not get a notification when an automation fires. The alert list inside the app keeps working, and pairing a phone again turns them back on.',
+                confirmLabel: 'Turn off',
+                destructive: true,
+                onConfirm: () =>
+                  turnOffAlerts.mutate(undefined, {
+                    onSuccess: (result) =>
+                      toast(
+                        result.turned_off === 1
+                          ? 'Alerts turned off on 1 phone'
+                          : `Alerts turned off on ${result.turned_off} phones`,
+                      ),
+                    onError: () => toast('Could not turn the alerts off', 'failed'),
+                  }),
+              })
+            }
           />
         </Section>
 

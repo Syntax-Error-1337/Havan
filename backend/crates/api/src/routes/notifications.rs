@@ -25,7 +25,12 @@ pub fn router() -> Router<AppState> {
         // `DELETE /notifications/tokens/{token}` on sign-out, and a handler that extracts `Path`
         // from a route with no parameter answers 500 with axum's own words in the body. The route
         // and the handler disagreed, and only a request could tell.
-        .route("/notifications/tokens", post(register_token))
+        .route(
+            "/notifications/tokens",
+            post(register_token)
+                .get(list_tokens)
+                .delete(forget_all_tokens),
+        )
         .route("/notifications/tokens/{token}", delete(remove_token))
 }
 
@@ -155,6 +160,66 @@ async fn register_token(
 
 /// `DELETE /notifications/tokens/{token}` — called on sign-out, so the next person to hold
 /// the phone does not receive the previous owner's alerts.
+/// The phones that will receive this person's alerts.
+///
+/// Registration existed and nothing could read it back, so Settings could not answer "is this phone going to buzz?" —
+/// and the usual reason somebody asks is that it is not.
+async fn list_tokens(
+    State(state): State<AppState>,
+    auth: Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    let tokens = state
+        .notifications
+        .tokens_for(auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    // The token itself is not echoed back: it is not a secret, but it is a delivery address, and a screen has no use
+    // for it. Platform and app version are enough to tell two phones apart.
+    let devices: Vec<serde_json::Value> = tokens
+        .into_iter()
+        .map(|t| {
+            serde_json::json!({
+                "platform": t.platform,
+                "app_version": t.app_version,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "count": devices.len(),
+        "devices": devices,
+    })))
+}
+
+/// Stop every phone from receiving alerts for this account.
+async fn forget_all_tokens(
+    State(state): State<AppState>,
+    auth: Auth,
+) -> ApiResult<Json<serde_json::Value>> {
+    let tokens = state
+        .notifications
+        .tokens_for(auth.user.id)
+        .await
+        .map_err(ApiError)?;
+
+    let mut off = 0u64;
+    // One row at a time on purpose: `tokens_for` is bounded by how many phones one person owns, and a bulk DELETE that
+    // skipped a row would leave the screen saying "off" while a phone kept buzzing.
+    for token in tokens {
+        if state
+            .notifications
+            .remove_token(auth.user.id, &token.token)
+            .await
+            .map_err(ApiError)?
+        {
+            off += 1;
+        }
+    }
+
+    Ok(Json(serde_json::json!({ "turned_off": off })))
+}
+
 async fn remove_token(
     State(state): State<AppState>,
     auth: Auth,

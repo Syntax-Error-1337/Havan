@@ -217,3 +217,67 @@ async fn an_alert_can_be_thrown_away_and_only_by_its_owner() {
         .expect("count");
     assert_eq!(still, 1);
 }
+
+#[tokio::test]
+async fn a_person_can_see_which_phones_get_their_alerts_and_turn_them_off() {
+    let Some((base, _state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+    let token = register(&base).await;
+    let client = reqwest::Client::new();
+    let device_token = format!("tok-{}", uuid::Uuid::now_v7());
+
+    let registered = client
+        .post(format!("{base}/v1/notifications/tokens"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "platform": "ios", "token": device_token, "app_version": "0.1.0" }))
+        .send()
+        .await
+        .expect("register");
+    assert_eq!(
+        registered.status().as_u16(),
+        204,
+        "registration answers with no content"
+    );
+
+    let listed: serde_json::Value = client
+        .get(format!("{base}/v1/notifications/tokens"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("list")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(listed["count"], 1);
+    assert_eq!(listed["devices"][0]["platform"], "ios");
+    // The delivery address must not travel back to the app: a screen has no use for it, and a log of it is a way to
+    // push to somebody else's phone.
+    assert!(
+        listed["devices"][0].get("token").is_none(),
+        "the token is not echoed to the client"
+    );
+
+    let off: serde_json::Value = client
+        .delete(format!("{base}/v1/notifications/tokens"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("delete all")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(off["turned_off"], 1);
+
+    let after: serde_json::Value = client
+        .get(format!("{base}/v1/notifications/tokens"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("list")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(after["count"], 0);
+}
