@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
-"""Every path the portal asks for must exist on the server.
+"""Every path a client asks for must exist on the server.
 
 Why this exists
 ---------------
-The portal and the API are two trees that only meet at a string. A typo in that string is not a
-compile error on either side: TypeScript sees `request('/vendor/suport-bundle')` as a perfectly
-good argument, and the server has no idea anybody asked. The page renders an error that says
-"not found", which reads like the *device* is missing rather than the *call*, and every test passes
-because the portal's tests stub the transport.
+The clients and the API are separate trees that only meet at a string. A typo in that string is not a
+compile error on either side: TypeScript sees `request('/vendor/suport-bundle')` as a perfectly good
+argument, and the server has no idea anybody asked. The screen then renders "not found", which reads
+like the *device* is missing rather than the *call*, and every test passes because the clients stub
+their transport.
 
-So the two ends are compared mechanically, the same way `route-arity.py` compares a route to its
-handler:
+So the ends are compared mechanically, the same way `route-arity.py` compares a route to its handler:
 
-    every literal `/vendor/...` or `/ops/...` in portal/src  ->  matches a declared route
+    portal/src  literals beginning /vendor or /ops   ->  a declared route under /vendor or /ops
+    app/src     the first argument of request(...)   ->  a declared customer route
+
+The app is scanned by call site rather than by literal, because it is full of `/settings`-shaped
+strings that are navigation, not API paths. Only what is handed to `request` counts.
 
 Matching rules, in the order they matter:
   * `${expr}` in a template literal is a path value, not text: it matches one route segment.
   * A query string is dropped — the server receives it separately, and `?period=${...}` is not part
     of the path.
-  * Extra trailing segments in the portal path must themselves be dynamic, so `/vendor/devices${
+  * Extra trailing segments in the client path must themselves be values, so `/vendor/devices${
     query(...)}` is allowed (the helper builds the query string) but `/vendor/devices/extra` is not.
 
-`--self-test` runs the same matcher against a known-bad path and a known-good one, so a checker
-that quietly goes blind is itself a red gate.
+`--self-test` runs the matcher against known-bad paths and the extractor against a nested template,
+so a checker that quietly goes blind is itself a red gate. The first version of this file
+mis-segmented three real paths and reported routes that exist as missing; the self-test exists
+because of that, not for symmetry.
 """
 
 from __future__ import annotations
@@ -33,11 +38,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PORTAL = ROOT / "portal" / "src"
-ROUTES = ROOT / "backend" / "crates" / "api" / "src" / "routes"
+APP = ROOT / "app" / "src"
+# Routes are declared in `routes/*.rs` and, for a few that predate that split, in `app.rs`. Scanning
+# one directory missed `/devices/{id}/history` and reported a client for a route that exists.
+API_SRC = ROOT / "backend" / "crates" / "api" / "src"
 
 ROUTE_LITERAL = re.compile(r'\.route\(\s*"([^"]+)"', re.S)
-
-PREFIXES = ("/vendor/", "/ops/")
+PORTAL_PREFIXES = ("/vendor/", "/ops/")
+REQUEST_CALL = re.compile(r"(?<![\w.])request(?:<[^>]*>)?\(\s*")
 
 
 def _skip_expression(text: str, at: int) -> int:
@@ -61,39 +69,53 @@ def _skip_expression(text: str, at: int) -> int:
     return len(text)
 
 
+def literal_at(text: str, start: int) -> tuple[str, int] | None:
+    """Read the string literal beginning at `start`; its contents and the index just past it."""
+    if start >= len(text) or text[start] not in "'`\"":
+        return None
+    quote = text[start]
+    i = start + 1
+    out = ""
+    while i < len(text):
+        char = text[i]
+        if quote == "`" and text.startswith("${", i):
+            close = _skip_expression(text, i + 1)
+            out += text[i:close]
+            i = close
+            continue
+        if char == quote:
+            return out, i + 1
+        if char == "\\" and i + 1 < len(text):
+            out += text[i : i + 2]
+            i += 2
+            continue
+        out += char
+        i += 1
+    return None
+
+
 def portal_literals(text: str) -> list[str]:
     """Every quoted `/vendor/...` or `/ops/...` in a source file, template expressions included."""
     found: list[str] = []
     i = 0
     while i < len(text):
-        char = text[i]
-        if char not in "'`\"":
-            i += 1
-            continue
-        quote = char
-        start = i + 1
-        if not text.startswith(PREFIXES, start):
-            i += 1
-            continue
-        i = start
-        out = ""
-        while i < len(text):
-            char = text[i]
-            if quote == "`" and text.startswith("${", i):
-                close = _skip_expression(text, i + 1)
-                out += text[i:close]
-                i = close
+        if text[i] in "'`\"" and text.startswith(PORTAL_PREFIXES, i + 1):
+            read = literal_at(text, i)
+            if read:
+                found.append(read[0])
+                i = read[1]
                 continue
-            if char == quote:
-                break
-            if char == "\\" and i + 1 < len(text):
-                out += text[i : i + 2]
-                i += 2
-                continue
-            out += char
-            i += 1
-        found.append(out)
         i += 1
+    return found
+
+
+def app_literals(text: str) -> list[str]:
+    """The path argument of every `request(...)` — and nothing else in the file."""
+    found: list[str] = []
+    for match in REQUEST_CALL.finditer(text):
+        read = literal_at(text, match.end())
+        if read and read[0].startswith("/"):
+            found.append(read[0])
     return found
 
 
@@ -128,9 +150,9 @@ def segments(path: str) -> list[str]:
     return [part for part in out if part]
 
 
-def matches(portal_path: str, route_path: str) -> bool:
-    wanted = segments(strip_query(portal_path))
-    declared = [part if part.startswith("{") else part for part in segments(route_path)]
+def matches(client_path: str, route_path: str) -> bool:
+    wanted = segments(strip_query(client_path))
+    declared = segments(route_path)
     if len(wanted) < len(declared):
         return False
     for got, expected in zip(wanted, declared):
@@ -147,21 +169,19 @@ def matches(portal_path: str, route_path: str) -> bool:
 
 def declared_routes() -> dict[str, str]:
     routes: dict[str, str] = {}
-    for source in sorted(ROUTES.glob("*.rs")):
-        text = source.read_text()
-        for path in ROUTE_LITERAL.findall(text):
-            if path.startswith(("/vendor", "/ops")):
-                routes.setdefault(path, source.name)
+    for source in sorted(API_SRC.rglob("*.rs")):
+        for path in ROUTE_LITERAL.findall(source.read_text()):
+            routes.setdefault(path, source.name)
     return routes
 
 
-def portal_paths() -> dict[str, str]:
+def literals(tree: Path, extract) -> dict[str, str]:
     found: dict[str, str] = {}
-    for source in sorted(PORTAL.rglob("*")):
+    for source in sorted(tree.rglob("*")):
         if source.suffix not in (".ts", ".tsx"):
             continue
-        for literal in portal_literals(source.read_text()):
-            found.setdefault(literal, source.relative_to(ROOT).as_posix())
+        for path in extract(source.read_text()):
+            found.setdefault(path, source.relative_to(ROOT).as_posix())
     return found
 
 
@@ -182,6 +202,13 @@ def self_test() -> int:
     if bad:
         print("self-test failed — the matcher no longer tells these apart:", *bad, sep="\n  ")
         return 1
+
+    # Extraction has its own failure mode: a truncated literal looks exactly like a missing route.
+    source = 'request<X>(`/vendor/audit.csv${qs ? `?${qs}` : \'\'}`); const nav = "/settings";'
+    if app_literals(source) != ["/vendor/audit.csv${qs ? `?${qs}` : ''}"]:
+        print("self-test failed — app_literals lost a nested template, or picked up navigation")
+        return 1
+
     print("self-test ok")
     return 0
 
@@ -195,24 +222,35 @@ def main() -> int:
         print(f"only {len(routes)} routes found — the scan is looking in the wrong place")
         return 1
 
-    paths = portal_paths()
-    if not paths:
-        print("no portal paths found — the scan is looking in the wrong place")
+    staff = {p: s for p, s in routes.items() if p.startswith(("/vendor", "/ops"))}
+    customer = {p: s for p, s in routes.items() if not p.startswith(("/vendor", "/ops"))}
+
+    problems: list[str] = []
+
+    portal = literals(PORTAL, portal_literals)
+    if not portal:
+        problems.append("no portal paths found — the scan is looking in the wrong place")
+    for path, source in sorted(portal.items()):
+        if not any(matches(path, route) for route in staff):
+            problems.append(f"portal asks for {path}   ({source})")
+
+    app = literals(APP, app_literals)
+    if not app:
+        problems.append("no app request paths found — the scan is looking in the wrong place")
+    for path, source in sorted(app.items()):
+        if not any(matches(path, route) for route in customer):
+            problems.append(f"app asks for {path}   ({source})")
+
+    if problems:
+        print("paths a client asks for that the server does not serve:")
+        for problem in problems:
+            print(f"  {problem}")
         return 1
 
-    missing = {
-        path: source
-        for path, source in sorted(paths.items())
-        if not any(matches(path, route) for route in routes)
-    }
-
-    if missing:
-        print("the portal asks for paths the server does not serve:")
-        for path, source in missing.items():
-            print(f"  {path}   ({source})")
-        return 1
-
-    print(f"{len(paths)} portal paths match {len(routes)} declared routes")
+    print(
+        f"{len(portal)} portal paths match {len(staff)} staff routes; "
+        f"{len(app)} app paths match {len(customer)} customer routes"
+    )
     return 0
 
 

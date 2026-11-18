@@ -210,14 +210,25 @@ async fn the_support_bundle_says_what_the_device_is() {
 /// written. Reading the routers means a new vendor route fails the test until somebody decides how
 /// it is checked.
 fn declared_vendor_routes() -> Vec<String> {
-    let routes_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/routes");
+    // Every `.rs` under `src`, not just `src/routes`: `/devices/{id}/history` is declared in `app.rs`, and a scan of
+    // one directory reported it missing from a client that was right. The same mistake here would let a vendor route
+    // added to `app.rs` bypass both this guard and the doc check.
+    let mut sources = Vec::new();
+    let mut pending = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir).expect("src dir") {
+            let path = entry.expect("entry").path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                sources.push(path);
+            }
+        }
+    }
+    sources.sort();
     let mut found = Vec::new();
 
-    for entry in std::fs::read_dir(&routes_dir).expect("routes dir") {
-        let path = entry.expect("entry").path();
-        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-            continue;
-        }
+    for path in sources {
         let source = std::fs::read_to_string(&path).expect("route source");
 
         // `.route("/vendor/thing", get(handler))` — the literal is all this needs, and it may sit on

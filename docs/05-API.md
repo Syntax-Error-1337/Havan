@@ -366,11 +366,13 @@ Three checks, all mechanical, all in `make check`:
 | Check | Fails when |
 |---|---|
 | `scripts/route-arity.py --self-test` | a route provides a different number of path parameters than its handler extracts |
-| `scripts/portal-routes.py` | the portal asks for a `/vendor` or `/ops` path the routers do not declare |
+| `scripts/portal-routes.py` | the portal asks for a `/vendor` or `/ops` path the routers do not declare, or the app asks for a customer path that is not served |
 | `every_vendor_route_is_in_the_api_doc` (Rust) | a `/vendor` route is served but not mentioned anywhere in this file |
 
-None of them read a hand-written list: the first two parse the router sources, so a new route is caught the moment it is
-added rather than the moment somebody remembers. The doc check reads the routers too, which is why it found five
+None of them read a hand-written list: the first two parse the router sources — every `.rs` under `src`, not just
+`src/routes`, because a few routes still live in `app.rs` — so a new route is caught the moment it is added rather than
+the moment somebody remembers. The app is scanned by call site, not by literal: `/settings` is navigation, and only what
+is handed to `request(...)` is an API path. The doc check reads the routers too, which is why it found five
 undocumented routes the first time it ran.
 
 ## Operator (internal)
