@@ -512,3 +512,51 @@ th[aria-sort='descending'] .th-sort::after {
   opacity: 1;
   color: var(--accent);
 }
+
+/* A serial that opens its own row: a button that looks like the monospace text it replaced, with a focus ring that
+   appears for the keyboard and not for the mouse. */
+.row-disclosure {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.row-disclosure:hover {
+  color: var(--accent);
+}
+
+.row-disclosure:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* The detail under an opened row: label above value, in columns, so a support engineer can read it out over the phone.
+   It is a table row, not a card — a bordered inset box reads as a popover that happens to be inside the table. */
+.fleet-detail {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  padding: 14px 16px;
+}
+
+.fleet-detail dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 24px;
+  margin: 0 0 10px;
+}
+
+.fleet-detail dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fleet-detail dd {
+  margin: 2px 0 0;
+}

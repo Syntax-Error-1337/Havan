@@ -30,15 +30,29 @@ ordered and which way, which is the only way a screen reader can know.
 A device that has never reported sorts as older than every device that has: without `COALESCE(last_seen_at, 'epoch')`
 the tuple comparison goes NULL and those rows disappear from page two onwards.
 
+## Fleet — opened (the iteration after sorting)
+
+**Connection and Binding are two columns.** They were one cell holding two unrelated facts — a device that is offline in
+a customer's house is a support call, and one that is offline in stock is not. The table now has seven columns, and the
+header row and every body cell share one grid (measured: each `th` and its `td` sit at the same `left`).
+
+**A row opens.** The serial is the control — it is the thing a support engineer is holding, and a separate icon column
+would be a second, smaller target for the same press. `aria-expanded` and `aria-controls` say what happened, one row is
+open at a time, and the panel is a table row rather than a card: it spans all seven columns, carries a tinted background
+and a hairline top, and reads as part of the table instead of a popover inside it.
+
+It shows what the table has no room for — device id, product key, manufacture date, exact last-seen — and says out loud
+that the customer is deliberately absent: *"Who owns this device is deliberately not shown. A vendor sells hardware; the
+person who bought it is not their user."* A vendor who cannot find the owner should know that is a decision, not a field
+they forgot to ask for.
+
+**Last seen carries both readings.** The cell shows "1d ago" and its title holds the exact local timestamp, because the
+duration answers *is it alive* and the timestamp answers *was it alive when the customer called*.
+
 ## Fleet — still open
 
-- **Status and Firmware do not sort.** Status is two facts in one cell (see below) and firmware is mostly absent across
-  the demo fleet; neither has a defensible ordering until that column is split.
-- **No row actions.** A fleet row cannot be opened; a support engineer reading a serial has to leave the screen.
-- **Connectivity and binding in one column.** They are two dimensions — a device can be offline and unbound, which is a
-  different problem from offline and in a customer's house. Separate columns, or one chip that says which question it
-  answers, is the honest shape.
-- **Last seen is a relative duration only** (`1d ago`). For a fleet table an exact timestamp belongs on hover.
+- **Status and Firmware do not sort.** Status is now split in two, so the question got smaller; firmware is mostly absent
+  across the demo fleet and has no defensible ordering yet.
 - **Load controls are above the table by design** — deliberate, because at 1,900 devices the footer is two hundred rows
   away — but they scroll out of reach just the same. A sticky footer is the fix.
 

@@ -62,7 +62,16 @@ describe('fleet', () => {
     // The vendor sells hardware; who bought it is not theirs to see. Asserted on the
     // columns rather than on the word "home", which appears in prose all over the page.
     const headers = Array.from(document.querySelectorAll('th')).map((h) => h.textContent);
-    expect(headers).toEqual(['Serial', 'Product', 'Name', 'Status', 'Firmware', 'Last seen']);
+    // Connection and Binding are two columns, not one cell: "offline" and "unbound" are different problems.
+    expect(headers).toEqual([
+      'Serial',
+      'Product',
+      'Name',
+      'Connection',
+      'Binding',
+      'Firmware',
+      'Last seen',
+    ]);
   });
 
   it('tells an empty fleet apart from a search that found nothing', async () => {
@@ -220,5 +229,25 @@ describe('sorting', () => {
 
     // The header says which way the table is ordered, which is the only way a screen reader can know.
     expect(screen.getByRole('columnheader', { name: /serial/i }).getAttribute('aria-sort')).toBe('descending');
+  });
+});
+
+describe('a row that opens', () => {
+  it('shows the facts the table has no room for, and says who is deliberately absent', async () => {
+    stubFetch(() => ({ devices: [device()], next_cursor: null }));
+    renderPage();
+
+    const serial = await screen.findByRole('button', { name: 'SN-1' });
+    expect(serial.getAttribute('aria-expanded')).toBe('false');
+
+    await userEvent.click(serial);
+
+    // The serial is the control and says so, because a screen reader has to know the row opened.
+    expect(await screen.findByText('Product key')).toBeTruthy();
+    expect(screen.getByText('Manufactured')).toBeTruthy();
+    expect(
+      screen.getByText(/Who owns this device is deliberately not shown/),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'SN-1' }).getAttribute('aria-expanded')).toBe('true');
   });
 });

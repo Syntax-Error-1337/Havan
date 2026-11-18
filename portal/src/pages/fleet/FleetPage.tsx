@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 import { useFleet, useFleetStats, type FleetFilter } from '../../entities/fleet';
 import { TableFrame } from '../../shared/ui/TableFrame';
@@ -23,6 +23,8 @@ export function FleetPage() {
     return () => clearTimeout(timer);
   }, [typed]);
   const [loadingAll, setLoadingAll] = useState(false);
+  // Which row is open. One at a time: two open panels on a list of two hundred is a page that has stopped being a table.
+  const [open, setOpen] = useState<string | null>(null);
   const { data, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
     useFleet(filter);
   // The count the page cannot derive from what it has loaded: "650 devices shown · more available" told a
@@ -194,7 +196,10 @@ export function FleetPage() {
                 />
                 <th>Product</th>
                 <SortableHeader label="Name" column="name" filter={filter} onSort={sortBy} />
-                <th>Status</th>
+                {/* Two facts that were one cell. "offline" and "unbound" are different problems: a device that is
+                    offline in a customer's house is a support call, and one that is offline in stock is not. */}
+                <th>Connection</th>
+                <th>Binding</th>
                 <th>Firmware</th>
                 <SortableHeader
                   label="Last seen"
@@ -207,8 +212,22 @@ export function FleetPage() {
             </thead>
             <tbody>
               {devices.map((device) => (
-                <tr key={device.id}>
-                  <td className="mono">{device.serial}</td>
+                <Fragment key={device.id}>
+                <tr>
+                  {/* The serial is the control: it is the thing a support engineer is holding, and a separate icon
+                      column would be a second, smaller target for the same press. */}
+                  <td className="mono">
+                    <button
+                      type="button"
+                      className="row-disclosure"
+                      aria-expanded={open === device.id}
+                      aria-controls={`fleet-detail-${device.id}`}
+                      onClick={() => setOpen(open === device.id ? null : device.id)}
+                      data-testid={`fleet-open-${device.serial}`}
+                    >
+                      {device.serial}
+                    </button>
+                  </td>
                   <td>{device.product_name}</td>
                   <td>{device.name}</td>
                   <td>
@@ -217,9 +236,9 @@ export function FleetPage() {
                       data-testid="fleet-state"
                     >
                       {device.online ? 'online' : 'offline'}
-                    </span>{' '}
-                    {/* A second fact, given a shape of its own. As plain text it read as one phrase with the pill —
-                        "offline bound" — which is not a status anybody has. */}
+                    </span>
+                  </td>
+                  <td>
                     <span
                       className="badge badge--quiet"
                       title={device.bound ? 'Bound to a customer' : 'In stock: manufactured, never claimed'}
@@ -232,8 +251,68 @@ export function FleetPage() {
                   <td className="mono" title={device.fw_version ? undefined : 'No firmware has been reported for this serial'}>
                     {device.fw_version ?? '—'}
                   </td>
-                  <td className="muted">{device.last_seen_at ? ago(device.last_seen_at) : 'never'}</td>
+                  {/* A duration answers "is it alive"; the exact moment answers "was it alive when the customer
+                      called", which is the question support actually has. Both, one on hover. */}
+                  <td
+                    className="muted"
+                    title={
+                      device.last_seen_at
+                        ? new Date(device.last_seen_at).toLocaleString()
+                        : 'This device has never reported'
+                    }
+                  >
+                    {device.last_seen_at ? ago(device.last_seen_at) : 'never'}
+                  </td>
                 </tr>
+                {open === device.id ? (
+                  <tr id={`fleet-detail-${device.id}`}>
+                    {/* Seven columns: the span has to match, or the panel stops short of the table's right edge and
+                        the last column keeps a row of its own. */}
+                    <td colSpan={7} className="fleet-detail">
+                      <dl>
+                        <div>
+                          <dt>Device id</dt>
+                          <dd className="mono">{device.id}</dd>
+                        </div>
+                        <div>
+                          <dt>Product key</dt>
+                          <dd className="mono">{device.product_key}</dd>
+                        </div>
+                        <div>
+                          <dt>Manufactured</dt>
+                          <dd>{new Date(device.created_at).toLocaleString()}</dd>
+                        </div>
+                        <div>
+                          <dt>Last seen</dt>
+                          <dd>
+                            {device.last_seen_at
+                              ? new Date(device.last_seen_at).toLocaleString()
+                              : 'Never reported'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Firmware</dt>
+                          <dd>{device.fw_version ?? 'Not reported'}</dd>
+                        </div>
+                        <div>
+                          <dt>Binding</dt>
+                          <dd>
+                            {device.bound
+                              ? 'Bound to a customer'
+                              : 'In stock: manufactured, never claimed'}
+                          </dd>
+                        </div>
+                      </dl>
+                      {/* Said out loud rather than left as an absence: a vendor who cannot find the customer's name
+                          should know it is a decision, not a missing field they should ask about. */}
+                      <p className="muted">
+                        Who owns this device is deliberately not shown. A vendor sells hardware; the person who
+                        bought it is not their user.
+                      </p>
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
               ))}
             </tbody>
           </table>
