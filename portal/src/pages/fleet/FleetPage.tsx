@@ -84,19 +84,21 @@ export function FleetPage() {
             onChange={(e) => setTyped(e.target.value)}
             style={{ minWidth: 0, flex: '1 1 160px', maxWidth: 260 }}
           />
-          <span className="field-label">State</span>
+          {/* "State" over "All devices" was two vocabularies for one control, and the column beside it says
+              "Status". One word, and the values are statuses rather than devices. */}
+          <span className="field-label">Status</span>
           <select
-            aria-label="Filter by state"
+            aria-label="Filter by status"
             value={filter.state ?? ''}
             onChange={(e) =>
               setFilter({ ...filter, state: (e.target.value || undefined) as FleetFilter['state'] })
             }
           >
-            <option value="">All devices</option>
+            <option value="">All statuses</option>
             <option value="online">Online</option>
             <option value="offline">Offline</option>
             <option value="bound">Bound to a customer</option>
-            <option value="unbound">In stock / unbound</option>
+            <option value="unbound">In stock (unbound)</option>
           </select>
         </div>
       </div>
@@ -104,9 +106,11 @@ export function FleetPage() {
       {/* The count and the controls sit above the table, not below it: at 1 900 devices the buttons were
           two hundred rows away, which on a phone is the same as not having them. */}
       <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <span className="muted">
+        {/* "shown" was read as "on screen", and at 1,900 devices eleven rows are visible while two hundred are
+            loaded. The word says which of those it is. */}
+        <span className="muted" data-testid="fleet-count">
           {devices.length.toLocaleString()} of {total.toLocaleString()} device{total === 1 ? '' : 's'}
-          {filter.q ? ` matching “${filter.q}”` : ''} shown
+          {filter.q ? ` matching “${filter.q}”` : ''} loaded
         </span>
         {/* One set of controls, and it lives here rather than under the table: at 1 900 devices the bottom
             of the page is two hundred rows away, which on a phone is the same as not having the buttons. */}
@@ -117,16 +121,19 @@ export function FleetPage() {
               onClick={() => void fetchNextPage()}
               disabled={isFetchingNextPage || loadingAll}
             >
-              {isFetchingNextPage && !loadingAll ? 'Loading…' : 'Load more'}
+              {/* "Load more" did not say how many; the page size is 200 and the button can say so. */}
+              {isFetchingNextPage && !loadingAll ? 'Loading…' : 'Load 200 more'}
             </button>
             <button
               className="btn btn--quiet"
               onClick={() => void loadAll()}
               disabled={isFetchingNextPage || loadingAll}
             >
+              {/* "Load all 1,909" beside "200 loaded" reads as if two hundred were missing from the total. The
+                  number is what is left to fetch, which is the thing the press does. */}
               {loadingAll
                 ? `Loading ${devices.length.toLocaleString()} of ${total.toLocaleString()}…`
-                : `Load all ${total.toLocaleString()}`}
+                : `Load the other ${(total - devices.length).toLocaleString()}`}
             </button>
           </>
         ) : null}
@@ -138,7 +145,7 @@ export function FleetPage() {
             <>
               <p className="muted">
                 No device matches{filter.q ? ` “${filter.q}”` : ''}
-                {filter.state ? ` in the ${filter.state} state` : ''}.
+                {filter.state ? ` with status ${filter.state}` : ''}.
               </p>
               <button
                 className="btn btn--quiet"
@@ -183,9 +190,20 @@ export function FleetPage() {
                     >
                       {device.online ? 'online' : 'offline'}
                     </span>{' '}
-                    <span className="muted">{device.bound ? 'bound' : 'unbound'}</span>
+                    {/* A second fact, given a shape of its own. As plain text it read as one phrase with the pill —
+                        "offline bound" — which is not a status anybody has. */}
+                    <span
+                      className="badge badge--quiet"
+                      title={device.bound ? 'Bound to a customer' : 'In stock: manufactured, never claimed'}
+                    >
+                      {device.bound ? 'bound' : 'unbound'}
+                    </span>
                   </td>
-                  <td className="mono">{device.fw_version ?? '—'}</td>
+                  {/* A dash that says what it means. "—" in a column of dashes is either missing data or a broken
+                      query, and a support engineer should not have to guess which. */}
+                  <td className="mono" title={device.fw_version ? undefined : 'No firmware has been reported for this serial'}>
+                    {device.fw_version ?? '—'}
+                  </td>
                   <td className="muted">{device.last_seen_at ? ago(device.last_seen_at) : 'never'}</td>
                 </tr>
               ))}

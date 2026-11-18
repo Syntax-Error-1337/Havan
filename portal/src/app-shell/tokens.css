@@ -184,6 +184,14 @@ button {
   color: var(--danger, #b42318);
 }
 
+/* A quiet badge: a fact that is neither good nor bad — bound or unbound, a stage, a mode. It must not look like the
+   connectivity pill it sits beside, or the two read as one phrase. */
+.badge--quiet {
+  color: var(--muted, #8b8b93);
+  border-color: color-mix(in srgb, currentColor 25%, transparent);
+  font-weight: 500;
+}
+
 .badge--published {
   color: var(--success);
   border-color: color-mix(in srgb, var(--success) 40%, transparent);
