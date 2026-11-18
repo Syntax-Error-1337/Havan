@@ -21,9 +21,16 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 40 tests per project (80 total) against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
 | Vendor surfaces | `make vendor-smoke` | 25 assertions live: two-factor enrol → confirm → enforced sign-in → disabled, webhook shown once then removed, SSO refused while nobody is bound, an empty invoice period that is a document and not an error |
 | Conformance | `make conformance VENDOR=<uuid> PRODUCT=<uuid>` | 7/7: a real device claims, connects, reports, is commanded, acks, reconnects, and an unknown serial is handled the way the product declares |
+| Contract | `make check` (inside it) | `scripts/route-arity.py` (route provides what its handler extracts), `scripts/portal-routes.py` (every `/vendor`, `/ops` and app `request(...)` path is a declared route), and `every_vendor_route_is_in_the_api_doc` — all three read the routers, none reads a list somebody maintains |
+| Response headers | `cargo test -p api --test headers` | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and a `default-src 'none'` CSP on a success, on a `401`, and on both probes — and no `HSTS`, because this service does not terminate TLS |
 
 Two of these are worth running twice: `make chaos` because it stops containers, and
 `make load` because a first run after a long idle can time out on a cold cache.
+
+**Not covered by any gate:** the portal is a single-page app, and a page needs a different policy from an API — it loads
+its own script and style bundles, so `default-src 'none'` would break it. That policy belongs to whatever serves
+`portal/dist`, and `deploy/` does not contain that host yet. Recorded rather than implied: a header the API cannot
+honestly send is a deployment task, not a missing line.
 
 ### The five minutes are compilation, not tests
 

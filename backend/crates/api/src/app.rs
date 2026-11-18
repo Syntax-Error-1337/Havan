@@ -220,6 +220,7 @@ pub fn router(state: AppState) -> Router {
     // Route label, status and duration for every request. It sits inside the trace
     // layer so a slow line in the log and a slow bucket in the histogram are the same
     // request, and outside the handlers so no route can forget to record itself.
+    .layer(axum::middleware::from_fn(security_headers))
     .layer(axum::middleware::from_fn(record_metrics))
     .layer(
         TraceLayer::new_for_http()
@@ -227,6 +228,45 @@ pub fn router(state: AppState) -> Router {
     )
     .layer(PropagateRequestIdLayer::x_request_id())
     .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+}
+
+/// Headers that cost nothing and close a class of browser-side mistakes.
+///
+/// This API answers JSON, CSV and a websocket — never a document. That makes the policy unusually easy to be strict
+/// about:
+///
+/// * `X-Content-Type-Options: nosniff` — a browser that guesses a JSON body is HTML can be talked into executing it.
+/// * `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` — nothing in a response should load, run or
+///   be framed. If a future endpoint ever returns HTML, it gets a policy that refuses everything rather than a policy
+///   that was written for a page.
+/// * `X-Frame-Options: DENY` — the older spelling, kept for clients that predate `frame-ancestors`.
+/// * `Referrer-Policy: no-referrer` — a bearer-token URL or a pairing ticket must not travel onward in a `Referer`.
+///
+/// `Strict-Transport-Security` is deliberately absent: this service is reached over TLS by the platform's proxy, and a
+/// header set here would be a promise about a connection it does not terminate. The deployment's proxy owns it.
+async fn security_headers(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::header::{
+        CONTENT_SECURITY_POLICY, HeaderValue, REFERRER_POLICY, X_CONTENT_TYPE_OPTIONS,
+        X_FRAME_OPTIONS,
+    };
+
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    for (name, value) in [
+        (X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        (
+            CONTENT_SECURITY_POLICY,
+            "default-src 'none'; frame-ancestors 'none'",
+        ),
+        (X_FRAME_OPTIONS, "DENY"),
+        (REFERRER_POLICY, "no-referrer"),
+    ] {
+        headers.insert(name, HeaderValue::from_static(value));
+    }
+    response
 }
 
 /// One middleware instead of a counter in forty handlers.
