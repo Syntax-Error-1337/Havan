@@ -791,9 +791,20 @@ it wrote — the operator's own next render is never the old brand.
 | `haven_http_requests_total` | counter | `route` (matched path), `status` |
 | `haven_http_request_duration_seconds` | histogram | `route` |
 | `haven_commands_dispatched_total` | counter | — |
+| `haven_commands_undelivered_total` | counter | — |
+| `haven_theme_cache_hits_total` | counter | — |
+| `haven_stream_channels` | gauge | — |
+| `haven_stream_sockets` | gauge | — |
+| `haven_stream_fanout` | gauge | — |
 | `haven_ws_connections` | gauge | — |
 | `haven_rate_limited_total` | counter | `scope` (`login`, `login-source`, `vendor-login`, `vendor-login-source`, `register`, `claim`, `certificate`, `invite-accept`) |
 | `haven_uptime_seconds` | gauge | — |
+
+Two of those numbers are only meaningful against each other: `haven_stream_channels` should track *homes with a phone
+open* and `haven_stream_sockets` should track those phones. When channels and sockets are the same number, every socket is
+holding its own Redis subscription — the shape this service was rebuilt to stop. `haven_stream_fanout` says which mode the
+pod is in (`0` it subscribes to `home:*` itself, `1` it holds one `pod:{id}` feed and `haven-fanout` does the fan-out),
+because the channel gauge means something different in each.
 
 The `route` label is the **matched** path (`/v1/devices/{id}`), never the raw URL:
 labelling by raw path turns one metric into one per device id, which is how a metrics
