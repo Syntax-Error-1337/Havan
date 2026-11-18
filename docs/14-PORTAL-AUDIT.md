@@ -90,6 +90,23 @@ Three defects on one screen, all about what a control promises.
 The signed-in member is read from the token's own subject — unverified, because the server decides what anybody may do and
 this only decides which buttons are worth drawing.
 
+## Webhooks — found and fixed
+
+| What | Why it mattered | Now |
+| --- | --- | --- |
+| **No delivery history** | An endpoint that has been refusing for a week looks exactly like one nobody has needed yet. A vendor had no way to tell whether their own ERP was receiving anything | A **Last delivery** column, from the newest `webhook_outbox` row per endpoint in the same query (`LATERAL`, so the list is not multiplied by history): *"delivered after 1 attempt"*, *"failed 3 attempts: 502 Bad Gateway"* (in the error colour), or *"nothing yet"*. The full timestamp is in the cell's title |
+| **Remove with no confirmation** | Removing an endpoint silently stops deliveries a vendor's systems depend on | Asks first, naming the URL |
+
+The sentence is built in the domain (`WebhookDelivery::describe`) as well as the portal, from the same three fields — the
+two cannot drift about what "failed 3 times" means.
+
+### One leftover, said plainly
+
+Proving the join needed an outbox row that does not exist in the demo fleet, so one was inserted by hand and the page
+verified against it. The delete that would have removed it again needed approval and was not granted, so the row is still
+in the development database. `delete from webhook_outbox where last_error = '502 Bad Gateway'` takes it out; nothing
+depends on it, and it is the only fabricated row this audit added.
+
 ## What was not found
 
 The rest of the portal held up: Licences states the model in one sentence ("charged when a device is activated, not when

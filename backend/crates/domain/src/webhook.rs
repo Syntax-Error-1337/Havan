@@ -63,6 +63,50 @@ pub struct WebhookSubscription {
     pub active: bool,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: time::OffsetDateTime,
+    /// The most recent attempt, if there has ever been one.
+    ///
+    /// A vendor cannot otherwise tell whether their endpoint is working: an endpoint that has been refusing for a week
+    /// looks exactly like one nobody has needed yet. Absent means nothing has been sent — which is also worth saying.
+    pub last_delivery: Option<WebhookDelivery>,
+}
+
+/// The newest attempt for one endpoint: when, whether it landed, and what went wrong if it did not.
+#[derive(Debug, Clone, Serialize)]
+pub struct WebhookDelivery {
+    #[serde(with = "time::serde::rfc3339")]
+    pub at: time::OffsetDateTime,
+    pub delivered: bool,
+    pub attempts: i32,
+    pub error: Option<String>,
+}
+
+impl WebhookDelivery {
+    /// One sentence a vendor can act on. The status line reuses it, so the API and the portal cannot disagree.
+    pub fn describe(&self) -> String {
+        if self.delivered {
+            format!(
+                "delivered after {} attempt{}",
+                self.attempts,
+                plural(self.attempts)
+            )
+        } else if let Some(error) = &self.error {
+            format!(
+                "failed {} time{}: {error}",
+                self.attempts,
+                plural(self.attempts)
+            )
+        } else {
+            format!(
+                "waiting to retry, {} attempt{} so far",
+                self.attempts,
+                plural(self.attempts)
+            )
+        }
+    }
+}
+
+fn plural(n: i32) -> &'static str {
+    if n == 1 { "" } else { "s" }
 }
 
 #[derive(Debug, Clone)]

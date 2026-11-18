@@ -12,12 +12,22 @@ export const WEBHOOK_EVENTS = [
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
+export type WebhookDelivery = {
+  at: string;
+  delivered: boolean;
+  attempts: number;
+  error: string | null;
+};
+
 export type Webhook = {
   id: string;
   url: string;
   events: string[];
   active: boolean;
   created_at: string;
+  /** The newest attempt, or null when nothing has ever been sent. An endpoint that has been refusing for a week looks
+   *  exactly like one nobody has needed yet, and this is the column that tells them apart. */
+  last_delivery: WebhookDelivery | null;
   /** Present only on the response that created the subscription. */
   secret?: string;
 };

@@ -1,4 +1,6 @@
-use domain::webhook::{MAX_ATTEMPTS, PendingDelivery, WebhookRepo, WebhookSubscription};
+use domain::webhook::{
+    MAX_ATTEMPTS, PendingDelivery, WebhookDelivery, WebhookRepo, WebhookSubscription,
+};
 use kernel::{AppError, ErrorCode, TenantCtx};
 use uuid::Uuid;
 
@@ -8,6 +10,21 @@ use crate::pg::Pg;
 pub struct PgWebhooks {
     pg: Pg,
 }
+
+/// One row of the list query: the subscription, then the newest attempt's `(at, delivered, attempts, error)`.
+///
+/// Named rather than written inline because a nine-tuple in a `let` is a puzzle, and clippy is right to say so.
+type SubscriptionRow = (
+    Uuid,
+    String,
+    Vec<String>,
+    bool,
+    time::OffsetDateTime,
+    Option<time::OffsetDateTime>,
+    Option<bool>,
+    Option<i32>,
+    Option<String>,
+);
 
 impl PgWebhooks {
     pub fn new(pg: Pg) -> Self {
@@ -88,9 +105,21 @@ impl WebhookRepo for PgWebhooks {
 
     async fn list(&self, vendor_id: Uuid) -> Result<Vec<WebhookSubscription>, AppError> {
         let mut tx = self.vendor_tx(vendor_id).await?;
-        let rows: Vec<(Uuid, String, Vec<String>, bool, time::OffsetDateTime)> = sqlx::query_as(
-            "SELECT id, url, events, active, created_at FROM vendor_webhooks
-              WHERE vendor_id = $1 ORDER BY created_at DESC",
+        // The newest outbox row per endpoint, in the same round trip. `LATERAL` keeps it one row per subscription: a
+        // plain join would multiply the list by its delivery history, which is the bug this shape exists to avoid.
+        let rows: Vec<SubscriptionRow> = sqlx::query_as(
+            r#"SELECT w.id, w.url, w.events, w.active, w.created_at,
+                      o.created_at, o.delivered_at IS NOT NULL, o.attempts, o.last_error
+                 FROM vendor_webhooks w
+                 LEFT JOIN LATERAL (
+                      SELECT created_at, delivered_at, attempts, last_error
+                        FROM webhook_outbox
+                       WHERE subscription_id = w.id
+                       ORDER BY created_at DESC
+                       LIMIT 1
+                 ) o ON true
+                WHERE w.vendor_id = $1
+                ORDER BY w.created_at DESC"#,
         )
         .bind(vendor_id)
         .fetch_all(&mut *tx)
@@ -101,12 +130,20 @@ impl WebhookRepo for PgWebhooks {
         Ok(rows
             .into_iter()
             .map(
-                |(id, url, events, active, created_at)| WebhookSubscription {
-                    id,
-                    url,
-                    events,
-                    active,
-                    created_at,
+                |(id, url, events, active, created_at, at, delivered, attempts, error)| {
+                    WebhookSubscription {
+                        id,
+                        url,
+                        events,
+                        active,
+                        created_at,
+                        last_delivery: at.map(|at| WebhookDelivery {
+                            at,
+                            delivered: delivered.unwrap_or(false),
+                            attempts: attempts.unwrap_or(0),
+                            error,
+                        }),
+                    }
                 },
             )
             .collect())

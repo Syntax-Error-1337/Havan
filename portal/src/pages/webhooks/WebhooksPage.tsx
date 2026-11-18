@@ -5,6 +5,7 @@ import {
   useSubscribeWebhook,
   useUnsubscribeWebhook,
   useWebhooks,
+  type Webhook,
 } from '../../entities/webhook';
 import { TableFrame } from '../../shared/ui/TableFrame';
 
@@ -112,6 +113,7 @@ export function WebhooksPage() {
               <th>Endpoint</th>
               <th>Events</th>
               <th>Created</th>
+              <th>Last delivery</th>
               <th />
             </tr>
           </thead>
@@ -123,8 +125,26 @@ export function WebhooksPage() {
                 </td>
                 <td className="muted">{hook.events.join(', ')}</td>
                 <td className="muted">{new Date(hook.created_at).toLocaleDateString()}</td>
+                <td className={hook.last_delivery && !hook.last_delivery.delivered ? 'error' : 'muted'}>
+                  {hook.last_delivery ? (
+                    <span title={new Date(hook.last_delivery.at).toLocaleString()}>
+                      {deliveryLine(hook.last_delivery)}
+                    </span>
+                  ) : (
+                    'nothing yet'
+                  )}
+                </td>
                 <td style={{ textAlign: 'right' }}>
-                  <button className="btn" onClick={() => remove.mutate(hook.id)}>
+                  {/* Removing an endpoint stops deliveries the vendor's own systems depend on; it asks first, and
+                      says what stops. */}
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      if (window.confirm(`Stop sending events to ${hook.url}?`)) {
+                        remove.mutate(hook.id);
+                      }
+                    }}
+                  >
                     Remove
                   </button>
                 </td>
@@ -142,4 +162,17 @@ export function WebhooksPage() {
       </TableFrame>
     </>
   );
+}
+
+/**
+ * The newest attempt in one phrase: "delivered after 1 attempt", "failed 3 times: 502 Bad Gateway".
+ *
+ * The wording comes from the server's own `describe()` shape rather than a second copy here — the portal builds the same
+ * sentence so the API and the page cannot drift, and the full timestamp lives in the cell's title.
+ */
+function deliveryLine(delivery: NonNullable<Webhook["last_delivery"]>): string {
+  const times = `${delivery.attempts} attempt${delivery.attempts === 1 ? '' : 's'}`;
+  if (delivery.delivered) return `delivered after ${times}`;
+  if (delivery.error) return `failed ${times}: ${delivery.error}`;
+  return `waiting to retry, ${times} so far`;
 }
