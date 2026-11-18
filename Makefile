@@ -147,6 +147,7 @@ check: testdb ## fmt + clippy + tests + no secrets + routes match handlers + rea
 	python3 scripts/portal-routes.py --self-test
 	python3 scripts/portal-routes.py
 	bash scripts/no-skipped-tests.sh --sources
+	python3 scripts/route-coverage.py --check
 	$(MAKE) contrast
 	$(MAKE) tokens
 	$(MAKE) time-serde
@@ -169,10 +170,15 @@ check-fast: ## fmt + lints + the cheap gates, no database suites (~90 s on a war
 	python3 scripts/portal-routes.py --self-test
 	python3 scripts/portal-routes.py
 	bash scripts/no-skipped-tests.sh --sources
+	python3 scripts/route-coverage.py --check
 	$(MAKE) contrast
 	$(MAKE) tokens
 	$(MAKE) time-serde
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
+
+.PHONY: coverage-map
+coverage-map: ## who reaches each route: rust tests, drills, clients — or nothing
+	python3 scripts/route-coverage.py
 
 .PHONY: audit
 audit: ## dependency advisories: shipped code must be clean, tooling must be clean at high
