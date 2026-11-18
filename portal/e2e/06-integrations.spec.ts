@@ -52,6 +52,10 @@ test('a subscription can be removed', async ({ app }) => {
   // globally empty table would fail for a reason that has nothing to do with removing.
   const row = app.getByRole('row').filter({ hasText: endpoint });
   await expect(row).toHaveCount(1);
+
+  // The removal asks first — "Stop sending events to …?" — and Playwright *dismisses* dialogs by default, so without
+  // this the delete never happened and the assertion below waited out its timeout on a row that was still there.
+  app.once('dialog', (dialog) => void dialog.accept());
   await row.getByRole('button', { name: /remove/i }).click();
   await expect(app.getByRole('row').filter({ hasText: endpoint })).toHaveCount(0);
 });
