@@ -240,7 +240,15 @@ describe('scenes', () => {
 
     const view = await renderPage();
     await view.findByText('Old scene');
-    await fireEvent.press(view.getByText('Delete'));
+
+    // Nothing is deleted on the first press: the sheet asks first, because this button sits a centimetre from
+    // "Run" on a screen used with a thumb.
+    await fireEvent.press(view.getByLabelText('Delete Old scene'));
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    await view.findByText('Delete “Old scene”?');
+
+    // The sheet's own button is the second press.
+    await fireEvent.press(view.getByTestId('confirm-accept'));
 
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true));
     expect(calls.find((c) => c.method === 'DELETE')?.url).toContain('/scenes/s9');

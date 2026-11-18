@@ -56,7 +56,7 @@ export function Confirm({
   onConfirm,
   onCancel,
 }: ConfirmOptions & { onCancel: () => void }) {
-  const { color } = useTheme();
+  const { color, dark } = useTheme();
 
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onCancel}>
@@ -79,6 +79,13 @@ export function Confirm({
             backgroundColor: color.elevated,
             borderWidth: StyleSheet.hairlineWidth,
             borderColor: color.border,
+            // A shadow, because an opaque panel on a 62 % scrim of the same dark family has edges you have to
+            // look for: the sheet read as part of the screen behind it rather than as a question being asked.
+            shadowColor: color.shadow,
+            shadowOpacity: dark ? 0.5 : 0.22,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 12 },
+            elevation: 12,
           }}
         >
           <View style={{ gap: tokens.space.sm }}>

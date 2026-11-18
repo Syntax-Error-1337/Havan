@@ -152,6 +152,29 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### Two presses, two answers
+
+Running a scene from the dashboard's strip said what happened — *"Sent · 3 devices"*, or the reason it did not.
+Running the **same** scene from `/scenes` said nothing at all: the identical action meant two different things
+depending on where it was pressed. The row now reports the same outcome in the same words, under the row, in
+success or danger.
+
+Deleting a scene had no confirmation, on a screen where **Delete sits a centimetre from Run** and the whole screen
+is used with a thumb. It asks now — *"Delete 'Evening'? The devices keep their current settings; only the shortcut
+goes."* — through the same `useConfirm` sheet the device screen uses.
+
+That change needed `{sheet}` to be rendered: `useConfirm` returns a dialog, and a hook whose dialog is never
+rendered is a button that silently does nothing. The existing test caught it — it pressed Delete, saw no request,
+and failed — and the updated test now asserts both halves: **nothing is deleted on the first press**, and the
+sheet's own button is the one that deletes.
+
+One finding that was not a defect. Reviewing the confirmation sheet, two vision passes reported text bleeding
+through the panel. The DOM said otherwise (panel `rgb(44,44,46)`, opacity 1, scrim `rgba(0,0,0,0.62)`), and a pixel
+histogram of the panel's interior settles it: **84.1 % of pixels are the single panel colour** with only text greys
+beside it — no chip surfaces, no accent blue. A dark panel on a dark scrim simply has edges you have to look for,
+so it gained a shadow (24 pt, 12 pt offset, 0.5 in dark / 0.22 in light), which is a real improvement for a
+different reason.
+
 ### The number nobody could hear
 
 Names and health were in every accessibility label; the **reading** was not. A screen reader announced

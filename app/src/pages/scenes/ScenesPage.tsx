@@ -8,6 +8,7 @@ import {
   ChipPicker,
   Screen,
   ScreenHeader,
+  useConfirm,
   ScreenScroll,
   ValueField,
   defaultPointValue,
@@ -19,6 +20,7 @@ import type { Palette } from '../../shared/config/tokens';
 import { useCurrentHome } from '../../entities/home';
 import { useDevices, type Device } from '../../entities/device';
 import {
+  outcome,
   useActivateScene,
   useCreateScene,
   useDeleteScene,
@@ -44,6 +46,19 @@ export function ScenesPage() {
   const { data: scenes, isPending, isError, refetch } = useScenes(homeId ?? undefined);
   const { data: devices } = useDevices(homeId ?? undefined);
   const activate = useActivateScene(homeId ?? undefined);
+  const { ask, sheet } = useConfirm();
+  /** What the last press did, in the same words the dashboard's strip uses. */
+  const [note, setNote] = useState<{ sceneId: string; text: string; bad: boolean } | null>(null);
+
+  const run = async (sceneId: string) => {
+    setNote(null);
+    try {
+      const result = await activate.mutateAsync(sceneId);
+      setNote({ sceneId, text: outcome(result), bad: result.failed.length > 0 });
+    } catch {
+      setNote({ sceneId, text: 'Could not run that scene.', bad: true });
+    }
+  };
   const create = useCreateScene(homeId ?? undefined);
   const remove = useDeleteScene(homeId ?? undefined);
 
@@ -103,6 +118,9 @@ export function ScenesPage() {
 
   return (
     <Screen>
+      {/* The confirmation sheet. A hook that returns a dialog nobody renders is a dialog that never opens,
+          and a destructive button that silently does nothing is worse than one that asks. */}
+      {sheet}
       {/* The screen had no header and no way out: it is pushed from the dashboard's scene strip and the
           tab bar's Automations destination, and the only exit was the platform's own gesture. */}
       <ScreenHeader title="Scenes" />
@@ -128,24 +146,50 @@ export function ScenesPage() {
         ) : null}
 
         {(scenes ?? []).map((scene) => (
-          <Box key={scene.id} row gap="md" p="md" radius="md" bg="surface" border>
-            <Box flex={1} gap="xs">
-              <AppText weight="600">{scene.name}</AppText>
-              <AppText variant="caption" tone="muted">
-                {`${scene.actions.length} action${scene.actions.length === 1 ? '' : 's'}`}
-              </AppText>
+          <Box key={scene.id} gap="xs">
+            <Box row gap="md" p="md" radius="md" bg="surface" border>
+              <Box flex={1} gap="xs">
+                <AppText weight="600">{scene.name}</AppText>
+                <AppText variant="caption" tone="muted">
+                  {`${scene.actions.length} action${scene.actions.length === 1 ? '' : 's'}`}
+                </AppText>
+              </Box>
+              <Button
+                label="Run"
+                variant="ghost"
+                loading={activate.isPending && activate.variables === scene.id}
+                onPress={() => void run(scene.id)}
+              />
+              {/* Delete asks first. It used to remove a scene on one press, on a screen where "Run" is the
+                  button under the thumb and the two sit a centimetre apart. */}
+              <Pressable
+                onPress={() =>
+                  ask({
+                    title: `Delete “${scene.name}”?`,
+                    message: 'The devices keep their current settings; only the shortcut goes.',
+                    confirmLabel: 'Delete',
+                    destructive: true,
+                    onConfirm: () => remove.mutate(scene.id),
+                  })
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`Delete ${scene.name}`}
+                style={{ minHeight: tokens.touch.min, justifyContent: 'center' }}
+              >
+                <AppText variant="caption" tone="danger">
+                  Delete
+                </AppText>
+              </Pressable>
             </Box>
-            <Button
-              label="Run"
-              variant="ghost"
-              loading={activate.isPending && activate.variables === scene.id}
-              onPress={() => activate.mutate(scene.id)}
-            />
-            <Pressable onPress={() => remove.mutate(scene.id)} accessibilityRole="button">
-              <AppText variant="caption" tone="danger">
-                Delete
+
+            {/* The strip on the dashboard says what a press did — "Sent · 3 devices", or why not. This screen
+                runs the same action and said nothing at all, so the same press meant two different things
+                depending on where it was pressed. */}
+            {note?.sceneId === scene.id ? (
+              <AppText variant="caption" tone={note.bad ? 'danger' : 'success'}>
+                {note.text}
               </AppText>
-            </Pressable>
+            ) : null}
           </Box>
         ))}
 
