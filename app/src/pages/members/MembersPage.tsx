@@ -73,6 +73,27 @@ export function MembersPage() {
   const { data: invites } = useInvitations(homeId ?? undefined);
   const revoke = useRevokeInvitation(homeId ?? undefined);
 
+  /**
+   * What an invitation answered.
+   *
+   * Shared by "Add to home" and by "New link" on a pending row, because they are the same request — an invitation for
+   * that address, which replaces the live one — and the person needs the same thing back: the link, now, because there
+   * is no email to send it with.
+   */
+  const afterInvite = (
+    result: { outcome: 'added' } | { outcome: 'invited'; token: string; expires_at: string } | undefined,
+    address: string,
+  ) => {
+    // Only an explicit `invited` opens the link card: anything else — a 204 from an older server, a body a proxy
+    // stripped — means the person is in the home, which is what "added" has always meant. The other way round would
+    // show a link with no token in it.
+    if (result?.outcome !== 'invited') {
+      toast('Added to this home');
+      return;
+    }
+    setInviteLink({ email: address, token: result.token, expiresAt: result.expires_at });
+  };
+
   return (
     <Screen>
       <ScreenHeader title="Members" />
@@ -181,18 +202,33 @@ export function MembersPage() {
                   <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
                     WAITING TO ACCEPT
                   </AppText>
-                  {(invites ?? []).map((invite) => (
-                    <Box key={invite.id} row gap="md" style={{ alignItems: 'center', minHeight: tokens.touch.min }}>
+                  {(invites ?? []).map((pending) => (
+                    <Box key={pending.id} row gap="md" style={{ alignItems: 'center', minHeight: tokens.touch.min }}>
                       <Box flex={1} gap="xs">
-                        <AppText numberOfLines={1}>{invite.email}</AppText>
+                        <AppText numberOfLines={1}>{pending.email}</AppText>
                         <AppText variant="tiny" tone="muted">
-                          {`Invited as ${invite.role}, expires ${new Date(invite.expires_at).toLocaleDateString()}`}
+                          {`Invited as ${pending.role}, expires ${new Date(pending.expires_at).toLocaleDateString()}`}
                         </AppText>
                       </Box>
+                      {/* A link that was closed, or an invitation that is about to expire, has no other repair: the
+                          token is hashed on the server and can never be shown again. This re-issues it. */}
                       <TouchText
-                        label={`Revoke the invitation for ${invite.email}`}
+                        label={`Send ${pending.email} a new link`}
                         onPress={() =>
-                          revoke.mutate(invite.id, { onSuccess: () => toast('Invitation revoked') })
+                          invite.mutate(
+                            { homeId: homeId as string, email: pending.email, role: pending.role as Role },
+                            { onSuccess: (result) => afterInvite(result, pending.email) },
+                          )
+                        }
+                      >
+                        <AppText variant="caption" style={{ color: color.accent }}>
+                          New link
+                        </AppText>
+                      </TouchText>
+                      <TouchText
+                        label={`Revoke the invitation for ${pending.email}`}
+                        onPress={() =>
+                          revoke.mutate(pending.id, { onSuccess: () => toast('Invitation revoked') })
                         }
                       >
                         <AppText variant="caption" tone="danger">
@@ -240,26 +276,14 @@ export function MembersPage() {
               <Button
                 label="Add to home"
                 onPress={() => {
-                  if (!homeId || !email.trim()) return;
+                  const address = email.trim();
+                  if (!homeId || !address) return;
                   invite.mutate(
-                    { homeId, email: email.trim(), role: inviteRole },
+                    { homeId, email: address, role: inviteRole },
                     {
                       onSuccess: (result) => {
                         setEmail('');
-                        // "Added" and "invited" are different facts and need different next steps. The invitation case
-                        // is the one that used to be a 404, and its link has to be seen now: there is no email.
-                        // Only an explicit `invited` opens the link card: anything else — a 204 from an older server, a
-                        // body a proxy stripped — means the person is in the home, which is what "added" has always
-                        // meant. The other way round would show a link with no token in it.
-                        if (result?.outcome !== 'invited') {
-                          toast('Added to this home');
-                          return;
-                        }
-                        setInviteLink({
-                          email: email.trim(),
-                          token: result.token,
-                          expiresAt: result.expires_at,
-                        });
+                        afterInvite(result, address);
                       },
                     },
                   );

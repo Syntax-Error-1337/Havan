@@ -93,7 +93,7 @@ and leaving.
 | --- | --- |
 | Invite, role, remove, leave — all present, now with confirmation messages | done |
 | Pending invitations are not listed, so an invite that was never accepted is invisible | **P1** |
-| No "resend invitation" | P2 |
+| "Resend invitation" — *done*: each pending row has **New link**, which re-invites the same address and role; the server replaces the live invitation (the old token is hashed and can never be shown again, so re-issuing is the only repair) and exactly one pending row remains. The link card appears again, from the same handler "Add to home" uses | **P2 — done** |
 
 ### Privacy (`/privacy`)
 | Finding | Priority |
