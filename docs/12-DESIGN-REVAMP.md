@@ -481,3 +481,28 @@ implies and never stated. Cheaper than hiding the control: the customer's next m
 dashboard stays mounted underneath a pushed screen — so the assertion passed while the transition was in flight and
 failed when paint was slow. It now waits on the device screen it navigated to. *A test that waits on the previous
 screen cannot tell a navigation from a slow paint.*
+
+## 17. Text on an art field, measured from pixels
+
+The whole revamp rests on one bet: a tinted field behind a reading can stay legible. The arithmetic gate in
+`make contrast` cannot answer it — it checks token pairs against `bg`, `surface` and `card`, and a field is none of
+those: it is the accent at 10 % (light) or 22 % (dark) over the card, with a radial bloom on top.
+
+So it was measured the way the earlier light-mode defects were found: **from rendered pixels**.
+
+Method — at 390 × 844 in both appearances, the Room Sensor tile at (16, 346, 173, 150), the field cropped to its inset
+region at 2× device pixels, the background taken as the **most common colour** in the crop (the wash, not the bloom's
+peak) and the text colour taken as the extreme against it:
+
+| Pair | Light | Dark | Floor |
+| --- | --- | --- | --- |
+| The numeral on its field (`18.3`) | **19.33 : 1** | **16.10 : 1** | 3 : 1 (large text) |
+| The `LAST KNOWN` tag on its field (11 pt) | **7.63 : 1** | **7.87 : 1** | 4.5 : 1 (small text) |
+
+Both clear their floors with room to spare, in both appearances, on the surface that ships.
+
+This is **an instrument, not a gate**, and deliberately so. Antialiasing makes a screenshot's darkest pixel depend on
+the glyph, the font rasteriser and the device pixel ratio; a test asserting on it would be red often enough to be
+ignored — the failure mode this project already refuses ("a check that is always red is a check everyone learns to
+skip"). The arithmetic gate keeps every *token* pair honest; this measurement answers the one question tokens cannot,
+and it should be repeated whenever the field's alpha, the bloom or the numerals change.
