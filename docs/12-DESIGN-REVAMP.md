@@ -383,3 +383,47 @@ has no banner of its own.)
 The range control (1h / 1d / 7d / 30d) sits above a chart that, on a device with no history, only says *"No readings in
 the last day"*. It reads as an orphaned control on that device. The honest fix is to hide the range selector when the
 widest window holds no samples at all — deferred, recorded here rather than quietly accepted.
+
+## 14. Wave 5 — motion that can be switched off, and a thousand devices
+
+### 14.1 One answer to "may this app animate?"
+
+`useReducedMotion()` wraps the async settings read, the change subscription and its unsubscribe — three things a
+component forgets one of. The gauge's sweep is the first tenant: with Reduce Motion on, the ring still answers, it
+just **arrives** instead of sweeping. *The value is the fact; the motion was the flourish on top of it.*
+
+The hook defaults to "animate" until the setting is known, because a component that renders still and then starts
+moving is worse than one that starts moving and stops.
+
+### 14.2 The 1,200-device home, measured
+
+The demo home is six devices. The **Plant** home is 1,200, and it is the one that answers "does this scale":
+
+| Measured | Value |
+| --- | --- |
+| Devices in the home | 1,200 (one page of 200 loaded) |
+| Tiles mounted at rest | **14** |
+| Tiles mounted after scrolling 30 screens | **44** |
+| DOM nodes at that point | **1,505** |
+| Long tasks (> 50 ms) during the scroll | **none** |
+
+`removeClippedSubviews` + `windowSize` + `initialNumToRender` hold: the list renders what is on screen, not what is in
+the home. This is a web measurement at 390 × 844 — not a native build — and it is the honest limit of what can be
+proved here.
+
+### 14.3 The room switcher does not scale, and now says so
+
+The same screenshot found the real defect at that size: a home with many rooms turns the capsule into *"a cramped,
+endless scroller"*. Past six rooms the capsule now keeps five and offers **+N**, which opens the app's action sheet
+with every room — one tap instead of hunting. Verified by unit test, because the demo homes have 3–4 rooms and the
+fix had to be proved against a home that does not exist in the data:
+
+- the active room is a state a screen reader hears (`role="tab"`, `selected`);
+- a home with one room renders no switcher at all;
+- nine rooms → five pills and `+4`, and pressing it hands all nine to the picker.
+
+### 14.4 What this wave did not do
+
+- **Native motion** — Reduce Motion is honoured in code and proven in the web build only.
+- **A scroll-edge blur** under the tab bar. The gradient fade is there; a real material would need `expo-blur`, and
+  the design rule (§3) rations glass to three places, none of which is a full-width bar over a card grid.

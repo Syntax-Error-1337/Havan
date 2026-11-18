@@ -3,6 +3,7 @@ import { Animated, Easing, View } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 
 import { useTheme, tokens } from '../../app-shell/theme';
+import { useReducedMotion } from '../lib/useReducedMotion';
 import { withAlpha } from '../config/tokens';
 import { AppText } from './Box';
 
@@ -60,8 +61,15 @@ export function Gauge({
   const arc = circumference * sweep;
 
   const progress = useRef(new Animated.Value(pct)).current;
+  const reduced = useReducedMotion();
 
   useEffect(() => {
+    // Reduce Motion: the ring still answers, it just arrives instead of sweeping. The value is the fact; the motion
+    // was the flourish on top of it.
+    if (reduced) {
+      progress.setValue(pct);
+      return;
+    }
     Animated.timing(progress, {
       toValue: pct,
       duration: tokens.motion.gauge,
@@ -69,7 +77,7 @@ export function Gauge({
       // `useNativeDriver` cannot drive an SVG stroke; the frame cost of one ring is small and measured.
       useNativeDriver: false,
     }).start();
-  }, [pct, progress]);
+  }, [pct, progress, reduced]);
 
   const dashOffset = progress.interpolate({
     inputRange: [0, 1],

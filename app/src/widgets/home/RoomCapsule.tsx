@@ -21,6 +21,7 @@ export function RoomCapsule({
   value,
   onChange,
   total,
+  onMore,
 }: {
   rooms: { id: string; name: string }[];
   /** `null` = all rooms. */
@@ -28,6 +29,14 @@ export function RoomCapsule({
   onChange: (id: string | null) => void;
   /** Unused by the pill labels; kept so a caller can pass the home's count without changing the call site later. */
   total?: number;
+  /**
+   * Hands the rest of the rooms to a picker.
+   *
+   * A home with twelve lines of production is not navigated by a horizontal scroller — a reviewer watching a
+   * 1,200-device home called it "a cramped, endless scroller" and was right. Past six rooms the capsule keeps the
+   * first five and offers the rest as a sheet: the cost of a picker is one tap, and the cost of a scroller is hunting.
+   */
+  onMore?: (rooms: { id: string; name: string }[]) => void;
 }) {
   const { color, dark } = useTheme();
   // A capsule that is cut off with no cue reads as broken. Measured rather than guessed: five rooms at 390 pt do not
@@ -35,6 +44,10 @@ export function RoomCapsule({
   const [overflowing, setOverflowing] = useState(false);
   const [scrolledToEnd, setScrolledToEnd] = useState(false);
   if (rooms.length < 2) return null;
+
+  // Six fits a phone with the fade as the cue; more than that needs a picker, not a longer scroll.
+  const shown = rooms.length > 6 && onMore ? rooms.slice(0, 5) : rooms;
+  const hidden = rooms.length - shown.length;
 
   const pill = (label: string, selected: boolean, onPress: () => void, key: string) => (
     <Pressable
@@ -92,7 +105,8 @@ export function RoomCapsule({
         {/* "All" rather than a count: the header already carries the home's totals, and a tab that reads
             "6 devices" beside "Kitchen" is a number in a list of places. */}
         {pill('All', value === null, () => onChange(null), 'all')}
-        {rooms.map((room) => pill(room.name, value === room.id, () => onChange(room.id), room.id))}
+        {shown.map((room) => pill(room.name, value === room.id, () => onChange(room.id), room.id))}
+        {hidden > 0 && onMore ? pill(`+${hidden}`, false, () => onMore(rooms), 'more') : null}
       </ScrollView>
 
       {/* The cue, in the palette's own surface so it works in both appearances: content fades out under the edge

@@ -2163,3 +2163,19 @@ Two rules came out of it, and both are now enforced:
 The `Unable to run simctl` line in `make app` is Expo detecting no iOS Simulator
 (CommandLineTools, not full Xcode). It is informational and unrelated.
 
+
+### The visual system, and where it is written down
+
+Cards are **materials**, not glass: a near-opaque surface with a lit top edge, a hairline border and one of three
+shadows (`shared/ui/Card`). Glass is rationed to the floating functional layer, which is Apple's rule and not a
+preference — `materials.md › Liquid Glass`: *"Don't use Liquid Glass in the content layer."*
+
+Every device is drawn in its own **art field** — a wash in its category hue, one bloom, its glyph cropped by the frame
+(`shared/ui/DeviceArtField`) — which is what a white-label platform can do instead of shipping photographs of hardware
+it has never seen.
+
+Readable numbers are `numeral` (34/300) and `gauge` (44/200); a ranged value that can be *turned* gets a ring
+(`shared/ui/Gauge`), a reading that can only be *watched* keeps its day's line.
+
+The whole system — the layer rule, the token table, the waves, what was rejected and why, and the measurements behind
+each claim — is `docs/12-DESIGN-REVAMP.md`.

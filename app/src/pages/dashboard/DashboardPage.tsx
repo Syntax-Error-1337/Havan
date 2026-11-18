@@ -532,6 +532,20 @@ export function DashboardPage() {
                   value={roomFilter}
                   onChange={setRoomFilter}
                   total={totalDevices}
+                  onMore={(all) =>
+                    addSheet.open({
+                      title: 'Rooms',
+                      items: [
+                        { key: 'all', icon: 'home', label: 'All devices', onPress: () => setRoomFilter(null) },
+                        ...all.map((room) => ({
+                          key: room.id,
+                          icon: 'home' as const,
+                          label: room.name,
+                          onPress: () => setRoomFilter(room.id),
+                        })),
+                      ],
+                    })
+                  }
                 />
               ) : null}
 
