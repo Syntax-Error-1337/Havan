@@ -41,7 +41,7 @@ import { qk } from '../../shared/api/keys';
 import { useMe, useSession } from '../../entities/session';
 import { useHomeStream } from '../../features/live-updates/useHomeStream';
 import { tokens } from '../../shared/config/tokens';
-import { withAlpha } from '../../shared/ui/Glass';
+import { withAlpha } from '../../shared/config/tokens';
 import { ApiError } from '../../shared/api/client';
 import { useTheme } from '../../app-shell/theme';
 import { deviceTimeZone } from '../../shared/lib/timeZone';

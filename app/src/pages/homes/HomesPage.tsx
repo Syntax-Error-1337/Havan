@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { AppText, Box, Button, Glass, Icon, ListSkeleton, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
+import { AppText, Box, Button, Card, Icon, ListSkeleton, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
 import { useCreateHome, useHomes } from '../../entities/home';
 import { useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -80,10 +80,11 @@ export function HomesPage() {
           (homes ?? []).map((home) => {
             const active = home.id === current;
             return (
-              <Glass
+              <Card
                 key={home.id}
                 onPress={() => void choose(home.id)}
                 accent={active ? color.accent : undefined}
+                accessibilityLabel={`${home.name}, ${active ? 'current home' : 'switch to this home'}`}
                 testID={`home-row-${home.id}`}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.space.md }}>
@@ -142,7 +143,7 @@ export function HomesPage() {
                     </View>
                   ) : null}
                 </View>
-              </Glass>
+              </Card>
             );
           })
         )}

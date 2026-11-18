@@ -4,9 +4,10 @@ import * as Haptics from 'expo-haptics';
 
 import { useTheme, tokens } from '../../../app-shell/theme';
 import { AppText } from '../../../shared/ui';
-import { withAlpha } from '../../../shared/ui/Glass';
+import { withAlpha } from '../../../shared/config/tokens';
 import { reading, unitSuffix, valueWithUnit } from '../../../shared/ui/units';
 import { useSetPoint } from '../model/queries';
+import { freshness } from '../model/silence';
 import { commandNotice } from '../model/notices';
 import type { Device, DevicePoint } from '../model/types';
 
@@ -335,15 +336,20 @@ export function PointControl({
         ) : null}
 
         {kind === 'readout' ? (
-          <AppText variant="title" weight="600">
-            {point.value === null || point.value === undefined
-              ? '—'
-              : typeof point.value === 'boolean'
-                ? point.value
-                  ? 'Yes'
-                  : 'No'
-                : valueWithUnit(typeof point.value === 'number' ? reading(point.value) : point.value, point.unit)}
-          </AppText>
+          <View style={{ gap: 1 }}>
+            <AppText variant="title" weight="600">
+              {point.value === null || point.value === undefined
+                ? '—'
+                : typeof point.value === 'boolean'
+                  ? point.value
+                    ? 'Yes'
+                    : 'No'
+                  : valueWithUnit(typeof point.value === 'number' ? reading(point.value) : point.value, point.unit)}
+            </AppText>
+            {/* No "Last reading" tag here, and the reason is in the first screenshot of this change: the screen
+                already carries a banner saying the values are the last ones reported, and a tag under all three
+                numbers repeated it three more times. One statement per fact — the banner's. */}
+          </View>
         ) : null}
       </View>
 

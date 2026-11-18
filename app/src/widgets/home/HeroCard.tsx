@@ -2,7 +2,7 @@ import { Pressable, View } from 'react-native';
 
 import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText, AreaChart, Card, Gauge, Icon, iconForCapability } from '../../shared/ui';
-import { withAlpha } from '../../shared/ui/Glass';
+import { withAlpha } from '../../shared/config/tokens';
 import { reading, valueWithUnit } from '../../shared/ui/units';
 import { accentFor } from '../../shared/config/tokens';
 import { commandNotice } from '../../entities/device/model/notices';

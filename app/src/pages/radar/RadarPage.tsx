@@ -3,7 +3,7 @@ import { Animated, Easing, Platform, Pressable, ScrollView, TextInput, View } fr
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 
-import { Box, AppText, Button, Glass, Icon, Screen, ScreenScroll } from '../../shared/ui';
+import { Box, AppText, Button, Card, Icon, Screen, ScreenScroll } from '../../shared/ui';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { withAlpha } from '../../shared/config/tokens';
 import { request } from '../../shared/api/client';
@@ -152,7 +152,8 @@ export function PhoneHandoff() {
   // customer's text size turned up. A dead end that is also cut off is worse than the dead end it replaced.
   return (
     <ScreenScroll gap={20}>
-      <Glass style={{ padding: 16, alignItems: 'center', gap: 8 }} accent={color.accent}>
+      <Card accent={color.accent}>
+        <View style={{ alignItems: 'center', gap: 8 }}>
         <Box
           center
           style={{
@@ -170,7 +171,8 @@ export function PhoneHandoff() {
         <AppText variant="caption" tone="muted" style={{ textAlign: 'center' }}>
           A browser cannot scan for Bluetooth, so pairing happens in the app. Everything else works here.
         </AppText>
-      </Glass>
+        </View>
+      </Card>
 
       <Box gap="sm">
         {steps.map((step, index) => (

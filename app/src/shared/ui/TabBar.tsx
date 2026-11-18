@@ -7,7 +7,7 @@ import { useTheme, tokens } from '../../app-shell/theme';
 // a require cycle (Metro warns about it, and a cycle can hand back an uninitialised binding).
 import { AppText } from './Box';
 import { Icon, type IconName } from './Icon';
-import { withAlpha } from './Glass';
+import { withAlpha } from '../config/tokens';
 
 export type TabKey = 'home' | 'automations' | 'add' | 'settings';
 

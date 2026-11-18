@@ -1,8 +1,8 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { useTheme, tokens } from '../../app-shell/theme';
-import { AppText, Glass, Icon, type IconName } from '../../shared/ui';
-import { withAlpha } from '../../shared/ui/Glass';
+import { AppText, Card, Icon, type IconName } from '../../shared/ui';
+import { withAlpha } from '../../shared/config/tokens';
 import { accentFor } from '../../shared/config/tokens';
 import type { HomeSummary } from '../../entities/device/model/summary';
 
@@ -142,7 +142,7 @@ export function HomeHeader({
         {/* Nothing to be present. "no devices" beside "0 devices · 0 rooms" and an empty-state heading
             is the same fact three times, and a pill is the most expensive of the three. */}
         {total === 0 || unknown ? null : (
-        <Glass
+        <Card
           padded={false}
           style={{ paddingHorizontal: 12, paddingVertical: 8 }}
           testID="presence-pill"
@@ -179,7 +179,7 @@ export function HomeHeader({
                     : `${silent.toLocaleString()} offline`}
             </AppText>
           </View>
-        </Glass>
+        </Card>
         )}
       </View>
 
@@ -260,7 +260,7 @@ export function StatRail({
         // a third of the row stayed as wide as its own text — which is why the rail stopped short of the cards under
         // it on every screen wider than a phone.
         <View key={chip.label} style={{ flex: 1 }}>
-          <Glass accent={chip.accent}>
+          <Card accent={chip.accent} style={{ flex: 1 }}>
             <View style={{ gap: 6, flexDirection: vertical ? 'row' : 'column', alignItems: vertical ? 'center' : 'flex-start' }}>
               <Icon name={chip.icon} size={16} color={chip.accent} />
               <View style={{ flex: vertical ? 1 : undefined, gap: 2 }}>
@@ -272,7 +272,7 @@ export function StatRail({
                 </AppText>
               </View>
             </View>
-          </Glass>
+          </Card>
         </View>
       ))}
     </View>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { AppText, Box, Button, Glass, Icon, Screen, ScreenHeader, useConfirm } from '../../shared/ui';
+import { AppText, Box, Button, Card, Icon, Screen, ScreenHeader, useConfirm } from '../../shared/ui';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useSession } from '../../entities/session';
 import { useHomes } from '../../entities/home';
@@ -112,7 +112,7 @@ export function PrivacyPage() {
           paddingBottom: tokens.layout.tabBarClearance,
         }}
       >
-        <Glass>
+        <Card>
           <Box gap="sm">
             <Box row gap="sm" style={{ alignItems: 'center' }}>
               <Icon name="check" size={16} color={color.accent} />
@@ -134,9 +134,9 @@ export function PrivacyPage() {
               </AppText>
             ) : null}
           </Box>
-        </Glass>
+        </Card>
 
-        <Glass accent={color.danger}>
+        <Card accent={color.danger}>
           <Box gap="sm">
             <Box row gap="sm" style={{ alignItems: 'center' }}>
               <Icon name="alert" size={16} color={color.danger} />
@@ -175,7 +175,7 @@ export function PrivacyPage() {
               </AppText>
             ) : null}
           </Box>
-        </Glass>
+        </Card>
 
         {problem ? (
           <AppText variant="caption" tone="danger">

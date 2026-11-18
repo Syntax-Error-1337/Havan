@@ -5,7 +5,7 @@ import {
   Box,
   AppText,
   Button,
-  Glass,
+  Card,
   Icon,
   ListSkeleton,
   QueryError,
@@ -13,7 +13,7 @@ import {
   ScreenHeader,
   ScreenScroll,
 } from '../../shared/ui';
-import { withAlpha } from '../../shared/ui/Glass';
+import { withAlpha } from '../../shared/config/tokens';
 import { signalAccent } from '../../shared/config/tokens';
 import { useTheme, tokens } from '../../app-shell/theme';
 import {
@@ -139,7 +139,7 @@ function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
   const kind = KIND[alert.kind] ?? KIND.alert!;
 
   return (
-    <Glass
+    <Card
       onPress={open}
       accent={unread ? color.accent : undefined}
       // Read alerts stay pressable: "read" is not "done", and the device is still there. But they step
@@ -199,7 +199,7 @@ function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color.accent, marginTop: 6 }} />
         ) : null}
       </Box>
-    </Glass>
+    </Card>
   );
 }
 

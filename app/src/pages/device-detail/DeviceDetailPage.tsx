@@ -5,7 +5,8 @@ import {
   Box,
   Screen,
   AppText,
-  Glass,
+  Card,
+  DeviceArtField,
   Icon,
   AreaChart,
   iconForCategory,
@@ -38,7 +39,7 @@ import type { DevicePoint } from '../../entities/device';
 import { canManage, useHomes, useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
-import { valueWithUnit } from '../../shared/ui/units';
+import { reading, valueWithUnit } from '../../shared/ui/units';
 import { chartBand } from '../../entities/device/model/chart';
 
 export function DeviceDetailPage() {
@@ -157,7 +158,19 @@ export function DeviceDetailPage() {
         </Pressable>
         {/* The hero is the device's own category: a bulb glows violet, a lock pink, a camera blue —
             chosen from data, so a product we have never seen still looks deliberate. */}
-        <Glass accent={accent} glow={glow} style={{ padding: 20 }}>
+        <Card accent={accent} level={2} padded={false}>
+          {/* The tile this device was opened from has a field behind its reading. The detail screen is the same
+              object, larger — so it keeps the field, at the top, where the name and the reading are. */}
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0 }}>
+            <DeviceArtField
+              accent={accent}
+              glyph={iconForCategory(device.category)}
+              height={150}
+              dimmed={freshness(device) !== 'live'}
+              style={{ borderRadius: 0 }}
+            />
+          </View>
+          <View style={{ padding: 20 }}>
         <Box gap="xs" style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <Box
             style={{
@@ -268,12 +281,13 @@ export function DeviceDetailPage() {
               {firmware.text}
             </AppText>
           ) : null}
-        </Glass>
+          </View>
+        </Card>
 
         {/* Values below are the last ones this device reported. Saying so is the difference between
             "this is broken" and "this is what the house looked like when it went quiet". */}
         {freshness(device) !== 'live' ? (
-          <Glass accent={color.warning}>
+          <Card accent={color.warning}>
             <Box row gap="sm" style={{ alignItems: 'center' }}>
               <Icon name="alert" size={16} color={color.warning} />
               <AppText variant="caption" tone="muted" style={{ flex: 1 }}>
@@ -285,7 +299,7 @@ export function DeviceDetailPage() {
                   : 'Offline — showing the last values this device reported.'}
               </AppText>
             </Box>
-          </Glass>
+          </Card>
         ) : null}
 
         <HistoryChart
@@ -309,9 +323,9 @@ export function DeviceDetailPage() {
             them being tappable. */}
         <Box gap="md" pointerEvents={device.online ? 'auto' : 'none'}>
           {orderedPoints(device.points).map((point) => (
-            <Glass key={point.code} accent={point.writable ? accent : undefined}>
+            <Card key={point.code} accent={point.writable ? accent : undefined}>
               <PointControl device={device} point={point} accent={accent} />
-            </Glass>
+            </Card>
           ))}
         </Box>
 
@@ -610,8 +624,10 @@ function HistoryChart({
         // window makes "nothing here" a statement about a period rather than about the device.
         <AppText variant="caption" tone="muted">
           {charted && charted.value !== null && charted.value !== undefined
-            ? `No readings in the last ${RANGE_WORDS[range]} — the latest is ${valueWithUnit(
-                String(charted.value),
+            ? // `reading()` too: the note said "the latest is 18.27 °C" beside a card reading "18.3 °C", which
+              // is two numbers for one temperature — and the customer checks the pair before anything else.
+              `No readings in the last ${RANGE_WORDS[range]} — the latest is ${valueWithUnit(
+                typeof charted.value === 'number' ? reading(charted.value) : String(charted.value),
                 charted.unit,
               )}.`
             : `No readings in the last ${RANGE_WORDS[range]} yet.`}

@@ -345,3 +345,41 @@ phone. The `flex` belongs on the wrapper.
 still rendering a 756-point layout with two columns. The reliable way to verify a breakpoint is to change the real
 window (`Browser.setWindowBounds`) and check a width-dependent measurement — tile widths, `flexDirection` — rather than
 trusting the viewport number. Same class of mistake as judging contrast from a JPEG instead of from values.
+
+## 13. Wave 4 — glass leaves the content layer entirely
+
+Wave 4 finished the rule from §3: **no content surface in the app is glass any more.** `Glass` itself is deleted —
+the component had no callers left, and a component nobody uses is a decision nobody made.
+
+| Screen | Was | Now |
+| --- | --- | --- |
+| Device detail — header | `Glass` with an accent halo | `Card` level 2 with the device's **art field** behind the name, dimmed when it is not reporting |
+| Device detail — stale banner | `Glass` | `Card` with a warning border |
+| Device detail — every point control | `Glass` | `Card` |
+| Alerts — each row | `Glass` | `Card`, still pressable, still dimmed when read |
+| Homes — the switcher | `Glass` | `Card` with an explicit accessibility label (*"Flat, current home"*) |
+| Privacy — both blocks | `Glass` | `Card` |
+| Radar — the pairing handoff | `Glass` | `Card` |
+| Header — presence pill, stat rail chips | `Glass` | `Card` |
+
+`withAlpha` moved to `shared/config/tokens.ts`, where it sits beside the palette it is derived from, so the five files
+that used to import it *through* the glass component now import a colour helper from the colour module.
+
+### 13.1 Two numbers for one temperature
+
+The detail screen said *"No readings in the last day — the latest is **18.27 °C**"* above a card reading **18.3 °C**.
+Two numbers for one temperature, and the pair is the first thing a customer checks. The note goes through `reading()`
+like every other number now.
+
+### 13.2 One statement per fact
+
+The change added a *"Last reading"* tag under each metric card, and the next screenshot showed why that was wrong: the
+screen **already** carries a banner saying these are the last reported values, so the tag repeated the same sentence
+three more times. Removed — the banner owns that fact. (The tiles keep their per-tile `LAST KNOWN` tag because a grid
+has no banner of its own.)
+
+### 13.3 Open
+
+The range control (1h / 1d / 7d / 30d) sits above a chart that, on a device with no history, only says *"No readings in
+the last day"*. It reads as an orphaned control on that device. The honest fix is to hide the range selector when the
+widest window holds no samples at all — deferred, recorded here rather than quietly accepted.
