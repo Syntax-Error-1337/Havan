@@ -88,10 +88,13 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
 
   // The range, then the window it actually covers. "last 24 h" claimed a full day even when the readings
   // stopped eleven hours ago — the same overstatement the detached marker exists to avoid.
+  // Empty when there is nothing to say. It used to read "no readings yet", which sat directly under "No history
+  // for this reading yet." — two sentences for one fact, in two different voices — and next to them a "steady"
+  // that described a day with no data in it.
   const rangeText =
     readings.length > 1
       ? `${valueWithUnit(`${Math.min(...readings).toFixed(1)}–${Math.max(...readings).toFixed(1)}`, point?.unit)} recorded`
-      : 'no readings yet';
+      : '';
 
   // What the day did, in one number: a range says how far it moved, the delta says which way.
   const delta =
@@ -232,7 +235,15 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
           </AppText>
         )}
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Nothing to compare, nothing to say: a day with no readings is not steady, it is unrecorded. */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            display: readings.length > 1 ? 'flex' : 'none',
+          }}
+        >
           <AppText variant="tiny" tone="muted">
             {rangeText}
           </AppText>

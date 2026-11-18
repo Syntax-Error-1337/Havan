@@ -193,11 +193,17 @@ export function Icon({
         </>
       )}
       {name === 'gear' && (
+        // A ring with thick teeth that touch it. The first version was a small circle with eight thin rays around
+        // it — which is a *sun*, and a reviewer reading the tab bar called it one. A gear's teeth are short and
+        // wide and they join the wheel; that is the whole difference between the two glyphs at 20 pt.
         <>
-          <Circle cx="12" cy="12" r="3.2" {...common} fill="none" />
+          <Circle cx="12" cy="12" r="6.6" {...common} fill="none" />
+          <Circle cx="12" cy="12" r="2.4" {...common} fill="none" />
           <Path
-            d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18"
+            d="M12 2.6v2.8M12 18.6v2.8M2.6 12h2.8M18.6 12h2.8M6.65 6.65l1.98 1.98M15.37 15.37l1.98 1.98M17.35 6.65l-1.98 1.98M8.63 15.37l-1.98 1.98"
             {...common}
+            strokeWidth={3}
+            strokeLinecap="round"
             fill="none"
           />
         </>

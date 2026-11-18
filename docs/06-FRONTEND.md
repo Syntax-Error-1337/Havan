@@ -152,6 +152,26 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### Two sentences for one fact, and a gear that was a sun
+
+Two defects found by reading the screen's own text rather than its code.
+
+**The hero card said the same thing twice.** With no history it printed *"No history for this reading yet."* and,
+directly beneath, *"no readings yet"* — one fact in two voices, one punctuated and one not — with **"steady"** beside
+them describing a day that held no readings at all. The footer was hidden when there is nothing to compare, because
+*"a day with no readings is not steady, it is unrecorded."* The card still shows the reading; that is the one fact
+that exists.
+
+It survived because **`HeroCard` had no test at all** — the most prominent component on the dashboard, in its most
+common state. `HeroCard.test.tsx` now asserts both halves: the one sentence is there, the second sentence and the
+"steady" claim are not.
+
+**The Settings tab icon was a sun.** `Icon`'s `gear` was a small circle with eight thin rays around it, and a
+reviewer reading the tab bar called it a sun — correctly. A gear's teeth are short and wide and they **touch the
+wheel**; that is the entire difference between the two glyphs at 20 pt. Redrawn as a ring (r 6.6) with a 2.4 centre
+and eight 3 pt teeth meeting the rim. Verified in the rendered tab bar: it reads as a cog, at the weight of the house
+and sparkle beside it.
+
 ### The first ninety seconds
 
 Every screen in the app had been photographed except the two a **new customer** meets first. Walking them as a real
