@@ -9,6 +9,7 @@ import {
   Card,
   ChipPicker,
   EmptyState,
+  TouchText,
   ListSkeleton,
   QueryError,
   useConfirm,
@@ -21,6 +22,7 @@ import {
 } from '../../shared/ui';
 import { tokens } from '../../app-shell/theme';
 import { useHomes } from '../../entities/home';
+import { ago } from '../../entities/notification';
 import { useDevices } from '../../entities/device';
 import {
   describe,
@@ -46,6 +48,8 @@ export function AutomationsPage() {
   const homeId = homes?.[0]?.id;
 
   const { data: rules, isLoading, isError, refetch } = useAutomations(homeId);
+  // Only for the one-line description: "turn Porch light on" instead of "set switch.power".
+  const { data: homeDevices } = useDevices(homeId);
   const toggle = useToggleAutomation(homeId);
   const run = useRunAutomation();
   const { color } = useTheme();
@@ -134,23 +138,36 @@ export function AutomationsPage() {
               <Box flex={1} gap="xs">
                 <AppText weight="600">{rule.name}</AppText>
                 <AppText variant="caption" tone="muted">
-                  {describe(rule)}
+                  {describe(rule, (id) => (homeDevices ?? []).find((d) => d.id === id)?.name)}
                 </AppText>
+                {/* "Did it run?" is the first question about a rule that did not do what somebody expected, and the
+                    answer used to cost a trip into the history. Silent while the rule has never fired — a rule created
+                    a minute ago is not news. */}
+                {rule.last_run_at ? (
+                  <AppText variant="tiny" tone="muted">
+                    Last ran {ago(rule.last_run_at)}
+                  </AppText>
+                ) : null}
               </Box>
               <Switch
                 value={rule.enabled}
+                // A bare switch in a row is announced as "switch, on" with no idea which rule it belongs to — the a11y
+                // gate caught exactly that once the demo home had a rule to render.
+                accessibilityLabel={`${rule.name}, ${rule.enabled ? 'on' : 'off'}`}
                 onValueChange={(enabled) => toggle.mutate({ id: rule.id, enabled })}
                 trackColor={{ true: color.accent, false: color.border }}
               />
             </Box>
 
-            <Box row gap="md">
+            {/* Wraps, because at 200% zoom three 44-point controls no longer fit on one line: the a11y gate found
+                "Delete" past the right edge, which is a control nobody can press with a thumb. */}
+            <Box row gap="md" style={{ flexWrap: 'wrap' }}>
               {/* The only way to see a rule work used to be waiting for its trigger. This runs it now,
                   through the scheduler's own door, and the history below shows what it did — including
                   "skipped" and why, which is the answer a person testing a rule needs. */}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityHint="Runs this rule once, through the same path the schedule uses"
+              <TouchText
+                label={`Run ${rule.name} now`}
+                hint="Runs this rule once, through the same path the schedule uses"
                 disabled={!rule.enabled || run.isPending}
                 onPress={() => run.mutate(rule.id)}
                 testID={`run-${rule.id}`}
@@ -161,23 +178,24 @@ export function AutomationsPage() {
                 >
                   {run.isPending ? 'Running…' : 'Run now'}
                 </AppText>
-              </Pressable>
+              </TouchText>
               {/* No `accessibilityRole` meant no role in the DOM either: a screen reader announced this as
                   text, not as the control it is. */}
-              <Pressable
+              <TouchText
                 onPress={() => setOpen(open === rule.id ? null : rule.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`${open === rule.id ? 'Hide' : 'Show'} the run history for ${rule.name}`}
+                label={`${open === rule.id ? 'Hide' : 'Show'} the run history for ${rule.name}`}
                 testID={`history-${rule.id}`}
               >
                 <AppText variant="caption" tone="accent">
                   {open === rule.id ? 'Hide history' : 'History'}
                 </AppText>
-              </Pressable>
+              </TouchText>
               {/* Delete asks first, and says what goes with it: the rule's run history is CASCADE in the
                   database, so "delete" removes the evidence of what it did as well as the rule. It also sits
                   a centimetre from "Run now" and "History" on a screen used with a thumb. */}
-              <Pressable
+              <TouchText
+                destructive
+                label={`Delete ${rule.name}`}
                 onPress={() =>
                   ask({
                     title: `Delete “${rule.name}”?`,
@@ -188,13 +206,11 @@ export function AutomationsPage() {
                   })
                 }
                 disabled={remove.isPending}
-                accessibilityRole="button"
-                accessibilityLabel={`Delete ${rule.name}`}
               >
                 <AppText variant="caption" tone="danger">
                   Delete
                 </AppText>
-              </Pressable>
+              </TouchText>
             </Box>
 
             {open === rule.id ? <History rule={rule} /> : null}

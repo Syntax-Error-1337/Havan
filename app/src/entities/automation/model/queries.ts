@@ -34,6 +34,13 @@ export type Automation = {
   enabled: boolean;
   definition: AutomationDef;
   next_run_at: string | null;
+  /**
+   * When it last ran, whatever fired it.
+   *
+   * The API computes it in the list query; a screen that had to ask per row would be one request per rule on the one
+   * screen people open when they are already unsure whether something works.
+   */
+  last_run_at?: string | null;
 };
 
 export type RunRecord = {
@@ -153,15 +160,38 @@ export function describeCondition(condition: Condition): string {
   }
 }
 
-/** What a rule does, in one line, for the list. */
-export function describe(automation: Automation): string {
+/**
+ * An interval in the words a person says it in.
+ *
+ * "Every 1440 min" is a number the API is happy with and a sentence nobody says: a daily rule is "Every day". Seconds
+ * are only used below a minute, where they are the honest unit.
+ */
+export function humanEvery(secs: number): string {
+  if (secs % 86_400 === 0) {
+    const days = secs / 86_400;
+    return days === 1 ? 'Every day' : `Every ${days} days`;
+  }
+  if (secs % 3_600 === 0) {
+    const hours = secs / 3_600;
+    return hours === 1 ? 'Every hour' : `Every ${hours} hours`;
+  }
+  if (secs % 60 === 0) return `Every ${secs / 60} min`;
+  return `Every ${secs}s`;
+}
+
+/**
+ * What a rule does, in one line, for the list.
+ *
+ * `nameOf` resolves a device id to what the customer calls it. Without it the line says "set switch.power", which is the
+ * wire format of somebody else's firmware — the exact class of copy this project keeps finding on screens that were
+ * written from the API outwards instead of from the customer inwards.
+ */
+export function describe(automation: Automation, nameOf?: (deviceId: string) => string | undefined): string {
   const { trigger, actions } = automation.definition;
 
   const when =
     trigger.type === 'schedule'
-      ? trigger.every_secs % 60 === 0
-        ? `Every ${trigger.every_secs / 60} min`
-        : `Every ${trigger.every_secs}s`
+      ? humanEvery(trigger.every_secs)
       : trigger.type === 'device_state'
         ? `When ${trigger.code.split('.').pop()} ${
             trigger.op === 'eq' ? 'is' : trigger.op === 'gt' ? '>' : '<'
@@ -169,7 +199,15 @@ export function describe(automation: Automation): string {
         : 'Manual';
 
   const then = actions
-    .map((a) => (a.type === 'set_device' ? `set ${a.code}` : 'notify'))
+    .map((a) => {
+      if (a.type !== 'set_device') return 'send an alert';
+      const device = nameOf?.(a.device_id);
+      const point = a.code.split('.').pop() ?? a.code;
+      // "turn Acme Bulb E27 on" reads like a sentence; "set switch.power" reads like a header dump.
+      if (point === 'power') return `turn ${device ?? 'the device'} ${a.value === false || a.value === 'false' ? 'off' : 'on'}`;
+      if (point === 'locked') return `${a.value === true || a.value === 'true' ? 'lock' : 'unlock'} ${device ?? 'the device'}`;
+      return `set ${point} on ${device ?? 'the device'} to ${String(a.value)}`;
+    })
     .join(', ');
 
   // The condition is half the sentence. A rule that says "Every 5 min → set switch.power" and silently only

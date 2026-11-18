@@ -61,7 +61,7 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Empty state, rule rows, run/history/delete, toggle — present | — |
-| A rule row shows its schedule as text but has no "last ran at" in the row | **P1** — the first question about a rule that did not fire (still open) |
+| A rule row shows its schedule as text but has no "last ran at" — *done*: the list query folds in each rule's latest run with a lateral join (one index seek per rule, not a request per row), and the row prints "Last ran 7m ago". Silent for a rule that has never fired | done |
 | **No condition editor beyond presence/solar** — *done in part*: "Only between two times" now sends `Condition::TimeOfDay`, with a window that crosses midnight explained in place. Numeric comparisons on a device point are still a curl call | P2 |
 
 ### Scenes (`/scenes`)

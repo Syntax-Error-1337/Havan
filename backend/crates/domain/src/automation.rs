@@ -438,6 +438,14 @@ pub struct Automation {
     /// say `manual` about a hand-fired rule instead of borrowing its trigger's name.
     #[serde(with = "time::serde::rfc3339::option")]
     pub run_requested_at: Option<time::OffsetDateTime>,
+    /// When this rule last ran, whatever fired it.
+    ///
+    /// The first question about a rule that did not do what somebody expected is "did it run at all", and the row could
+    /// only answer it after opening the history — one round trip deeper, on a screen people check precisely when they are
+    /// already unsure. Computed in the list query with a lateral join, so it costs one index seek per rule rather than a
+    /// request per row.
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub last_run_at: Option<time::OffsetDateTime>,
 }
 
 pub trait AutomationRepo {

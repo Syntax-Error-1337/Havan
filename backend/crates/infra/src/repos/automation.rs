@@ -33,10 +33,11 @@ type Row = (
     serde_json::Value,
     Option<time::OffsetDateTime>,
     Option<time::OffsetDateTime>,
+    Option<time::OffsetDateTime>,
 );
 
 fn map(row: Row) -> Result<Automation, AppError> {
-    let (id, home_id, name, enabled, definition, next_run_at, run_requested_at) = row;
+    let (id, home_id, name, enabled, definition, next_run_at, run_requested_at, last_run_at) = row;
     let definition: AutomationDef = serde_json::from_value(definition)
         .map_err(|e| AppError::Internal(format!("stored automation is invalid: {e}")))?;
     Ok(Automation {
@@ -47,10 +48,32 @@ fn map(row: Row) -> Result<Automation, AppError> {
         definition,
         next_run_at,
         run_requested_at,
+        last_run_at,
     })
 }
 
-const COLUMNS: &str = "id, home_id, name, enabled, definition, next_run_at, run_requested_at";
+/// The columns every read of `automations` alone can produce. `last_run_at` comes from the history table, so a query
+/// that does not join it says `NULL` — the alternative is two row shapes and a `map` that has to know which one it got,
+/// which is exactly how the worker's lease query broke when the field was added.
+const COLUMNS: &str = "id, home_id, name, enabled, definition, next_run_at, run_requested_at, NULL::timestamptz AS last_run_at";
+
+/// The list, with each rule's last run folded in.
+///
+/// A lateral join rather than a subquery in the select list: `LEFT JOIN LATERAL … LIMIT 1` uses
+/// `automation_runs_idx (automation_id, started_at DESC)` once per rule, which is the difference between a screen that
+/// opens and a screen that scans the history table.
+const LIST_SQL: &str = r#"SELECT a.id, a.home_id, a.name, a.enabled, a.definition, a.next_run_at, a.run_requested_at,
+                                 r.started_at AS last_run_at
+                            FROM automations a
+                            LEFT JOIN LATERAL (
+                                  SELECT started_at
+                                    FROM automation_runs
+                                   WHERE automation_id = a.id
+                                   ORDER BY started_at DESC
+                                   LIMIT 1
+                            ) r ON true
+                           WHERE a.home_id = $1
+                           ORDER BY a.created_at DESC"#;
 
 impl AutomationRepo for PgAutomation {
     async fn create(
@@ -87,18 +110,18 @@ impl AutomationRepo for PgAutomation {
             definition: def.clone(),
             next_run_at,
             run_requested_at: None,
+            // A rule that has just been created has never run; the list query fills this in from the history.
+            last_run_at: None,
         })
     }
 
     async fn list(&self, home_id: Uuid) -> Result<Vec<Automation>, AppError> {
         let mut tx = self.tx().await?;
-        let rows = sqlx::query_as::<_, Row>(&format!(
-            "SELECT {COLUMNS} FROM automations WHERE home_id = $1 ORDER BY created_at DESC"
-        ))
-        .bind(home_id)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(db)?;
+        let rows = sqlx::query_as::<_, Row>(LIST_SQL)
+            .bind(home_id)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(db)?;
         tx.commit().await.map_err(db)?;
 
         rows.into_iter().map(map).collect()

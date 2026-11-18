@@ -122,3 +122,43 @@ async fn a_rule_that_is_off_is_not_queued() {
         .await
         .ok();
 }
+
+#[tokio::test]
+async fn the_list_says_when_each_rule_last_ran() {
+    let Some(f) = fixture().await else {
+        eprintln!("skipping: TEST_DATABASE_URL not set");
+        return;
+    };
+    let id = rule(&f, 3600).await;
+
+    // A rule that has never fired says nothing about firing: the row is silent rather than claiming "never".
+    let before = f.repo.list(f.home).await.expect("list");
+    let listed = before
+        .iter()
+        .find(|a| a.id == id)
+        .expect("the rule is listed");
+    assert!(listed.last_run_at.is_none());
+
+    // One run in the history, written the way the worker writes it.
+    let started = time::OffsetDateTime::now_utc() - time::Duration::minutes(5);
+    sqlx::query(
+        "INSERT INTO automation_runs (id, automation_id, trigger_kind, status, started_at)
+         VALUES ($1, $2, 'schedule', 'completed', $3)",
+    )
+    .bind(Uuid::now_v7())
+    .bind(id)
+    .bind(started)
+    .execute(&f.pool)
+    .await
+    .expect("run row");
+
+    // And the list carries it — one query, not one per row: this is the lateral join, and a test that only asserted
+    // "some timestamp" would pass with a completely unwritten field.
+    let after = f.repo.list(f.home).await.expect("list");
+    let listed = after.iter().find(|a| a.id == id).expect("listed");
+    let last = listed.last_run_at.expect("last run is filled in");
+    assert!(
+        (last - started).abs() < time::Duration::seconds(1),
+        "the latest run's start, not some other row: {last} vs {started}"
+    );
+}

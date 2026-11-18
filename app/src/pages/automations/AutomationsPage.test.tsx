@@ -57,14 +57,24 @@ beforeEach(() => {
 
 describe('automations', () => {
   it('lists a rule in words a person can read', async () => {
-    stubApi((url) => (url.endsWith('/automations') ? [rule] : [home]));
+    // The device list is what lets the sentence say "turn Bathroom fan on" instead of "turn the device on": one line
+    // per rule, resolved from the ids the rule stores.
+    stubApi((url) =>
+      url.endsWith('/automations')
+        ? [rule]
+        : url.includes('/devices')
+          ? [{ id: 'd1', name: 'Bathroom fan', points: [] }]
+          : [home],
+    );
 
     const view = await renderPage();
 
     expect(await view.findByText('Bathroom fan')).toBeTruthy();
     // describe() turns the stored JSON into a sentence: the list is useless if
     // it shows a definition object.
-    expect(view.getByText('Every 5 min → set switch.power')).toBeTruthy();
+    // The sentence names the device when the list can resolve it, and never prints a point code: "set switch.power"
+    // was a header dump wearing a description's clothes.
+    expect(view.getByText('Every 5 min → turn Bathroom fan on')).toBeTruthy();
   });
 
   it('flips the switch through the API, not just on screen', async () => {
