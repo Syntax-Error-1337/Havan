@@ -450,7 +450,7 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
           </Box>
           <AppText variant="tiny" tone="muted">
             {clockValue(windowAfter) && clockValue(windowBefore)
-              ? `Runs only between ${clockValue(windowAfter)} and ${clockValue(windowBefore)}, ${home?.timezone ?? 'the home timezone'}. A window that ends before it starts crosses midnight.`
+              ? `Runs only between ${clockValue(windowAfter)} and ${clockValue(windowBefore)}, ${home?.timezone ?? 'the home\'s timezone'}. If the “to” time is earlier than the “from” time, the window runs overnight.`
               : 'Times are 24-hour, like 22:00.'}
           </AppText>
         </Box>
