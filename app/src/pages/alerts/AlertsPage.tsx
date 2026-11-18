@@ -1,4 +1,5 @@
-import { ScrollView, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import {
@@ -34,10 +35,15 @@ import {
  */
 export function AlertsPage() {
   const { data: alerts, isPending, isError, isFetching, refetch } = useNotifications();
+  const { color } = useTheme();
   const markRead = useMarkRead();
   const markAll = useMarkAllRead();
 
   const unread = (alerts ?? []).filter((a) => !a.read_at).length;
+  // All / Unread, over the loaded page. The list is an alert feed capped at 50, not an archive, so filtering it here
+  // is the same set the customer can see — and the label says "Only unread" rather than promising a search.
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const shown = onlyUnread ? (alerts ?? []).filter((a) => !a.read_at) : (alerts ?? []);
 
   return (
     <Screen>
@@ -70,9 +76,26 @@ export function AlertsPage() {
             It also appeared *while they were still loading* — the feed said "Nothing new" above three
             skeletons, which is the screen contradicting itself in its first second. */}
         {isPending ? null : (
-          <AppText variant="caption" tone="muted">
-            {isError ? '— unread' : unread === 0 ? 'Nothing new' : `${unread} unread`}
-          </AppText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: tokens.space.md }}>
+            <AppText variant="caption" tone="muted">
+              {isError ? '— unread' : unread === 0 ? 'Nothing new' : `${unread} unread`}
+            </AppText>
+            {/* An alert list is read once and never cleared: without this, "mark all read" was the only way to make
+                the pile smaller, and there was no way to see what was left to do. */}
+            {unread > 0 ? (
+              <Pressable
+                onPress={() => setOnlyUnread((v) => !v)}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: onlyUnread }}
+                accessibilityLabel="Only unread"
+                style={{ minHeight: tokens.touch.min, justifyContent: 'center' }}
+              >
+                <AppText variant="caption" weight="600" style={{ color: onlyUnread ? color.accent : color.muted }}>
+                  {onlyUnread ? 'Showing unread' : 'Only unread'}
+                </AppText>
+              </Pressable>
+            ) : null}
+          </View>
         )}
 
         {isPending ? <ListSkeleton rows={3} rowHeight={104} showHeader={false} /> : null}
@@ -98,7 +121,12 @@ export function AlertsPage() {
 
         {/* Grouped by day. A feed that runs Today → yesterday → last Tuesday in one flat column is a
             column you scroll without reading; a heading costs a line and makes it a record. */}
-        {(alerts ?? []).map((alert, index, all) => {
+        {onlyUnread && shown.length === 0 ? (
+          <AppText variant="caption" tone="muted">
+            Nothing unread — you are caught up.
+          </AppText>
+        ) : null}
+        {shown.map((alert, index, all) => {
           const bucket = dayBucket(alert.created_at);
           const first = index === 0 || dayBucket(all[index - 1]!.created_at) !== bucket;
           return (

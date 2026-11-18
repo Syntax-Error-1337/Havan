@@ -3,7 +3,8 @@ import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { AppText, Box, Button, Card, Icon, ListSkeleton, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
-import { useCreateHome, useHomes } from '../../entities/home';
+import { useCreateHome, useHomes, type Home } from '../../entities/home';
+import { HomeSheet } from './HomeSheet';
 import { useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { withAlpha } from '../../shared/config/tokens';
@@ -35,6 +36,7 @@ export function HomesPage() {
   // holds different roles in different homes — otherwise it is a fact about every row at once.
   const rolesDiffer = new Set((homes ?? []).map((h) => h.role)).size > 1;
   const createHome = useCreateHome();
+  const [editing, setEditing] = useState<Home | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [timezone] = useState(
@@ -80,14 +82,16 @@ export function HomesPage() {
           (homes ?? []).map((home) => {
             const active = home.id === current;
             return (
-              <Card
-                key={home.id}
-                onPress={() => void choose(home.id)}
-                accent={active ? color.accent : undefined}
-                accessibilityLabel={`${home.name}, ${active ? 'current home' : 'switch to this home'}`}
-                testID={`home-row-${home.id}`}
-              >
+              // A card that holds two controls is a surface, not a button — a `<button>` cannot contain one, and the
+              // browser said so when the Edit control was nested inside `onPress`.
+              <Card key={home.id} containsControls accent={active ? color.accent : undefined} testID={`home-row-${home.id}`}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.space.md }}>
+                  <Pressable
+                    onPress={() => void choose(home.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${home.name}, ${active ? 'current home' : 'switch to this home'}`}
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: tokens.space.md, minHeight: tokens.touch.min }}
+                  >
                   {/* The home's initial, not one house glyph for every row: three identical houses are a
                       list you read, and the dashboard already uses an initial for the person. */}
                   <View
@@ -132,6 +136,7 @@ export function HomesPage() {
                       {home.member_count} {home.member_count === 1 ? 'member' : 'members'}
                     </AppText>
                   </View>
+                  </Pressable>
                   {active ? (
                     // A tick and the word, not a switch: a toggle in a list reads as a setting you
                     // can turn off, and this is a choice you are already in.
@@ -142,6 +147,18 @@ export function HomesPage() {
                       </AppText>
                     </View>
                   ) : null}
+                  {/* Rename and delete, which this screen never offered: a home made by mistake could not be removed
+                      from inside the product. */}
+                  <Pressable
+                    onPress={() => setEditing(home)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${home.name}`}
+                    style={{ minHeight: tokens.touch.min, minWidth: tokens.touch.min, justifyContent: 'center', alignItems: 'flex-end' }}
+                  >
+                    <AppText tone="accent" variant="subhead">
+                      Edit
+                    </AppText>
+                  </Pressable>
                 </View>
               </Card>
             );
@@ -215,6 +232,21 @@ export function HomesPage() {
           ) : null}
         </View>
       </ScreenScroll>
+
+      {editing ? (
+        <HomeSheet
+          home={editing}
+          onClose={() => setEditing(null)}
+          onDeleted={() => {
+            setEditing(null);
+            // The home that was just deleted cannot stay selected: the dashboard would open a 404.
+            if (editing.id === current) {
+              const next = (homes ?? []).find((h) => h.id !== editing.id);
+              if (next) void setHome(next.id);
+            }
+          }}
+        />
+      ) : null}
     </Screen>
   );
 }

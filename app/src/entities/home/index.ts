@@ -4,6 +4,7 @@ export {
   useInviteMember,
   useMembers,
   useRemoveMember,
+  useDeleteHome,
   useRenameHome,
   useSetLocation,
   useSetMemberRole,

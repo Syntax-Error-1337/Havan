@@ -78,7 +78,9 @@ describe('homes', () => {
     useSession.setState({ setHome });
 
     const view = await renderPage();
-    fireEvent.press(await view.findByTestId('home-row-home-2'));
+    // The card is a surface now — it holds the switch control and an Edit control — so the press lives on the inner
+    // button, which is what a thumb finds. `testID` stays on the card for layout assertions.
+    fireEvent.press(await view.findByLabelText('Cottage, switch to this home'));
 
     expect(setHome).toHaveBeenCalledWith('home-2');
   });

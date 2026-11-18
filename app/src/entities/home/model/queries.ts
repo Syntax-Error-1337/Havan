@@ -150,6 +150,24 @@ export function useRenameHome() {
   });
 }
 
+/**
+ * Delete a home.
+ *
+ * The server has served `DELETE /homes/{id}` since the first version and nothing in the app called it, so a home made
+ * by mistake — or the second home somebody made to see what would happen — could not be removed from inside the
+ * product at all. Devices, rooms, scenes and rules go with it, which is why every caller confirms first.
+ */
+export function useDeleteHome() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<void>(`/homes/${id}`, { method: 'DELETE' }),
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: qk.homes });
+      void qc.invalidateQueries({ queryKey: qk.dashboard(id) });
+    },
+  });
+}
+
 export function useCreateHome() {
   const qc = useQueryClient();
   return useMutation({

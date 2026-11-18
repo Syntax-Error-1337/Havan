@@ -53,7 +53,7 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Mark all read; opening one marks it read | — |
-| **No filter** (all / unread) and no per-alert dismiss: an alert list is read once and never cleared | **P1** |
+| **No filter** (all / unread) — *done*: an "Only unread" switch over the loaded feed, with "Nothing unread — you are caught up." for the empty case. Per-alert dismiss still needs an API verb | P1 → P2 |
 | No empty state distinct from "no alerts at all" vs "all read" | P2 |
 | Grouping is by day, which is right; nothing distinguishes homes for a person in two | P2 |
 
@@ -85,7 +85,7 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Switch, create, per-home counts | — |
-| **No rename, no delete, no leave** for a home from the list; a home created by mistake can only be abandoned | **P1** |
+| **No rename, no delete, no leave** — *done*: each row has an Edit control opening a sheet (pre-filled name, owner-only delete behind a second confirmation that names the device count). Leaving lives on Members | done |
 | No per-home artwork: every home is a coloured initial | P2 |
 
 ### Members (`/members`)
