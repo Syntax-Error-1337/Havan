@@ -131,6 +131,7 @@ const SCREENS: [string, string][] = [
   ['/homes', 'homes'],
   ['/privacy', 'privacy'],
   ['/add-device', 'add-device'],
+  ['/members', 'members'],
   ['/device/01a1fb00-0000-7000-8000-000000000002', 'device detail'],
 ];
 

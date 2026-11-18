@@ -152,6 +152,36 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The people in the home
+
+The API has served `GET /homes/{id}/members`, invitations, role changes and removals since the first version. The app
+showed a count — *"2 members"* — and a way to change neither. In a smart-home app the person you live with is the
+point; a count is not a feature.
+
+Settings → Home → **Members** now opens the list: initials drawn from the name, the address, the role, and *(you)* on
+your own row. An admin can invite an account by email, re-role anyone but the owner and themselves, and remove
+somebody through the app's own confirmation sheet. Anyone who is not the owner can **leave**, because leaving was
+always allowed.
+
+The limits are stated where they apply, instead of being discovered as a 403:
+
+- **An invitation adds an account we already know.** There is no mail transport, so the footnote says so: *"They need
+  an account with this email. We cannot send invitations, so tell them yourself — they are in the home as soon as you
+  add them."* When the server answers 404 the screen translates it into the next step — *"Nobody in Haven has that
+  email. Check the spelling, or ask them to create an account first."* — instead of echoing `account with that email
+  not found`.
+- **The owner has no role control.** Ownership transfer is its own confirmed operation in the service, so the row is
+  text, not a picker.
+- **Nobody re-roles themselves.** An admin demoting their own row by accident locks them out of the screen they are
+  standing on.
+- **A member sees no invitation form** — a control that would 403 is not a feature.
+
+Two defects found by looking at the screen rather than the code: the invitation's error was rendered at the bottom of
+the **People** section, above the form that caused it (it belongs under the field); and the email input had only a
+placeholder, which disappears the moment there is a value. Both fixed, both now covered.
+
+`/members` also joined the accessibility gate — it passed its first run, which is the first time a new screen has.
+
 ### Where the home is, and why it is asked for
 
 Last pass left a hole stated plainly: the engine's sun conditions need `homes.geo_lat`/`geo_lon`, the API has accepted

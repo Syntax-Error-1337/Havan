@@ -189,6 +189,13 @@ export function SettingsPage() {
                 : '—'
             }
           />
+          {/* The count was the whole story until now: the API has served the member list, invitations and role
+              changes since the first version, and the screen that shows "2 members" was where the story stopped. */}
+          <Row
+            title="Members"
+            value={home?.member_count !== undefined ? String(home.member_count) : '—'}
+            onPress={() => router.push('/members')}
+          />
           <Row
             title="At home"
             subtitle="Automations that ask “is anyone home” use this"

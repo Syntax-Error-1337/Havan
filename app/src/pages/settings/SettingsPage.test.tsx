@@ -1,4 +1,4 @@
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, within } from '@testing-library/react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Alert } from 'react-native';
 
@@ -98,7 +98,10 @@ describe('settings', () => {
 
     expect(await view.findByText('Devices')).toBeTruthy();
     // The count lands after the row draws (it waits for one of two answers), so this waits for it too.
-    expect(await view.findByText('1')).toBeTruthy();
+    // Scoped to the row: "1" is also the member count now, and two rows that each say 1 are not the same claim.
+    const devicesRow = (await view.findByText('Devices')).parent?.parent;
+    expect(devicesRow).toBeTruthy();
+    expect(within(devicesRow as never).getByText('1')).toBeTruthy();
     expect(view.queryByText('0')).toBeNull();
   });
 

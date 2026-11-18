@@ -16,5 +16,6 @@ export const qk = {
   notifications: ['notifications'] as const,
   deviceUpdate: (deviceId: string) => ['device', deviceId, 'updates'] as const,
   scenes: (homeId: string) => ['home', homeId, 'scenes'] as const,
+  members: (homeId: string) => ['home', homeId, 'members'] as const,
   unread: ['notifications', 'unread'] as const,
 };

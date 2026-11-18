@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from '../../../shared/api/client';
 import { qk } from '../../../shared/api/keys';
-import type { Home } from './types';
+import type { Home, Role } from './types';
 
 /**
  * The account's homes.
@@ -42,7 +42,80 @@ export function useSetTimeZone() {
 }
 
 /**
- * Where the home is, for the rules that talk about sunrise and sunset.
+ /** A person in the home, as the API returns them. */
+ export type Member = {
+   user_id: string;
+   display_name: string;
+   email?: string | null;
+   role: Role;
+   /** Whether they may pair a device without asking an admin. */
+   can_pair: boolean;
+ };
+
+ /**
+  * Who is in the home.
+  *
+  * The API has served this list, invitations, role changes and removals since the first version, and the app showed
+  * one number — "2 members" — and a way to change neither. For a smart-home app that is the family feature.
+  */
+ export function useMembers(homeId: string | undefined) {
+   return useQuery({
+     queryKey: qk.members(homeId ?? 'none'),
+     queryFn: () => request<Member[]>(`/homes/${homeId}/members`),
+     enabled: Boolean(homeId),
+   });
+ }
+
+ /**
+  * Add somebody who already has an account.
+  *
+  * The server looks the email up and answers 404 "account with that email" if it is not one of ours — an invitation
+  * to an address in this platform is a membership, not an email, and there is no mail transport to send one. The
+  * screen says so rather than promising a letter.
+  */
+ export function useInviteMember() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: (input: { homeId: string; email: string; role: Role }) =>
+       request<void>(`/homes/${input.homeId}/members`, {
+         method: 'POST',
+         body: JSON.stringify({ email: input.email, role: input.role }),
+       }),
+     onSuccess: (_data, input) => {
+       void qc.invalidateQueries({ queryKey: qk.members(input.homeId) });
+       // The count on the homes list and on Settings comes from the home row.
+       void qc.invalidateQueries({ queryKey: qk.homes });
+     },
+   });
+ }
+
+ export function useSetMemberRole() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: (input: { homeId: string; userId: string; role: Role }) =>
+       request<void>(`/homes/${input.homeId}/members/${input.userId}`, {
+         method: 'PATCH',
+         body: JSON.stringify({ role: input.role }),
+       }),
+     onSuccess: (_data, input) => {
+       void qc.invalidateQueries({ queryKey: qk.members(input.homeId) });
+     },
+   });
+ }
+
+ export function useRemoveMember() {
+   const qc = useQueryClient();
+   return useMutation({
+     mutationFn: (input: { homeId: string; userId: string }) =>
+       request<void>(`/homes/${input.homeId}/members/${input.userId}`, { method: 'DELETE' }),
+     onSuccess: (_data, input) => {
+       void qc.invalidateQueries({ queryKey: qk.members(input.homeId) });
+       void qc.invalidateQueries({ queryKey: qk.homes });
+     },
+   });
+ }
+
+ /** Where the home is, for the rules that talk about sunrise and sunset.
  *
  * `null` clears it: both coordinates are sent as null together, because the service refuses a location with only
  * one of them — and a customer who moves house should be able to say "not any more".
