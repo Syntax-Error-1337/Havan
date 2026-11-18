@@ -37,7 +37,7 @@ uuid = { version = "1", features = ["v4", "v7", "serde"] }
 time = { version = "0.3", features = ["serde", "serde-well-known", "formatting", "parsing", "macros"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 axum = { version = "0.8", features = ["macros", "ws"] }
