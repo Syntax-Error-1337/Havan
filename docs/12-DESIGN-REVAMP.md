@@ -217,7 +217,7 @@ of 10 → fix the worst finding → `make check` + app tests + e2e → commit**.
 | --- | --- | --- |
 | **W0** | Tokens: `card`, `cardEdge`, `scrim`, `track`, `fieldTint`; radii; elevations; numerals; motion | `make tokens` + `make contrast` green, nothing regresses, screenshots unchanged-but-consistent |
 | **W1** | `DeviceArtField`, `Card`, `DeviceTile` v2 | a dashboard grid where eight devices look like eight things; a11y gate green; tile score ≥ 8.5 |
-| **W2** | `Gauge` + `HeroCard` v2 | gauge animates on a live change; hero score ≥ 9; chart honesty rules preserved (gaps, band, window) |
+| **W2** ✅ | `Gauge` + `HeroCard` v2 | shipped — see §11; hero scored 8/10, and the reasons it is not 9 are named there |
 | **W3** | `RoomCapsule` + dashboard chrome + wide layout | rooms filter the grid; capsule is keyboard/screen-reader navigable; 3-column wide layout proven at 1024 |
 | **W4** | Device detail (art header + gauge), alerts, scenes, automations, settings | every screen ≥ 8.5; no screen uses glass in the content layer |
 | **W5** | Motion, reduced-motion, perf (frame budget), docs, `docs/06` update | 60 fps on the dashboard with 200 tiles, reduced motion verified, docs written |
@@ -242,3 +242,59 @@ The design directive says "make it stunning". The stronger move is what comes **
 | Contrast on tinted fields | Every text-on-field pair goes through `make contrast`, which measures rendered pixels, not tokens. |
 | White-label vendors | Everything is from tokens; a vendor's accent replaces the category accent's *base* hue but the field's alpha stays fixed. |
 | Native cannot be verified here | Stated as a limit in every report: web at 390 × 844 is real browser layout, not a native build. |
+
+## 11. Wave 2 in detail — the ring, and three things the plan got wrong
+
+The plan said "a gauge when the point has a minimum and a maximum, the sparkline otherwise". Three findings reordered
+that, and the code follows the findings.
+
+### 11.1 A dial is for turning; a chart is for watching
+
+The demo data settles it: a room sensor's temperature has a range of **−10…50** and is **read-only**, so a ring would
+say *"18.3 is 47 % of a range nobody chose"*. A lamp's brightness is **1…100 and writable** — exactly the thing a
+person turns. So the rule is **writable + ranged → ring**, and **read-only → the day's line**, because for a reading
+the history *is* the story.
+
+### 11.2 A ring with no affordance is a picture of a dial
+
+The first screenshot scored 6.5/10 and the review's first question was *"is that a gauge or a control?"* Two answers,
+both now in the code:
+
+- **A thumb at the arc's end.** It was first drawn at the start of an 80 % arc — the angle maths ignored the `<G>`
+  that rotates the ring by 135° — so the knob sat on the opposite side of the circle from the fill's end and read as
+  decoration. Corrected; the reviewer then read it as a dial (8/10).
+- **− / + steppers under the ring**: 44 pt, keyboard reachable, labelled *"Increase brightness"*. Fives for a
+  percentage, a twentieth of the range otherwise. The reference dashboards put the same thing under theirs.
+
+### 11.3 A dial you cannot turn is a lie
+
+Offline, the ring is **not drawn at all**: the card falls back to the plain number. A disabled ring with disabled
+steppers is a control that says "press me" and then refuses — and on this platform a command to a silent device
+**times out**, which is honest but invisible. Verified: pressing `+` on the demo bulb wrote
+`{"dp":"2","value":85.0}` to `commands` and the row's status became **timeout** — the platform refused to pretend the
+bulb dimmed. The card's value stayed at 80, correctly.
+
+### 11.4 A button cannot contain a button
+
+`react-native-web` renders a Pressable with `accessibilityRole="button"` as a real `<button>`. The hero card was one
+pressable wrapping two steppers; the DOM was a `<button>` containing two more, which the browser warns about, the
+screen reader cannot describe, and which can swallow the inner click. Found by pressing a stepper and reading the DOM
+rather than by looking at it.
+
+Fixed structurally in `Card`: a card that **contains controls** is a surface, and the caller supplies the pressable
+region. `containsControls` on `Card`; hero and tile each wrap their reading/body in one Pressable and place their
+controls as siblings. Verified: `document.querySelectorAll('[role=button]')` contains **zero** nested buttons.
+
+Consequence: the hero's old "Turn off" text action is gone — it was a third control inside a card that now has two,
+and the tile grid already carries the switch.
+
+### 11.5 Gaps left open
+
+- **A timeout is invisible in the UI.** The command is recorded and the value correctly does not change, but nothing
+  on screen says "the device did not answer". Needs a command-status read (poll or push) — the next honest step.
+- **`journeys.spec.ts › a rule can be run by hand` is flaky**, not broken: it fails in roughly half of full runs and
+  passes standalone in 5–9 s, waiting on the worker's poll rather than on the UI. It should assert on the queued run
+  rather than on a label that appears after the worker wakes.
+- **Demo data was one online device away from showing its own best state.** Every device in the demo home was offline,
+  so the ring could not appear at all; `Acme Bulb E27` was set online with a fresh `last_seen_at`. The rest stay
+  offline on purpose — a home that is half asleep is what the stale treatments exist for.

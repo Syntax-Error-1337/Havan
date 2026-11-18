@@ -7,6 +7,7 @@ export { MeshBackground } from './MeshBackground';
 export { TabBar, type TabKey } from './TabBar';
 export { Card } from './Card';
 export { DeviceArtField } from './DeviceArtField';
+export { Gauge } from './Gauge';
 export { elevation } from './elevation';
 export { Glass } from './Glass';
 export { Confirm, useConfirm, type ConfirmOptions } from './Confirm';

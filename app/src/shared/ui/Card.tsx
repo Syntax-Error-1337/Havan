@@ -30,6 +30,7 @@ export function Card({
   accessibilityLabel,
   accessibilityHint,
   disabled = false,
+  containsControls = false,
   testID,
 }: {
   children: ReactNode;
@@ -43,6 +44,16 @@ export function Card({
   accessibilityLabel?: string;
   accessibilityHint?: string;
   disabled?: boolean;
+  /**
+   * The card holds its own controls — a switch, a stepper.
+   *
+   * `react-native-web` renders a Pressable with `accessibilityRole="button"` as a real `<button>`, and a button
+   * cannot contain a button: the browser warns, the screen reader loses the inner control, and a click on the inner
+   * one can be swallowed by the outer. So a card with controls inside it is a **surface**, and the pressable part is
+   * the caller's job — a header region that fills the card, with the controls as its siblings rather than its
+   * children. Found by pressing the hero's new stepper: the DOM had a `<button>` wrapping two more.
+   */
+  containsControls?: boolean;
   testID?: string;
 }) {
   const { color } = useTheme();
@@ -75,7 +86,7 @@ export function Card({
     </>
   );
 
-  if (!onPress) {
+  if (!onPress || containsControls) {
     return (
       <View style={[surface, style]} testID={testID}>
         {body}

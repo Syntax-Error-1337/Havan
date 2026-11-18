@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { useTheme, tokens } from '../../../app-shell/theme';
 import { AppText, Card, DeviceArtField, iconForCategory } from '../../../shared/ui';
@@ -129,13 +129,20 @@ export function DeviceTile({
 
   return (
     <Card
-      onPress={onPress}
+      // A switch inside a button is a button inside a button, which the DOM forbids and a screen reader cannot
+      // describe. So the card is the surface, the tile body is the pressable, and the control is its sibling.
+      containsControls
       accent={accent}
       padded={false}
-      accessibilityLabel={label}
       testID={`device-tile-${device.serial}`}
       style={{ flex: 1, minHeight: wide ? 108 : 150 }}
     >
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={{ flex: 1 }}
+      >
       {/* Inset by 6: a product sits inside its frame rather than bleeding to the edge of the card. */}
       <View style={{ padding: 6 }}>
         <DeviceArtField
@@ -144,7 +151,6 @@ export function DeviceTile({
           height={fieldHeight}
           dimmed={!live}
         >
-          {control ? <View style={{ position: 'absolute', top: 4, right: 8 }}>{control}</View> : null}
           {/* Named where the number is. "Offline · 1d ago" under the card is a fact about the device; this is a fact
               about *this number*, and it is the one a person misreads: a bright 21.5 °C from yesterday looks live. */}
           {live ? null : (
@@ -204,6 +210,12 @@ export function DeviceTile({
       </View>
 
       {failure}
+      </Pressable>
+
+      {/* Over the field, and outside the pressable region: one tab stop for the tile, one for the switch. */}
+      {control ? (
+        <View style={{ position: 'absolute', top: 10, right: 14 }}>{control}</View>
+      ) : null}
     </Card>
   );
 }
