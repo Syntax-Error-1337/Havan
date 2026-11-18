@@ -298,3 +298,50 @@ and the tile grid already carries the switch.
 - **Demo data was one online device away from showing its own best state.** Every device in the demo home was offline,
   so the ring could not appear at all; `Acme Bulb E27` was set online with a fresh `last_seen_at`. The rest stay
   offline on purpose — a home that is half asleep is what the stale treatments exist for.
+
+## 12. Wave 3 — one switcher, and the space a tablet actually has
+
+### 12.1 Rooms, not categories
+
+The dashboard had a row of category chips — *All · Light · Sensor · Plug* — above a list that is already grouped by
+room. Two switchers, and the one a person thinks in was missing. Rooms win: the kitchen, the hall, the landing are
+places; "Sensor" is how the platform files things.
+
+`RoomCapsule` is the one place glass is correct — it floats over content that scrolls beneath it, which is exactly
+Apple's rule (`materials.md › Liquid Glass`). It is a real tab list (`role="tab"`, `accessibilityState.selected`), the
+active pill is a **filled surface and a weight change** (colour alone is not a state), and it scrolls horizontally.
+
+The category chips are not gone: they appear **while a search is being typed**, because "show me the lights" is a
+filter over an answer, not a place in the house.
+
+### 12.2 A cut-off row is a broken row
+
+The first screenshot scored 6.5/10 for one reason: five rooms at 390 pt do not fit, and the last read *"Kitch…"* with
+nothing to say there was more. The capsule now measures its content and fades its right edge while there is more
+behind it, and the fade disappears at the end. Measured with `onContentSizeChange`, not guessed from the room count.
+
+### 12.3 The tablet is not a stretched phone
+
+The wide layout scored **3/10** on the first attempt: a 900-point hero holding one number and a dial, a bottom bar
+stretched into a dock, stat chips as wide as their text. Four changes:
+
+- the content column **stops at 900 pt** and centres; the mesh stays full-bleed behind it;
+- the tab bar keeps a capsule's width (520) and centres instead of stretching;
+- from 900 pt the hero and the facts rail sit **side by side** (2/3 + 1/3), and the rail turns from a row of chips
+  into a column of facts;
+- the grid goes **three columns**, and every tile keeps one column's width — a short row leaves the third empty rather
+  than making two devices bigger than three.
+
+Score after: **7.5/10**.
+
+A real bug fell out of it: `StatRail` passed `flex: 1` to `Glass`, which puts `style` on its **inner surface**, so the
+chips stayed as wide as their own text and the rail stopped short of the cards beneath it on every screen wider than a
+phone. The `flex` belongs on the wrapper.
+
+### 12.4 Verification note — the emulation override lies to React Native
+
+`Emulation.setDeviceMetricsOverride` changes `window.innerWidth` but does **not** fire the resize that
+`useWindowDimensions` listens for. Two screenshots were judged as "stretched phone layout" at "1024" while the app was
+still rendering a 756-point layout with two columns. The reliable way to verify a breakpoint is to change the real
+window (`Browser.setWindowBounds`) and check a width-dependent measurement — tile widths, `flexDirection` — rather than
+trusting the viewport number. Same class of mistake as judging contrast from a JPEG instead of from values.

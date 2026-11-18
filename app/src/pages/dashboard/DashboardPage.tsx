@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -42,6 +51,7 @@ import { categoriesOf, filterDevices } from './search';
 import { SceneStrip } from '../../widgets/scene-strip/SceneStrip';
 import { HomeHeader, StatRail } from '../../widgets/home/HomeHeader';
 import { HeroCard, pickHero } from '../../widgets/home/HeroCard';
+import { RoomCapsule } from '../../widgets/home/RoomCapsule';
 
 /** The tab bar floats over the list, so the list has to end above it. */
 
@@ -188,6 +198,8 @@ export function DashboardPage() {
   const [homeNameTyped, setHomeNameTyped] = useState('My home');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  // Which room the grid is showing. `null` is the whole home.
+  const [roomFilter, setRoomFilter] = useState<string | null>(null);
   const filtering = query.trim().length > 0 || category !== null;
 
   const categories = useMemo(() => categoriesOf(devices), [devices]);
@@ -208,11 +220,23 @@ export function DashboardPage() {
   /// A search box and category chips on a home with nothing in it are controls that can only fail.
   const filterable = devices.length > 0;
 
-  const sections = useMemo(() => groupByRoom(filtered, rooms), [filtered, rooms]);
+  const sections = useMemo(() => {
+    const grouped = groupByRoom(filtered, rooms);
+    // Filtering by room is a decision about *this* screen, so it happens here rather than in the query: a search
+    // still asks the whole home, and the room narrows what is drawn from the answer.
+    return roomFilter ? grouped.filter((s) => s.key === roomFilter) : grouped;
+  }, [filtered, rooms, roomFilter]);
   const summary = useMemo(() => summarise(devices), [devices]);
   const hero = useMemo(() => pickHero(devices), [devices]);
 
-  const rows = useMemo(() => buildRows(sections), [sections]);
+  /**
+   * Columns follow the space, not the device (`layout.md`: design for available width, not for a device class).
+   * Two on a phone, three from a tablet width up — and the same rows code serves both, because the pairing rule is
+   * just "slice by the column count".
+   */
+  const { width } = useWindowDimensions();
+  const columns = width >= 900 ? 3 : 2;
+  const rows = useMemo(() => buildRows(sections, columns), [sections, columns]);
 
   /**
    * Create the first home, in the customer's own words and their own timezone.
@@ -331,6 +355,9 @@ export function DashboardPage() {
   return (
     <Screen>
       <FlatList
+        // A dashboard is a column of cards, not a canvas: past about 900 points every extra pixel is empty space
+        // between a card's left edge and its content. The mesh stays full-bleed behind it.
+        style={{ width: '100%', maxWidth: 900, alignSelf: 'center' }}
         data={rows}
         keyExtractor={(row) => row.key}
         contentContainerStyle={{ paddingBottom: tokens.layout.tabBarClearance + tokens.space.xl }}
@@ -416,19 +443,34 @@ export function DashboardPage() {
                     </Box>
                   ) : null}
 
-                  <StatRail
-                    summary={summary}
-                    rooms={sections.filter((s) => s.title !== 'Unassigned').length}
-                    showTemperature={Boolean(
-                      hero?.points.some(
-                        (p) => p.capability === 'temperature' && typeof p.value === 'number',
-                      ),
-                    )}
-                  />
-
-                  {hero ? (
-                    <HeroCard device={hero} onOpen={() => router.push(`/device/${hero.id}`)} />
-                  ) : null}
+                  {/* On a phone this is the rail and then the hero. Past 900 points the same two elements sit side
+                      by side — the hero keeps two thirds, the facts take a column beside it — because a 900-point
+                      card holding one number and a dial is a card using a third of itself. */}
+                  <View
+                    style={{
+                      flexDirection: columns === 3 ? 'row' : 'column',
+                      gap: tokens.space.lg,
+                      alignItems: 'stretch',
+                    }}
+                  >
+                    <View style={{ flex: columns === 3 ? 1 : undefined, justifyContent: 'center' }}>
+                      <StatRail
+                        summary={summary}
+                        rooms={sections.filter((s) => s.title !== 'Unassigned').length}
+                        vertical={columns === 3}
+                        showTemperature={Boolean(
+                          hero?.points.some(
+                            (p) => p.capability === 'temperature' && typeof p.value === 'number',
+                          ),
+                        )}
+                      />
+                    </View>
+                    <View style={{ flex: columns === 3 ? 2 : undefined }}>
+                      {hero ? (
+                        <HeroCard device={hero} onOpen={() => router.push(`/device/${hero.id}`)} />
+                      ) : null}
+                    </View>
+                  </View>
                 </>
               )}
 
@@ -481,21 +523,35 @@ export function DashboardPage() {
                 ) : null}
               </View>) : null}
 
-              {filterable ? (<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {categories.length > 1 ? (
-                  <>
-                    <Chip label="All" selected={category === null} onPress={() => setCategory(null)} />
-                    {categories.map((c) => (
-                      <Chip
-                        key={c}
-                        label={c.charAt(0).toUpperCase() + c.slice(1)}
-                        selected={category === c}
-                        onPress={() => setCategory(category === c ? null : c)}
-                      />
-                    ))}
-                  </>
-                ) : null}
-              </ScrollView>) : null}
+              {/* One switcher at rest: the rooms. The category chips are still there while a question is being
+                  typed — "show me the lights" is a filter over a search result — but a home screen with a room rail
+                  *and* a type rail is two answers to "where am I". */}
+              {filterable && query.trim().length === 0 ? (
+                <RoomCapsule
+                  rooms={(rooms ?? []).map((r) => ({ id: r.id, name: r.name }))}
+                  value={roomFilter}
+                  onChange={setRoomFilter}
+                  total={totalDevices}
+                />
+              ) : null}
+
+              {filterable && query.trim().length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  {categories.length > 1 ? (
+                    <>
+                      <Chip label="All" selected={category === null} onPress={() => setCategory(null)} />
+                      {categories.map((c) => (
+                        <Chip
+                          key={c}
+                          label={c.charAt(0).toUpperCase() + c.slice(1)}
+                          selected={category === c}
+                          onPress={() => setCategory(category === c ? null : c)}
+                        />
+                      ))}
+                    </>
+                  ) : null}
+                </ScrollView>
+              ) : null}
 
               {filtering ? (
                 // "of 200 devices" was the *loaded* page on a home with 1,200 in it: the count claimed the
@@ -690,7 +746,16 @@ export function DashboardPage() {
               }}
             >
               {item.devices.map((device) => (
-                <View key={device.id} style={{ width: item.wide ? '100%' : '47%' }}>
+                // A fixed track, not a stretched one: the tile is one column wide on every row, and a short row
+                // leaves the column empty rather than making its devices bigger than the ones above them.
+                <View
+                  key={device.id}
+                  style={{
+                    flexGrow: 1,
+                    flexBasis: 0,
+                    maxWidth: item.wide ? '100%' : `${100 / columns}%`,
+                  }}
+                >
                   <DeviceTile
                     device={device}
                     onPress={() => router.push(`/device/${device.id}`)}

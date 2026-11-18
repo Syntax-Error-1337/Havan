@@ -55,8 +55,12 @@ export function TabBar({
     <View
       style={{
         position: 'absolute',
-        left: tokens.space.lg,
-        right: tokens.space.lg,
+        // On a phone this is inset by 16 and reads as a capsule. On a desktop it would stretch into a dock across
+        // 1 000 points, which is a phone pattern wearing a desktop's width — so it keeps a capsule's width and
+        // centres instead.
+        alignSelf: 'center',
+        width: '100%',
+        maxWidth: 520,
         bottom: Math.max(insets.bottom, tokens.space.md),
         borderRadius: 28,
         paddingVertical: 10,

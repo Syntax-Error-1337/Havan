@@ -195,11 +195,14 @@ export function StatRail({
   summary,
   rooms,
   showTemperature = false,
+  vertical = false,
 }: {
   summary: HomeSummary;
   rooms: number;
   /** True when the hero card is already showing the room reading. */
   showTemperature?: boolean;
+  /** Beside the hero on a wide screen the rail becomes a column of facts, not a row of chips. */
+  vertical?: boolean;
 }) {
   const { color, dark } = useTheme();
   // The rail used to hard-code its hues, which in daylight put a 1.6:1 cyan on a white card. It asks
@@ -251,21 +254,27 @@ export function StatRail({
   if (chips.length === 0) return null;
 
   return (
-    <View style={{ flexDirection: 'row', gap: 8 }}>
+    <View style={{ flexDirection: vertical ? 'column' : 'row', gap: 8 }}>
       {chips.map((chip) => (
-        <Glass key={chip.label} style={{ flex: 1 }} accent={chip.accent}>
-          <View style={{ gap: 6 }}>
-            <Icon name={chip.icon} size={16} color={chip.accent} />
-            <AppText variant="tiny" tone="muted">
-              {chip.label}
-            </AppText>
-            <AppText variant="subhead" weight="700" numberOfLines={1}>
-              {chip.value}
-            </AppText>
-          </View>
-        </Glass>
+        // The `flex` has to be on the wrapper: `Glass` puts its `style` on the inner surface, so a chip asked to fill
+        // a third of the row stayed as wide as its own text — which is why the rail stopped short of the cards under
+        // it on every screen wider than a phone.
+        <View key={chip.label} style={{ flex: 1 }}>
+          <Glass accent={chip.accent}>
+            <View style={{ gap: 6, flexDirection: vertical ? 'row' : 'column', alignItems: vertical ? 'center' : 'flex-start' }}>
+              <Icon name={chip.icon} size={16} color={chip.accent} />
+              <View style={{ flex: vertical ? 1 : undefined, gap: 2 }}>
+                <AppText variant="tiny" tone="muted">
+                  {chip.label}
+                </AppText>
+                <AppText variant="subhead" weight="700" numberOfLines={1}>
+                  {chip.value}
+                </AppText>
+              </View>
+            </View>
+          </Glass>
+        </View>
       ))}
-      {chips.length === 0 ? <View style={{ height: 0 }} /> : null}
     </View>
   );
 }

@@ -47,7 +47,14 @@ export function LoginPage() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <Box flex={1} p="xl" gap="lg" style={{ justifyContent: 'center' }}>
+        {/* A sign-in form is a column of four elements. At 1024 points it stretched edge to edge and the fields
+            became 900-point boxes — the same fault as a stretched dashboard, on the first screen anyone sees. */}
+        <Box
+          flex={1}
+          p="xl"
+          gap="lg"
+          style={{ justifyContent: 'center', width: '100%', maxWidth: 420, alignSelf: 'center' }}
+        >
           <Box gap="xs">
             {/* The sign-in screen is the first frame a customer sees, so it wears the operator's
                 name and initials rather than ours — and so does the first-run screen, from the same component. */}

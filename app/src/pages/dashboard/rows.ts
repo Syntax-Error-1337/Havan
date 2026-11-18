@@ -12,7 +12,7 @@ export type DashboardRow =
   | { kind: 'room'; key: string; title: string; online: number; total: number }
   | { kind: 'tiles'; key: string; devices: Device[]; wide: boolean };
 
-export function buildRows(sections: DeviceSection[]): DashboardRow[] {
+export function buildRows(sections: DeviceSection[], columns = 2): DashboardRow[] {
   const rows: DashboardRow[] = [];
 
   for (const section of sections) {
@@ -26,7 +26,12 @@ export function buildRows(sections: DeviceSection[]): DashboardRow[] {
       total: section.data.length,
     });
 
-    if (section.data.length === 1) {
+    // A room holding **one** device gives it the whole row: a lone half-width card reads as a missing tile. A room
+    // holding two on a three-column grid keeps the column width and leaves the third empty — stretching them to fill
+    // the row was the first attempt, and it made two devices in the same house twice the size of three.
+    // On a three-column tablet a lone device takes one column like everything else: a full-width card next to a
+    // third-width one is two tile sizes in one house. Full row is a phone answer.
+    if (section.data.length === 1 && columns === 2) {
       rows.push({
         kind: 'tiles',
         key: `tiles:${section.key}:0`,
@@ -36,11 +41,11 @@ export function buildRows(sections: DeviceSection[]): DashboardRow[] {
       continue;
     }
 
-    for (let i = 0; i < section.data.length; i += 2) {
+    for (let i = 0; i < section.data.length; i += columns) {
       rows.push({
         kind: 'tiles',
         key: `tiles:${section.key}:${i}`,
-        devices: section.data.slice(i, i + 2),
+        devices: section.data.slice(i, i + columns),
         wide: false,
       });
     }
