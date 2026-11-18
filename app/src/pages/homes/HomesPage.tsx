@@ -3,7 +3,7 @@ import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { AppText, Box, Button, Card, Icon, ListSkeleton, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
-import { useCreateHome, useHomes, type Home } from '../../entities/home';
+import { homeAccent, useCreateHome, useHomes, type Home } from '../../entities/home';
 import { HomeSheet } from './HomeSheet';
 import { useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -101,10 +101,11 @@ export function HomesPage() {
                       borderRadius: 17,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: withAlpha(color.accent, active ? 0.24 : 0.12),
+                      // The home's own hue, at full strength when it is the one you are in.
+                      backgroundColor: withAlpha(homeAccent(home.id), active ? 0.26 : 0.14),
                     }}
                   >
-                    <AppText variant="caption" weight="700" style={{ color: color.accent }}>
+                    <AppText variant="caption" weight="700" style={{ color: homeAccent(home.id) }}>
                       {(home.name.trim()[0] ?? 'H').toUpperCase()}
                     </AppText>
                   </View>

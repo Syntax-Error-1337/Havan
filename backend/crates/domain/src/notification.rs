@@ -47,6 +47,17 @@ pub trait NotificationRepo {
 
     fn mark_all_read(&self, user_id: Uuid) -> impl Future<Output = Result<u64, AppError>> + Send;
 
+    /// Throw one alert away.
+    ///
+    /// An alert feed had no way to remove anything: "mark all read" was the only control, so a list that only ever
+    /// grows was the whole interaction. Deleting is scoped to the owner — an id from another account must read as
+    /// "not found", not as somebody else's row disappearing.
+    fn dismiss(
+        &self,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> impl Future<Output = Result<bool, AppError>> + Send;
+
     /// Tell every member of a home that a device's certificate is running out.
     ///
     /// Deduped per (device, warning bucket): the sweep runs on a timer, and a person who has

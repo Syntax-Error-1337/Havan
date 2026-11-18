@@ -175,6 +175,18 @@ impl NotificationRepo for PgNotifications {
 
         Ok(affected)
     }
+
+    async fn dismiss(&self, user_id: Uuid, id: Uuid) -> Result<bool, AppError> {
+        let affected = sqlx::query("DELETE FROM notifications WHERE id = $1 AND user_id = $2")
+            .bind(id)
+            .bind(user_id)
+            .execute(self.pg.pool())
+            .await
+            .map_err(db)?
+            .rows_affected();
+
+        Ok(affected > 0)
+    }
 }
 
 impl PushRepo for PgNotifications {

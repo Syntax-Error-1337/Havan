@@ -249,7 +249,20 @@ function History({ rule }: { rule: Automation }) {
  * better an honest small editor than a form that pretends.
  */
 /** The conditions a person can pick, and the one they get by not picking any. */
-export type ConditionChoice = 'any' | 'home' | 'away' | 'sunset' | 'sunrise';
+export type ConditionChoice = 'any' | 'home' | 'away' | 'sunset' | 'sunrise' | 'window';
+
+/**
+ * `HH:MM`, 24-hour, or `null`.
+ *
+ * The engine takes a wall-clock window in the home's timezone and the editor never offered one — "only between 22:00
+ * and 06:00" is the second most common rule there is, after "at sunset". Parsing here rather than trusting the field
+ * means a half-typed time cannot be sent as `"2"` and evaluated as nothing.
+ */
+export function clockValue(text: string): string | null {
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(text.trim());
+  if (!match) return null;
+  return `${match[1]!.padStart(2, '0')}:${match[2]!}`;
+}
 
 /**
  * The chips, and the reason a home without a location sees fewer of them.
@@ -264,6 +277,7 @@ export function conditionOptions(hasLocation: boolean): { id: string; label: str
     { id: 'any', label: 'No condition' },
     { id: 'home', label: 'Someone is home' },
     { id: 'away', label: 'Nobody is home' },
+    { id: 'window', label: 'Only between two times' },
   ];
   if (hasLocation) {
     options.push({ id: 'sunset', label: 'After sunset' }, { id: 'sunrise', label: 'After sunrise' });
@@ -272,8 +286,11 @@ export function conditionOptions(hasLocation: boolean): { id: string; label: str
 }
 
 /** The wire shape the engine expects, from the chip the person pressed. */
-export function conditionFor(choice: ConditionChoice): Condition[] {
+export function conditionFor(choice: ConditionChoice, window?: { after: string; before: string }): Condition[] {
   switch (choice) {
+    case 'window':
+      // Refused rather than sent half-built: the caller validates with `clockValue` first.
+      return window ? [{ type: 'time_of_day', after: window.after, before: window.before }] : [];
     case 'home':
       return [{ type: 'present', presence: 'home' }];
     case 'away':
@@ -304,6 +321,8 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
   // "Only if" — the second half of the sentence the engine has always been able to evaluate and the editor
   // has always sent as an empty array.
   const [condition, setCondition] = useState<ConditionChoice>('any');
+  const [windowAfter, setWindowAfter] = useState('22:00');
+  const [windowBefore, setWindowBefore] = useState('06:00');
   const { data: homes } = useHomes();
   const home = homes?.find((h) => h.id === homeId);
   const hasLocation = typeof home?.geo_lat === 'number' && typeof home?.geo_lon === 'number';
@@ -323,10 +342,14 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
     fontSize: tokens.font.body,
   } as const;
 
+  const clockOk =
+    condition !== 'window' || Boolean(clockValue(windowAfter) && clockValue(windowBefore));
+
   const canSave =
     name.trim().length > 0 &&
     target !== null &&
     targetCode !== null &&
+    clockOk &&
     (kind === 'schedule' || (source !== null && sourceCode !== null));
 
   const save = () => {
@@ -349,7 +372,10 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
                   op: 'eq',
                   value: parsed(sourceValue),
                 },
-          conditions: conditionFor(condition),
+          conditions: conditionFor(condition, {
+            after: clockValue(windowAfter) ?? windowAfter,
+            before: clockValue(windowBefore) ?? windowBefore,
+          }),
           actions: [
             { type: 'set_device', device_id: target, code: targetCode, value: parsed(targetValue) },
           ],
@@ -392,6 +418,44 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
         options={conditionOptions(hasLocation)}
         onChange={(next) => setCondition(next as ConditionChoice)}
       />
+      {condition === 'window' ? (
+        <Box gap="sm">
+          <Box row gap="sm">
+            <Box flex={1} gap="xs">
+              <AppText variant="tiny" tone="muted">
+                From
+              </AppText>
+              <TextInput
+                value={windowAfter}
+                onChangeText={setWindowAfter}
+                placeholder="22:00"
+                placeholderTextColor={color.placeholder}
+                accessibilityLabel="From time"
+                style={field}
+              />
+            </Box>
+            <Box flex={1} gap="xs">
+              <AppText variant="tiny" tone="muted">
+                To
+              </AppText>
+              <TextInput
+                value={windowBefore}
+                onChangeText={setWindowBefore}
+                placeholder="06:00"
+                placeholderTextColor={color.placeholder}
+                accessibilityLabel="To time"
+                style={field}
+              />
+            </Box>
+          </Box>
+          <AppText variant="tiny" tone="muted">
+            {clockValue(windowAfter) && clockValue(windowBefore)
+              ? `Runs only between ${clockValue(windowAfter)} and ${clockValue(windowBefore)}, ${home?.timezone ?? 'the home timezone'}. A window that ends before it starts crosses midnight.`
+              : 'Times are 24-hour, like 22:00.'}
+          </AppText>
+        </Box>
+      ) : null}
+
       {!hasLocation ? (
         <AppText variant="tiny" tone="muted">
           This home has no location set, so sunrise and sunset are not available here.

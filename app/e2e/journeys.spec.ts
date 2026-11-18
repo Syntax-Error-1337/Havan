@@ -44,7 +44,10 @@ test('a device opens with its readings and its room', async ({ page }) => {
   // `.first()` in document order found the *dashboard's* "6 offline" pill, still mounted underneath the pushed
   // screen, and reported it hidden. The device screen's own status line is the thing under test.
   await expect(page.getByText(/· Living Room/)).toBeVisible();
-  await expect(page.getByText('Offline — showing the last values this device reported.')).toBeVisible();
+  // The status line, whichever way the fixture is reporting: this used to assert the offline sentence literally, so a
+  // demo refreshed with `scripts/demo-fresh.sh` — the whole point of which is that devices read as live — turned the
+  // suite red for a correct app. The banner itself is covered by the screen's own unit test.
+  await expect(page.getByText(/Offline — showing the last values this device reported\.|Connected, but|Reports hourly/).first()).toBeVisible();
   await expect(page.getByText(/Temperature/).first()).toBeVisible();
   // The room row is at the bottom now, above the destructive action.
   await expect(page.getByText('In which room')).toBeVisible();

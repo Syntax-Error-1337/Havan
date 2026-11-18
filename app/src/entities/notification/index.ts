@@ -2,6 +2,7 @@ export {
   ago,
   dayBucket,
   clockTime,
+  useDismissAlert,
   useMarkAllRead,
   useMarkRead,
   useNotifications,

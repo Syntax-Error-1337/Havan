@@ -18,6 +18,7 @@ pub fn router() -> Router<AppState> {
         .route("/notifications/unread-count", get(unread_count))
         .route("/notifications/read-all", post(read_all))
         .route("/notifications/{id}/read", post(mark_read))
+        .route("/notifications/{id}", delete(dismiss))
         // Where a phone tells the platform how to reach it. Without this, an alert is a row
         // in a table and a badge on a screen nobody is looking at.
         // Register on the bare path, remove by path segment: the app calls
@@ -82,6 +83,22 @@ async fn mark_read(
     // `changed: false` is a second phone opening the same alert — not an error,
     // and the client can tell the difference.
     Ok(Json(serde_json::json!({ "changed": changed })))
+}
+
+async fn dismiss(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let removed = state
+        .notifications
+        .dismiss(auth.user.id, id)
+        .await
+        .map_err(ApiError)?;
+
+    // Already gone is not an error: two phones dismissing the same alert, or a retry on a flaky link, must not
+    // look like a failure to the person who asked.
+    Ok(Json(serde_json::json!({ "removed": removed })))
 }
 
 async fn read_all(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<serde_json::Value>> {

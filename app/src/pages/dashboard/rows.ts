@@ -10,9 +10,18 @@ import type { DeviceSection } from './sections';
  */
 export type DashboardRow =
   | { kind: 'room'; key: string; title: string; online: number; total: number }
-  | { kind: 'tiles'; key: string; devices: Device[]; wide: boolean };
+  | { kind: 'tiles'; key: string; devices: Device[]; wide: boolean }
+  | { kind: 'more'; key: string; roomKey: string; title: string; hidden: number };
 
-export function buildRows(sections: DeviceSection[], columns = 2): DashboardRow[] {
+/** How many tiles a room shows before it offers the rest. Eight is four rows on a phone — enough to see the shape of
+ *  a room, short enough that a room of forty does not become the whole home screen. */
+export const ROOM_PAGE = 8;
+
+export function buildRows(
+  sections: DeviceSection[],
+  columns = 2,
+  expanded: ReadonlySet<string> = new Set(),
+): DashboardRow[] {
   const rows: DashboardRow[] = [];
 
   for (const section of sections) {
@@ -31,6 +40,14 @@ export function buildRows(sections: DeviceSection[], columns = 2): DashboardRow[
     // the row was the first attempt, and it made two devices in the same house twice the size of three.
     // On a three-column tablet a lone device takes one column like everything else: a full-width card next to a
     // third-width one is two tile sizes in one house. Full row is a phone answer.
+    // A room with more devices than the page shows gets a control at the end of it rather than a longer screen.
+    // The home in the demo has 1,200 devices across four rooms; without this, one room is the entire dashboard and
+    // the second room is a memory.
+    const capped =
+      expanded.has(section.key) || section.data.length <= ROOM_PAGE
+        ? section.data
+        : section.data.slice(0, ROOM_PAGE);
+
     if (section.data.length === 1 && columns === 2) {
       rows.push({
         kind: 'tiles',
@@ -41,12 +58,22 @@ export function buildRows(sections: DeviceSection[], columns = 2): DashboardRow[
       continue;
     }
 
-    for (let i = 0; i < section.data.length; i += columns) {
+    for (let i = 0; i < capped.length; i += columns) {
       rows.push({
         kind: 'tiles',
         key: `tiles:${section.key}:${i}`,
-        devices: section.data.slice(i, i + columns),
+        devices: capped.slice(i, i + columns),
         wide: false,
+      });
+    }
+
+    if (section.data.length > ROOM_PAGE && !expanded.has(section.key)) {
+      rows.push({
+        kind: 'more',
+        key: `more:${section.key}`,
+        roomKey: section.key,
+        title: section.title,
+        hidden: section.data.length - ROOM_PAGE,
       });
     }
   }

@@ -8,6 +8,8 @@ import {
   Button,
   Card,
   Icon,
+  SwipeToDismiss,
+  useToast,
   ListSkeleton,
   QueryError,
   Screen,
@@ -20,11 +22,13 @@ import { useTheme, tokens } from '../../app-shell/theme';
 import {
   clockTime,
   dayBucket,
+  useDismissAlert,
   useMarkAllRead,
   useMarkRead,
   useNotifications,
   type Notification,
 } from '../../entities/notification';
+import { useHomes } from '../../entities/home';
 
 /**
  * Alerts.
@@ -38,6 +42,12 @@ export function AlertsPage() {
   const { color } = useTheme();
   const markRead = useMarkRead();
   const markAll = useMarkAllRead();
+  const dismiss = useDismissAlert();
+  const toast = useToast();
+  // Two homes is the case that needs a name on every row; one home needs none, and a chip repeating the only home on
+  // every alert is a column of the same word.
+  const { data: homes } = useHomes();
+  const homeNames = new Map((homes ?? []).map((h) => [h.id, h.name]));
 
   const unread = (alerts ?? []).filter((a) => !a.read_at).length;
   // All / Unread, over the loaded page. The list is an alert feed capped at 50, not an archive, so filtering it here
@@ -140,7 +150,22 @@ export function AlertsPage() {
                   {bucket.toUpperCase()}
                 </AppText>
               ) : null}
-              <Alert alert={alert} onRead={() => markRead.mutate(alert.id)} />
+              <SwipeToDismiss
+                label="Dismiss"
+                onDismiss={() =>
+                  dismiss.mutate(alert.id, { onSuccess: () => toast('Alert dismissed') })
+                }
+              >
+                <Alert
+                  alert={alert}
+                  onRead={() => markRead.mutate(alert.id)}
+                  homeName={
+                    (homes ?? []).length > 1
+                      ? homeNames.get(String((alert.data as { home_id?: string })?.home_id ?? ''))
+                      : undefined
+                  }
+                />
+              </SwipeToDismiss>
             </Box>
           );
         })}
@@ -149,7 +174,16 @@ export function AlertsPage() {
   );
 }
 
-function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
+function Alert({
+  alert,
+  onRead,
+  homeName,
+}: {
+  alert: Notification;
+  onRead: () => void;
+  /** Only passed when the account has more than one home — see the caller. */
+  homeName?: string;
+}) {
   const router = useRouter();
   const { color, dark } = useTheme();
   const unread = !alert.read_at;
@@ -200,6 +234,11 @@ function Alert({ alert, onRead }: { alert: Notification; onRead: () => void }) {
             <AppText weight={unread ? '600' : '400'} style={{ flexShrink: 1 }}>
               {alert.title}
             </AppText>
+            {homeName ? (
+              <AppText variant="tiny" tone="muted" numberOfLines={1} style={{ maxWidth: 92 }}>
+                {homeName}
+              </AppText>
+            ) : null}
             <AppText variant="caption" tone="muted">
               {clockTime(alert.created_at)}
             </AppText>

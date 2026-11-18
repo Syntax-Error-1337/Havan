@@ -46,7 +46,7 @@ import { ApiError } from '../../shared/api/client';
 import { useTheme } from '../../app-shell/theme';
 import { deviceTimeZone } from '../../shared/lib/timeZone';
 import { groupByRoom } from './sections';
-import { buildRows } from './rows';
+import { buildRows, ROOM_PAGE } from './rows';
 import { categoriesOf, filterDevices } from './search';
 import { SceneStrip } from '../../widgets/scene-strip/SceneStrip';
 import { HomeHeader, StatRail } from '../../widgets/home/HomeHeader';
@@ -236,7 +236,13 @@ export function DashboardPage() {
    */
   const { width } = useWindowDimensions();
   const columns = width >= 900 ? 3 : 2;
-  const rows = useMemo(() => buildRows(sections, columns), [sections, columns]);
+  // Rooms the customer has asked to see in full. Per screen, not stored: "show me everything in the living room" is a
+  // question about right now, and a remembered answer is a dashboard that grows a wing.
+  const [expandedRooms, setExpandedRooms] = useState<Set<string>>(() => new Set());
+  const rows = useMemo(
+    () => buildRows(sections, columns, expandedRooms),
+    [sections, columns, expandedRooms],
+  );
 
   /**
    * Create the first home, in the customer's own words and their own timezone.
@@ -749,6 +755,27 @@ export function DashboardPage() {
               <AppText variant="tiny" tone="muted">
                 {item.online}/{item.total} online
               </AppText>
+            </View>
+          ) : item.kind === 'more' ? (
+            // The tail of a long room, behind one control. A home with forty devices in the living room should still
+            // show the kitchen without a scroll of thumb-sized cards.
+            <View style={{ paddingHorizontal: tokens.space.lg, paddingTop: tokens.space.xs }}>
+              <Pressable
+                onPress={() => setExpandedRooms((prev) => new Set(prev).add(item.roomKey))}
+                accessibilityRole="button"
+                accessibilityLabel={`Show all ${item.hidden + ROOM_PAGE} devices in ${item.title}`}
+                testID={`show-all-${item.roomKey}`}
+                style={{
+                  minHeight: tokens.touch.min,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <AppText variant="caption" style={{ color: color.accentInk }}>
+                  Show {item.hidden} more in {item.title}
+                </AppText>
+              </Pressable>
             </View>
           ) : (
             <View

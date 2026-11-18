@@ -28,7 +28,8 @@ describe('conditionOptions', () => {
     // With no coordinates the engine's Solar condition is `false` forever, so offering it would be a control that
     // can only fail — the customer would decide the automation was broken.
     const withoutLocation = conditionOptions(false).map((o) => o.id);
-    expect(withoutLocation).toEqual(['any', 'home', 'away']);
+    // A time window needs no coordinates — it is the home's own clock — so it is offered on both homes.
+    expect(withoutLocation).toEqual(['any', 'home', 'away', 'window']);
 
     const withLocation = conditionOptions(true).map((o) => o.id);
     expect(withLocation).toContain('sunset');

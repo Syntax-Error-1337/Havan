@@ -23,6 +23,25 @@ export function useNotifications(limit = 50) {
   });
 }
 
+/**
+ * Throw one alert away.
+ *
+ * The feed could only be marked read, never shortened: an alert list that only grows is a list people stop opening.
+ * The endpoint is `DELETE /notifications/{id}` and it answers `removed: false` for an id that is already gone, which
+ * is a second phone — not an error.
+ */
+export function useDismissAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<{ removed: boolean }>(`/notifications/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.notifications });
+      void qc.invalidateQueries({ queryKey: qk.unread });
+    },
+  });
+}
+
 export function useUnreadCount() {
   return useQuery({
     queryKey: qk.unread,

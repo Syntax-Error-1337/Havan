@@ -146,3 +146,74 @@ async fn one_person_cannot_unregister_another_persons_phone() {
         "another account must not be able to remove this token"
     );
 }
+
+#[tokio::test]
+async fn an_alert_can_be_thrown_away_and_only_by_its_owner() {
+    let Some((base, state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+    let client = reqwest::Client::new();
+    let token = register(&base).await;
+
+    // Who this token belongs to, and two alerts to work with.
+    let me: serde_json::Value = client
+        .get(format!("{base}/v1/me"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("me")
+        .json()
+        .await
+        .expect("me json");
+    let user_id = uuid::Uuid::parse_str(me["id"].as_str().expect("id")).expect("uuid");
+
+    let mut ids = Vec::new();
+    for title in ["Leak check", "Door opened"] {
+        let id = uuid::Uuid::now_v7();
+        sqlx::query("INSERT INTO notifications (id, user_id, kind, title, body) VALUES ($1, $2, 'alert', $3, '')")
+            .bind(id)
+            .bind(user_id)
+            .bind(title)
+            .execute(state.pg.pool())
+            .await
+            .expect("seed");
+        ids.push(id);
+    }
+
+    let res = client
+        .delete(format!("{base}/v1/notifications/{}", ids[0]))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("delete");
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(body["removed"], true);
+
+    // The row is gone, and the other one is not: a dismiss that emptied the feed would pass a "removed: true" check.
+    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM notifications WHERE id = ANY($1)")
+        .bind(&ids)
+        .fetch_one(state.pg.pool())
+        .await
+        .expect("count");
+    assert_eq!(left, 1);
+
+    // Somebody else's id is not a 403 and not a 500: it is a row that is not there.
+    let second = register(&base).await;
+    let res = client
+        .delete(format!("{base}/v1/notifications/{}", ids[1]))
+        .bearer_auth(&second)
+        .send()
+        .await
+        .expect("delete other");
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(body["removed"], false);
+    let still: i64 = sqlx::query_scalar("SELECT count(*) FROM notifications WHERE id = $1")
+        .bind(ids[1])
+        .fetch_one(state.pg.pool())
+        .await
+        .expect("count");
+    assert_eq!(still, 1);
+}

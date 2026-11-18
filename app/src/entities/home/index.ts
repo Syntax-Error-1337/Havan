@@ -11,6 +11,7 @@ export {
   useSetTimeZone,
   type Member,
 } from './model/queries';
+export { homeAccent } from './model/accent';
 export { useCurrentHome } from './model/current';
 export {
   useRooms,

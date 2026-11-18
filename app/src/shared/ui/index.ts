@@ -8,6 +8,7 @@ export { TabBar, type TabKey } from './TabBar';
 export { Card } from './Card';
 export { EmptyState } from './EmptyState';
 export { useToast } from './Toast';
+export { SwipeToDismiss } from './SwipeToDismiss';
 export { DeviceArtField } from './DeviceArtField';
 export { Gauge } from './Gauge';
 export { elevation } from './elevation';

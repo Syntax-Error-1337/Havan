@@ -57,3 +57,31 @@ describe('dashboard rows', () => {
     expect(rows).toEqual([{ kind: 'room', key: 'room:r5', title: 'Loft', online: 0, total: 0 }]);
   });
 });
+
+describe('a room with more devices than a screen shows', () => {
+  it('pages a long room at eight and offers the rest', () => {
+    const data = Array.from({ length: 40 }, (_, i) => device(`d${i}`));
+    const rows = buildRows([{ title: 'Living Room', key: 'big', data }]);
+
+    // Four rows of two, then the control — not twenty rows of two.
+    const tileRows = rows.filter((r) => r.kind === 'tiles');
+    expect(tileRows).toHaveLength(4);
+    const more = rows[rows.length - 1];
+    expect(more).toMatchObject({ kind: 'more', roomKey: 'big', hidden: 32 });
+  });
+
+  it('shows the whole room when it has been expanded, and stops offering more', () => {
+    const data = Array.from({ length: 40 }, (_, i) => device(`d${i}`));
+    const rows = buildRows([{ title: 'Living Room', key: 'big', data }], 2, new Set(['big']));
+
+    expect(rows.filter((r) => r.kind === 'tiles')).toHaveLength(20);
+    expect(rows.some((r) => r.kind === 'more')).toBe(false);
+  });
+
+  it('does not nag a room that fits', () => {
+    const data = Array.from({ length: 8 }, (_, i) => device(`d${i}`));
+    const rows = buildRows([{ title: 'Hall', key: 'small', data }]);
+    expect(rows.some((r) => r.kind === 'more')).toBe(false);
+    expect(rows.filter((r) => r.kind === 'tiles')).toHaveLength(4);
+  });
+});

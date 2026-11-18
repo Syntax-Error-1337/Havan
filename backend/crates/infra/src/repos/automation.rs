@@ -552,6 +552,17 @@ impl PgAutomation {
             None => data,
         };
 
+        // The home goes into the payload, not into a new column: the alert feed groups by home for a person who has
+        // two of them, and the app already reads `data.device_id` from exactly here. A column would be a migration and
+        // a backfill to answer a question the payload already has the room for.
+        let data = match data {
+            serde_json::Value::Object(mut map) => {
+                map.insert("home_id".into(), serde_json::json!(home_id.to_string()));
+                serde_json::Value::Object(map)
+            }
+            other => serde_json::json!({ "home_id": home_id.to_string(), "value": other }),
+        };
+
         let notification_id = kernel::new_id();
         sqlx::query(
             r#"INSERT INTO notifications (id, user_id, kind, title, body, data)

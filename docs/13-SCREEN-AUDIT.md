@@ -31,15 +31,15 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Empty state, hero, tiles, dial, search, wide layout — all rebuilt in waves 1–5 | — |
-| An all-offline home dims every field, so the *live* look (accent field, gauge) is nearly unreachable in the demo | P2 — demo data, not code |
-| No "all devices" view: a room with 40 devices has no collapsed/expanded control | P2 |
+| **An all-offline home dims every field**, so the live look is unreachable — *done as a tool*: `scripts/demo-fresh.sh` moves `last_seen_at`, `online` and every point's `updated_at` forward. It is a demo tool on purpose: a production system must never claim a silent device is live | done |
+| **No collapsed/expanded control for a long room** — *done*: a room pages at 8 tiles and ends with "Show N more in <room>" | done |
 
 ### Device detail (`/device/[id]`)
 | Finding | Priority |
 | --- | --- |
 | Rename, room move, ranges, chart, remove — present, and now with confirmation | done |
 | **No identity block**: serial, product, vendor, firmware version and last-seen time are all in the payload and none are on screen. A support call cannot start with "what is this device" | **P1** |
-| No "identify" action for a device you cannot see (blink, beep) — the protocol has no such command yet | P2, blocked on protocol |
+| No "identify" action for a device you cannot see (blink, beep), and no undo after remove — both need something the platform does not have: an `identify` data point the firmware would answer, and a restore verb on the server. Recorded rather than faked with a toggle that blinks a light for two seconds | blocked |
 | Remove is immediate after confirm, with no undo | P2 |
 
 ### Add a device (`/add-device`)
@@ -53,7 +53,7 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Mark all read; opening one marks it read | — |
-| **No filter** (all / unread) — *done*: an "Only unread" switch over the loaded feed, with "Nothing unread — you are caught up." for the empty case. Per-alert dismiss still needs an API verb | P1 → P2 |
+| **No filter** (all / unread) — *done*: an "Only unread" switch over the loaded feed, with "Nothing unread — you are caught up." for the empty case. Per-alert dismiss is **done**: `DELETE /notifications/{id}`, a swipe with an accessible action, and the home named on each row when the account has more than one | done |
 | No empty state distinct from "no alerts at all" vs "all read" | P2 |
 | Grouping is by day, which is right; nothing distinguishes homes for a person in two | P2 |
 
@@ -61,8 +61,8 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Empty state, rule rows, run/history/delete, toggle — present | — |
-| A rule row shows its schedule as text but has no "last ran at" in the row | **P1** — the first question about a rule that did not fire |
-| No condition editor beyond presence/solar; `Condition` supports comparisons the UI never offers | P2 — documented gap |
+| A rule row shows its schedule as text but has no "last ran at" in the row | **P1** — the first question about a rule that did not fire (still open) |
+| **No condition editor beyond presence/solar** — *done in part*: "Only between two times" now sends `Condition::TimeOfDay`, with a window that crosses midnight explained in place. Numeric comparisons on a device point are still a curl call | P2 |
 
 ### Scenes (`/scenes`)
 | Finding | Priority |
@@ -86,7 +86,7 @@ and leaving.
 | --- | --- |
 | Switch, create, per-home counts | — |
 | **No rename, no delete, no leave** — *done*: each row has an Edit control opening a sheet (pre-filled name, owner-only delete behind a second confirmation that names the device count). Leaving lives on Members | done |
-| No per-home artwork: every home is a coloured initial | P2 |
+| **No per-home artwork** — *done*: each home draws its own hue from its id, stable across launches and spread across the four palette hues | done |
 
 ### Members (`/members`)
 | Finding | Priority |
@@ -131,3 +131,19 @@ Three kinds of gap, in order of how much they cost:
 - Tests updated to the new interaction (`SettingsPage.test.tsx`), 26/26 across settings, members and device detail.
 - Verified live: the sheet opened pre-filled with "Living Room", Save was muted until the name changed and accent
   afterwards, the row and the toast both read "Renamed to Living Room 2".
+
+---
+
+## This pass, part two — the P2 list
+
+| Item | What it became |
+| --- | --- |
+| Alerts: dismiss | `DELETE /notifications/{id}` in `domain::notification::NotificationRepo`, a real socket test proving it removes one row and refuses another account's, and a `SwipeToDismiss` row whose threshold and direction rules are pure functions with tests. Screen readers get the same action through `accessibilityActions`. |
+| Alerts: which home | Automations write `home_id` into the notification payload; the row prints the home's name **only when the account has more than one**, because a chip repeating the only home is a column of the same word. |
+| Automations: conditions | "Only between two times" sends `Condition::TimeOfDay` — the second most common rule after sunset, and the engine has always accepted it. `clockValue` refuses `24:00`, `7` and `22:60` rather than sending a string that can never match. |
+| Dashboard: long rooms | A room pages at eight tiles and ends with "Show N more in <room>". `buildRows` owns the rule, so it is proven by tests rather than by scrolling. |
+| Home artwork | `homeAccent(id)` — FNV-1a over the uuid, four palette hues. A first-character hash fails on v7 uuids, whose first digits are a timestamp; that is why there is a test with four ids that differ only in their tails. |
+| About | `Licences` (generated from the installed tree by `scripts/gen-licences.mjs`, 31 packages, all MIT) and `Copy diagnostics` — ids, counts, versions, timezone; never a token. |
+| Demo data | `scripts/demo-fresh.sh` moves `last_seen_at`, `online` **and every point's `updated_at`**. The first version moved only the device row and the tiles still said "Silent for 1d": the app takes the *oldest* reading age across a device and its points, so the point's timestamp is the one that decides. |
+
+Still blocked, and not faked: "identify" needs a data point the firmware answers, and remove has no undo because the server has no restore verb.

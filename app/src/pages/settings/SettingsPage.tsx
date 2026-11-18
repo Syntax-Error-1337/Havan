@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 
 import { RoomRow } from './RoomRow';
 
@@ -42,6 +43,10 @@ import { deviceTimeZone } from '../../shared/lib/timeZone';
 import { useMe, useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
+import licences from '../../shared/config/licences.json';
+import appConfig from '../../../app.json';
+
+const APP_VERSION = appConfig.expo.version;
 
 /**
  * Settings.
@@ -56,9 +61,33 @@ import { useInlineEdit } from '../../shared/lib/useInlineEdit';
  */
 export function SettingsPage() {
   const router = useRouter();
-  const { brand, color } = useTheme();
+  const { brand, color, dark } = useTheme();
   const appearance = usePreferences((s) => s.appearance);
   const toast = useToast();
+
+  /**
+   * Everything a support person asks for in the first message, without the customer hunting for it.
+   *
+   * The rule that a secret is never printed applies here: ids, counts, versions and the timezone — never a token,
+   * never a push token, never a device secret. A diagnostics button that leaks a credential is worse than none.
+   */
+  const copyDiagnostics = async () => {
+    const text = [
+      `${brand.productName} ${APP_VERSION}`,
+      `home ${home?.name ?? '—'} (${home?.id ?? '—'})`,
+      `devices ${dashboard?.devices_total ?? home?.device_count ?? '—'}`,
+      `rooms ${(rooms ?? []).length}, members ${home?.member_count ?? '—'}`,
+      `timezone ${home?.timezone ?? '—'}, appearance ${dark ? 'dark' : 'light'}`,
+    ].join('\n');
+
+    try {
+      await Clipboard.setStringAsync(text);
+      toast('Diagnostics copied');
+    } catch {
+      toast('The clipboard refused — tell support instead', 'failed');
+    }
+  };
+
   const setAppearance = usePreferences((s) => s.setAppearance);
   const setTimeZone = useSetTimeZone();
   const setLocation = useSetLocation();
@@ -326,10 +355,21 @@ export function SettingsPage() {
 
         <Section title="About">
           <Row title="App" value={brand.productName} />
+          {/* The version was the whole About section. Two things belong beside it: what is in the build (a licence
+              question every store and every enterprise buyer asks) and a way to hand a support person the facts
+              without the customer reading a uuid off a screen. */}
+          <Row title="Licences" value={`${licences.packages.length} packages`} onPress={() => router.push('/licences')} />
+          <Row
+            title="Copy diagnostics"
+            subtitle="App version, this home, device count"
+            onPress={() => {
+              void copyDiagnostics();
+            }}
+          />
         </Section>
 
         <AppText variant="caption" tone="muted" style={{ textAlign: 'center' }}>
-          {brand.productName} 0.1.0
+          {brand.productName} {APP_VERSION}
         </AppText>
       </ScreenScroll>
     </Screen>
