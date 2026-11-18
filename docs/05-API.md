@@ -337,7 +337,7 @@ address another vendor's resource even with a guessed id (RLS + explicit check).
 | GET | `/vendor/support-bundle` | one device's story as a file: serial, firmware, last-seen, recent telemetry, logs — what support asks for and a customer cannot assemble |
 | DELETE | `/vendor/team/members/{id}` | owner cannot be removed, and the last owner cannot be demoted |
 | POST | `/vendor/team/{id}/sso` | binds an identity-provider subject to a member |
-| POST | `/vendor/invites/accept` | public: accepts an invitation token |
+| POST | `/vendor/invites/accept` | public: `{token, display_name, password}` → creates the account the invitation describes; one use (a second is **409**), and failures count against the per-source budget (60 per 5 minutes), because this is the only unauthenticated door in the vendor surface. The invitation response carries the token and how to submit it — never a `?token=` link, which would be a 405 and would put a credential in access logs and `Referer` headers |
 | GET/PATCH | `/vendor/sso` | `{required, domain, bound_members, total_members, enforced}` |
 | GET/PATCH | `/vendor/security` | `{totp_required, members, enrolled}` — owner only; **409** while any member has not enrolled |
 | POST | `/vendor/totp/enrol` | `{secret, otpauth_uri}` — shown once, replaces any previous secret |

@@ -82,7 +82,10 @@ async fn invite(
 
     Ok(Json(serde_json::json!({
         "token": token,
-        "accept_url": format!("/v1/vendor/invites/accept?token={token}"),
+        // Not a URL. This route is a POST that takes the token in its body, so a `?token=` link would be a 405 for
+        // anyone who clicked it — and a token in a URL ends up in access logs, `Referer` headers and browser history,
+        // which is the one place a credential must never be.
+        "accept_with": "POST /v1/vendor/invites/accept with { token, display_name, password }",
         "note": "this token is shown once; send it to the invitee yourself"
     })))
 }
@@ -97,30 +100,48 @@ struct AcceptBody {
 /// `POST /v1/vendor/invites/accept` — public. Creates the account the invitation describes.
 async fn accept(
     State(state): State<AppState>,
+    peer: crate::limits::Peer,
     Json(body): Json<AcceptBody>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    // Public, and it hashes a token and looks one up: the one unauthenticated endpoint in the vendor surface, so it gets
+    // the source budget. Only failures count, and a wrong token is a failure.
+    let key = format!("rl:vendor-invite-accept:{}", peer.key());
+    crate::limits::check(&state, &key, crate::limits::SOURCE).await?;
+
     if body.display_name.trim().is_empty() {
-        return Err(ApiError(kernel::AppError::validation(
-            "a display name is required",
-        )));
+        return refuse(&state, &key, "a display name is required").await;
     }
     if body.password.chars().count() < 10 {
-        return Err(ApiError(kernel::AppError::validation(
-            "choose a password of at least 10 characters",
-        )));
+        return refuse(&state, &key, "choose a password of at least 10 characters").await;
     }
 
-    let (vendor_id, user_id) = state
+    let accepted = state
         .vendor_team
         .accept(&body.token, body.display_name.trim(), &body.password)
-        .await
-        .map_err(ApiError)?;
+        .await;
+
+    let (vendor_id, user_id) = match accepted {
+        Ok(ids) => ids,
+        Err(e) => {
+            // A rejected invitation is the attempt worth counting: a wrong token, an expired one. A successful accept
+            // is not, or one person clicking twice would spend the budget for their whole office.
+            crate::limits::record(&state, &key, crate::limits::SOURCE).await;
+            return Err(ApiError(e));
+        }
+    };
 
     Ok(Json(serde_json::json!({
         "vendor_id": vendor_id,
         "user_id": user_id,
         "next": "log in at /v1/vendor/auth/login"
     })))
+}
+
+/// A validation refusal that also counts against the source budget: a form filled fifty times with a wrong token is a
+/// spray, and it should not be free just because the request was malformed.
+async fn refuse(state: &AppState, key: &str, message: &str) -> ApiResult<Json<serde_json::Value>> {
+    crate::limits::record(state, key, crate::limits::SOURCE).await;
+    Err(ApiError(kernel::AppError::validation(message)))
 }
 
 /// `DELETE /v1/vendor/team/invites/{id}` — withdraw an invitation nobody has accepted.
