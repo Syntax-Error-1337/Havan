@@ -17,21 +17,35 @@ struct Fixture {
     vendor_id: Uuid,
 }
 
+/// `None` only when the environment is absent. Everything else is a broken fixture and must fail: these four tests were
+/// reporting "no TEST_DATABASE_URL" with the database configured, because `vendors` gained a row-level-security policy
+/// after they were written and the refusal was folded into the same `Option` as a missing variable.
 async fn boot() -> Option<Fixture> {
-    let db = std::env::var("TEST_DATABASE_URL").ok()?;
-    let pg = infra::Pg::connect(&db, 4).await.ok()?;
+    let Ok(db) = std::env::var("TEST_DATABASE_URL") else {
+        return None;
+    };
+    let pg = infra::Pg::connect(&db, 4).await.expect("database");
     let admin = PgPoolOptions::new()
         .max_connections(2)
         .connect(&db)
         .await
-        .ok()?;
+        .expect("admin pool");
     let vendor_id = Uuid::now_v7();
+
+    // One connection, so the scope set here is the scope the insert runs under.
+    let mut tx = admin.begin().await.expect("seed transaction");
+    sqlx::query("SELECT set_config('haven.vendor_id', $1, false)")
+        .bind(vendor_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .expect("scope");
     sqlx::query("INSERT INTO vendors (id, slug, name) VALUES ($1, $2, 'Delete Vendor')")
         .bind(vendor_id)
         .bind(format!("del-{}", &vendor_id.simple().to_string()[24..]))
-        .execute(&admin)
+        .execute(&mut *tx)
         .await
-        .ok()?;
+        .expect("vendor");
+    tx.commit().await.expect("commit");
 
     Some(Fixture {
         pg: admin,
@@ -41,7 +55,22 @@ async fn boot() -> Option<Fixture> {
 }
 
 impl Fixture {
+    /// A transaction with the row-level scope set, so the writes that follow are allowed to happen.
+    ///
+    /// The scope is session state on *one connection*: setting it on the pool and then inserting through the pool is a
+    /// coin toss over which connection runs which statement, and the insert loses it about half the time.
+    async fn scoped(&self) -> sqlx::Transaction<'_, sqlx::Postgres> {
+        let mut tx = self.pg.begin().await.expect("seed transaction");
+        sqlx::query("SELECT set_config('haven.vendor_id', $1, false)")
+            .bind(self.vendor_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .expect("scope");
+        tx
+    }
+
     async fn product(&self, tag: &str) -> Uuid {
+        let mut tx = self.scoped().await;
         let id = Uuid::now_v7();
         let key = format!("del_{tag}_{}", &id.simple().to_string()[24..]);
         sqlx::query(
@@ -51,13 +80,15 @@ impl Fixture {
         .bind(id)
         .bind(self.vendor_id)
         .bind(&key)
-        .execute(&self.pg)
+        .execute(&mut *tx)
         .await
         .expect("product");
+        tx.commit().await.expect("commit");
         id
     }
 
     async fn device_on(&self, product_id: Uuid, key: &str) {
+        let mut tx = self.scoped().await;
         let device_id = Uuid::now_v7();
         let tail = device_id.simple().to_string();
         sqlx::query(
@@ -70,12 +101,14 @@ impl Fixture {
         .bind(product_id)
         .bind(key)
         .bind(format!("DEL-{}", tail[tail.len() - 8..].to_uppercase()))
-        .execute(&self.pg)
+        .execute(&mut *tx)
         .await
         .expect("device");
+        tx.commit().await.expect("commit");
     }
 
     async fn activation_on(&self, product_id: Uuid, key: &str) {
+        let mut tx = self.scoped().await;
         sqlx::query(
             "INSERT INTO licence_activations (id, vendor_id, product_id, serial, unit_price_cents, currency)
              VALUES ($1, $2, $3, $4, 249, 'USD')",
@@ -84,9 +117,10 @@ impl Fixture {
         .bind(self.vendor_id)
         .bind(product_id)
         .bind(key)
-        .execute(&self.pg)
+        .execute(&mut *tx)
         .await
         .expect("activation");
+        tx.commit().await.expect("commit");
     }
 
     async fn exists(&self, product_id: Uuid) -> bool {

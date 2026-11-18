@@ -36,16 +36,22 @@ async fn register(base: &str, email: &str) -> Option<String> {
 }
 
 async fn boot() -> Option<Fixture> {
-    let db = std::env::var("TEST_DATABASE_URL").ok()?;
-    let redis = std::env::var("TEST_REDIS_URL").ok()?;
-    let cfg = std::sync::Arc::new(kernel::Config::from_env().ok()?);
-    let pg = infra::Pg::connect(&db, 4).await.ok()?;
-    let cache = infra::Cache::connect(&redis).await.ok()?;
+    // `None` only when the environment is absent. A refused insert is a broken fixture, and folding it into the same
+    // `Option` is what kept two tests in this file reporting "TEST_DATABASE_URL not set" while the database was up.
+    let Ok(db) = std::env::var("TEST_DATABASE_URL") else {
+        return None;
+    };
+    let Ok(redis) = std::env::var("TEST_REDIS_URL") else {
+        return None;
+    };
+    let cfg = std::sync::Arc::new(kernel::Config::from_env().expect("config"));
+    let pg = infra::Pg::connect(&db, 4).await.expect("database");
+    let cache = infra::Cache::connect(&redis).await.expect("cache");
     let mqtt = infra::Mqtt::connect(
         &std::env::var("MQTT_URL").unwrap_or_else(|_| "mqtt://localhost:1883".into()),
-        "haven-api-release-test",
+        &format!("haven-api-release-test-{}", uuid::Uuid::now_v7()),
     )
-    .ok()?;
+    .expect("broker");
     let state = AppState::new(cfg, pg, cache, mqtt);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok()?;
@@ -76,19 +82,26 @@ async fn boot() -> Option<Fixture> {
         .max_connections(2)
         .connect(&db)
         .await
-        .ok()?;
+        .expect("admin pool");
 
     let vendor_id = Uuid::now_v7();
     let product_id = Uuid::now_v7();
     let device_id = Uuid::now_v7();
     let key = format!("rel_{}", &product_id.simple().to_string()[24..]);
 
+    // Scope and inserts on one connection: `set_config` is session state, and a pool would run them wherever it liked.
+    let mut tx = admin.begin().await.expect("seed transaction");
+    sqlx::query("SELECT set_config('haven.vendor_id', $1, false)")
+        .bind(vendor_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .expect("scope");
     sqlx::query("INSERT INTO vendors (id, slug, name) VALUES ($1, $2, 'Release Vendor')")
         .bind(vendor_id)
         .bind(format!("rel-{}", &vendor_id.simple().to_string()[24..]))
-        .execute(&admin)
+        .execute(&mut *tx)
         .await
-        .ok()?;
+        .expect("vendor");
     sqlx::query(
         "INSERT INTO products (id, vendor_id, product_key, name, category, thing_model)
          VALUES ($1, $2, $3, 'Release Bulb', 'light', '{}'::jsonb)",
@@ -96,9 +109,9 @@ async fn boot() -> Option<Fixture> {
     .bind(product_id)
     .bind(vendor_id)
     .bind(&key)
-    .execute(&admin)
+    .execute(&mut *tx)
     .await
-    .ok()?;
+    .expect("product");
     sqlx::query(
         "INSERT INTO devices (id, vendor_id, product_id, product_key, home_id, name, serial,
                               secret_hash, state, category, online)
@@ -110,9 +123,10 @@ async fn boot() -> Option<Fixture> {
     .bind(&key)
     .bind(home_id)
     .bind(format!("REL-{}", &device_id.simple().to_string()[24..]))
-    .execute(&admin)
+    .execute(&mut *tx)
     .await
-    .ok()?;
+    .expect("device");
+    tx.commit().await.expect("commit");
 
     Some(Fixture {
         base,

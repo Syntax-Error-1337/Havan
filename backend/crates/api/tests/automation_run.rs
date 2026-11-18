@@ -20,24 +20,48 @@ struct Fixture {
     home: Uuid,
 }
 
+/// `None` only when the environment is absent; a refused insert is a broken fixture and says so.
 async fn fixture() -> Option<Fixture> {
-    let url = std::env::var("TEST_DATABASE_URL").ok()?;
-    let pool = PgPool::connect(&url).await.ok()?;
+    let Ok(url) = std::env::var("TEST_DATABASE_URL") else {
+        return None;
+    };
+    let pool = PgPool::connect(&url).await.expect("database");
     let vendor = Uuid::now_v7();
     let home = Uuid::now_v7();
 
+    // One connection, and the row-level scope set on it: `vendors` is protected by RLS, and setting the scope on the
+    // pool while inserting through the pool is a coin toss over which connection runs what.
+    let mut tx = pool.begin().await.expect("seed transaction");
+    sqlx::query("SELECT set_config('haven.vendor_id', $1, false)")
+        .bind(vendor.to_string())
+        .execute(&mut *tx)
+        .await
+        .expect("scope");
+    // The tail of the uuid, not the head: a v7 uuid starts with a timestamp, so two fixtures made in the same
+    // millisecond would share their first characters and collide on the slug.
+    let tail = &vendor.simple().to_string()[24..];
     sqlx::query("INSERT INTO vendors (id, slug, name) VALUES ($1, $2, 'Run-now vendor')")
         .bind(vendor)
-        .bind(format!("run{}", &vendor.simple().to_string()[..8]))
-        .execute(&pool)
+        .bind(format!("run{tail}"))
+        .execute(&mut *tx)
         .await
-        .ok()?;
+        .expect("vendor");
+    // The owner has to exist: `homes.owner_id` gained a foreign key to `users` after this fixture was written, which is
+    // one of the reasons the whole file had stopped running.
+    let owner = Uuid::now_v7();
+    sqlx::query("INSERT INTO users (id, email, display_name) VALUES ($1, $2, 'Run-now owner')")
+        .bind(owner)
+        .bind(format!("run-{tail}@haven.dev"))
+        .execute(&mut *tx)
+        .await
+        .expect("owner");
     sqlx::query("INSERT INTO homes (id, name, owner_id) VALUES ($1, 'Run-now home', $2)")
         .bind(home)
-        .bind(Uuid::now_v7())
-        .execute(&pool)
+        .bind(owner)
+        .execute(&mut *tx)
         .await
-        .ok()?;
+        .expect("home");
+    tx.commit().await.expect("commit");
 
     Some(Fixture {
         repo: PgAutomation::new(infra::Pg::connect(&url, 2).await.ok()?),

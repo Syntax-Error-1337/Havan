@@ -41,6 +41,11 @@ CARGO_TEST := cd $(BACKEND) && DATABASE_URL=$(TEST_DATABASE_URL) \
 	TEST_DATABASE_URL=$(TEST_DATABASE_URL) MIGRATE_DATABASE_URL=$(TEST_MIGRATE_DATABASE_URL) \
 	TEST_REDIS_URL=$(TEST_REDIS_URL) cargo
 
+# The suite, run through the skip guard (scripts/no-skipped-tests.sh) with the same environment as CARGO_TEST.
+CARGO_SUITE := cd $(BACKEND) && DATABASE_URL=$(TEST_DATABASE_URL) \
+	TEST_DATABASE_URL=$(TEST_DATABASE_URL) MIGRATE_DATABASE_URL=$(TEST_MIGRATE_DATABASE_URL) \
+	TEST_REDIS_URL=$(TEST_REDIS_URL) bash ../scripts/no-skipped-tests.sh
+
 .PHONY: help
 help: ## show this help
 	@# `include .env` puts a second file in MAKEFILE_LIST, and grep then prefixes
@@ -145,7 +150,9 @@ check: testdb ## fmt + clippy + tests + no secrets + routes match handlers + rea
 	$(MAKE) tokens
 	$(MAKE) time-serde
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
-	$(CARGO_TEST) test --workspace
+	@# Through the guard, not `cargo test` directly: a test that skips itself is green and reports coverage it does
+	@# not have. Seven of them were doing exactly that when this line was written.
+	$(CARGO_SUITE)
 
 # The same gate without the database suites, for the loop between edits.
 #
@@ -185,8 +192,8 @@ conformance: ## run the device conformance suite: make conformance VENDOR=<uuid>
 	python3 scripts/conformance.py --vendor $(VENDOR) --product $(PRODUCT)
 
 .PHONY: test
-test: testdb ## tests only
-	$(CARGO_TEST) test --workspace
+test: testdb ## tests only (fails if any test skipped itself)
+	$(CARGO_SUITE)
 
 .PHONY: backup
 backup: ## verified database dump into .haven/backups

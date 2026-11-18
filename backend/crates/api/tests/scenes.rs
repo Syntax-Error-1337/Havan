@@ -17,17 +17,30 @@ struct Fixture {
     device_id: Uuid,
 }
 
+/// Why the fixture could not be built — or `None` when the environment is simply not there.
+///
+/// The distinction matters: this function used to fold every failure into one `Option`, and each test turned `None` into
+/// a skip. Three tests were reporting 'TEST_DATABASE_URL not set' with the database configured and every service up —
+/// the real cause was an insert refused by a row-level-security policy added after they were written. A fixture failure
+/// here is a broken test, not an absent environment, and it has to say so.
 async fn boot() -> Option<Fixture> {
-    let db = std::env::var("TEST_DATABASE_URL").ok()?;
-    let redis = std::env::var("TEST_REDIS_URL").ok()?;
-    let cfg = std::sync::Arc::new(kernel::Config::from_env().ok()?);
-    let pg = infra::Pg::connect(&db, 4).await.ok()?;
-    let cache = infra::Cache::connect(&redis).await.ok()?;
+    let Ok(db) = std::env::var("TEST_DATABASE_URL") else {
+        return None;
+    };
+    let Ok(redis) = std::env::var("TEST_REDIS_URL") else {
+        return None;
+    };
+    let cfg = std::sync::Arc::new(kernel::Config::from_env().expect("config"));
+    let pg = infra::Pg::connect(&db, 4).await.expect("database");
+    let cache = infra::Cache::connect(&redis).await.expect("cache");
+    // A unique client id per fixture. Three tests in one binary run in parallel, and a shared id makes the broker treat
+    // them as the same session: each connect kicks the previous one, whose publish then fails as "broker unavailable".
+    // That is what these tests were seeing, and it looked like a product defect rather than a harness one.
     let mqtt = infra::Mqtt::connect(
         &std::env::var("MQTT_URL").unwrap_or_else(|_| "mqtt://localhost:1883".into()),
-        "haven-api-scenes-test",
+        &format!("haven-api-scenes-{}", Uuid::now_v7()),
     )
-    .ok()?;
+    .expect("broker");
     let state = AppState::new(cfg, pg, cache, mqtt);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok()?;
@@ -75,12 +88,20 @@ async fn boot() -> Option<Fixture> {
     let vendor_id = Uuid::now_v7();
     let product_id = Uuid::now_v7();
     let device_id = Uuid::now_v7();
+    // One connection, so the row-level scope survives until the writes are done: `set_config` is session state, and a
+    // pooled connection per statement would set it on one connection and write on another.
+    let mut tx = admin.begin().await.expect("seed transaction");
+    sqlx::query("SELECT set_config('haven.vendor_id', $1, false)")
+        .bind(vendor_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .expect("scope");
     sqlx::query("INSERT INTO vendors (id, slug, name) VALUES ($1, $2, 'Scene Vendor')")
         .bind(vendor_id)
         .bind(format!("sc-{}", &vendor_id.simple().to_string()[24..]))
-        .execute(&admin)
+        .execute(&mut *tx)
         .await
-        .ok()?;
+        .expect("vendor");
     let key = format!("scene_{}", &product_id.simple().to_string()[24..]);
     sqlx::query(
         "INSERT INTO products (id, vendor_id, product_key, name, category, thing_model)
@@ -89,9 +110,9 @@ async fn boot() -> Option<Fixture> {
     .bind(product_id)
     .bind(vendor_id)
     .bind(&key)
-    .execute(&admin)
+    .execute(&mut *tx)
     .await
-    .ok()?;
+    .expect("product");
     sqlx::query(
         "INSERT INTO devices (id, vendor_id, product_id, product_key, home_id, name, serial,
                               secret_hash, state, category, online)
@@ -103,9 +124,9 @@ async fn boot() -> Option<Fixture> {
     .bind(&key)
     .bind(home_id)
     .bind(format!("SC-{}", &device_id.simple().to_string()[24..]))
-    .execute(&admin)
+    .execute(&mut *tx)
     .await
-    .ok()?;
+    .expect("device");
     sqlx::query(
         "INSERT INTO device_points (id, device_id, vendor_id, capability, slot, code, dp, kind,
                                     writable, history, value_bool)
@@ -114,9 +135,10 @@ async fn boot() -> Option<Fixture> {
     .bind(Uuid::now_v7())
     .bind(device_id)
     .bind(vendor_id)
-    .execute(&admin)
+    .execute(&mut *tx)
     .await
-    .ok()?;
+    .expect("point");
+    tx.commit().await.expect("commit");
 
     Some(Fixture {
         base,
@@ -164,7 +186,7 @@ async fn activating_a_scene_dispatches_one_command_per_action() {
         .expect("activate");
     assert_eq!(activated.status().as_u16(), 200);
     let body: serde_json::Value = activated.json().await.expect("activation");
-    assert_eq!(body["dispatched"], 1, "one action, one command");
+    assert_eq!(body["dispatched"], 1, "one action, one command: {body}");
     assert_eq!(
         body["failed"].as_array().map(|a| a.len()),
         Some(0),
@@ -173,12 +195,13 @@ async fn activating_a_scene_dispatches_one_command_per_action() {
 
     // The command is real, and it is `queued` rather than `applied`: the device is offline, and a
     // scene that claimed success on an unreachable bulb would be the same lie presence had.
-    let row: (String,) =
-        sqlx::query_as("SELECT status FROM commands WHERE device_id = $1 ORDER BY created_at DESC")
-            .bind(f.device_id)
-            .fetch_one(&f.admin)
-            .await
-            .expect("command");
+    let row: (String,) = sqlx::query_as(
+        "SELECT status FROM commands WHERE device_id = $1 ORDER BY requested_at DESC",
+    )
+    .bind(f.device_id)
+    .fetch_one(&f.admin)
+    .await
+    .expect("command");
     assert_eq!(row.0, "queued", "a dispatched command waits for the device");
 }
 
@@ -343,7 +366,9 @@ async fn a_scene_can_be_renamed_without_losing_its_actions() {
         .send()
         .await
         .expect("blank");
-    assert_eq!(blank.status().as_u16(), 400);
+    // 422, not 400: validation in this API is `validation_failed`, and a body that parsed but said nothing is a
+    // validation problem rather than a malformed request.
+    assert_eq!(blank.status().as_u16(), 422);
 
     // And a PATCH with no fields is not a write, so it cannot be used to probe which ids exist.
     let nothing = client
@@ -353,5 +378,6 @@ async fn a_scene_can_be_renamed_without_losing_its_actions() {
         .send()
         .await
         .expect("nothing");
-    assert_eq!(nothing.status().as_u16(), 400);
+    // 422 for the same reason: the request parsed, and it asked for a change that is not one.
+    assert_eq!(nothing.status().as_u16(), 422);
 }

@@ -40,7 +40,7 @@ async fn boot() -> Option<Harness> {
     let cache = infra::Cache::connect(&redis).await.ok()?;
     let mqtt = infra::Mqtt::connect(
         &std::env::var("MQTT_URL").unwrap_or_else(|_| "mqtt://localhost:1883".into()),
-        "haven-api-shapes-test",
+        &format!("{}-{}", "haven-api-shapes-test", uuid::Uuid::now_v7()),
     )
     .ok()?;
     let state = AppState::new(cfg, pg, cache, mqtt);

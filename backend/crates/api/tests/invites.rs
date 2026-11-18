@@ -17,7 +17,7 @@ async fn boot() -> Option<(String, AppState)> {
     let cache = infra::Cache::connect(&redis).await.ok()?;
     let mqtt = infra::Mqtt::connect(
         &std::env::var("MQTT_URL").unwrap_or_else(|_| "mqtt://localhost:1883".into()),
-        "haven-api-invites-test",
+        &format!("{}-{}", "haven-api-invites-test", uuid::Uuid::now_v7()),
     )
     .ok()?;
     let state = AppState::new(cfg, pg, cache, mqtt);
