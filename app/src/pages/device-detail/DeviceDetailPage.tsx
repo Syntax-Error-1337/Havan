@@ -630,7 +630,9 @@ function HistoryChart({
                 typeof charted.value === 'number' ? reading(charted.value) : String(charted.value),
                 charted.unit,
               )}.`
-            : `No readings in the last ${RANGE_WORDS[range]} yet.`}
+            : // The range chips above an empty chart read as an orphaned control; this is what they are for. Naming
+              // the way out is cheaper than explaining the control.
+              `No readings in the last ${RANGE_WORDS[range]} yet${range === '30d' ? '.' : ' — try a longer range.'}`}
         </AppText>
       ) : (
         <>

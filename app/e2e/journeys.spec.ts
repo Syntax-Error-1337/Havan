@@ -94,11 +94,28 @@ test('a rule can be run by hand, and the run is recorded as a manual one', async
     // By the ids the screen already gives these controls. A text locator inside a 38-rule list was matching a
     // card by position rather than by identity, which is the same mistake `.first()` made, one layer down.
     await page.getByTestId(`run-${ruleId}`).click();
-    await page.getByTestId(`history-${ruleId}`).click();
 
-    // The run happens in the worker, so the history is what proves it — and the label is the point:
-    // "manual", not "schedule".
-    await expect(page.getByText(/manual/i).first()).toBeVisible({ timeout: 25_000 });
+    // Two facts, checked separately, because they fail for different reasons.
+    //
+    // 1. The worker recorded the run as *manual* — not "schedule". This asserts against the API, so a slow worker
+    //    makes the test wait rather than fail: the old version waited 25 s for a label that only appears after the
+    //    worker wakes, which is why it failed in roughly half of full runs and passed alone.
+    await expect
+      .poll(
+        async () => {
+          const response = await page.request.get(`${api}/v1/automations/${ruleId}/runs`, { headers: auth });
+          if (!response.ok()) return null;
+          const runs = (await response.json()) as { trigger_kind?: string }[];
+          return runs[0]?.trigger_kind ?? null;
+        },
+        { timeout: 45_000, intervals: [500, 1_000, 2_000] },
+      )
+      .toBe('manual');
+
+    // 2. The screen shows it. The sheet is opened *after* the run exists, because a list fetched before the run was
+    //    written is an empty list — correct behaviour, and not something a longer wait can fix.
+    await page.getByTestId(`history-${ruleId}`).click();
+    await expect(page.getByText(/manual/i).first()).toBeVisible({ timeout: 15_000 });
   } finally {
     await page.request.delete(`${api}/v1/automations/${ruleId}`, { headers: auth });
   }

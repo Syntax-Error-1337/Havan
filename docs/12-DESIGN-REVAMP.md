@@ -380,9 +380,8 @@ has no banner of its own.)
 
 ### 13.3 Open
 
-The range control (1h / 1d / 7d / 30d) sits above a chart that, on a device with no history, only says *"No readings in
-the last day"*. It reads as an orphaned control on that device. The honest fix is to hide the range selector when the
-widest window holds no samples at all — deferred, recorded here rather than quietly accepted.
+~~The range control (1h / 1d / 7d / 30d) sat above a chart that, on a device with no history, only said *"No readings in
+the last day"* — an orphaned control.~~ **Closed in §16.**
 
 ## 14. Wave 5 — motion that can be switched off, and a thousand devices
 
@@ -454,3 +453,31 @@ Two things the first version got wrong and the schema caught:
 control is correctly disabled and no write can be issued from the UI at all. The wiring is proved by unit test against
 a stubbed API — a write whose command ends `timeout` shows the message, and one still `dispatched` shows nothing,
 because a message that appears the instant you press is a message about the press rather than about the device.
+
+## 16. Two flaky gates, and a control that now says what it is for
+
+### 16.1 The run-by-hand test waited on the wrong thing
+
+`journeys.spec › a rule can be run by hand` failed in roughly half of full runs and passed alone. It waited **25 s for a
+`manual` label** that only appears once the worker has woken, picked up the run and the sheet has re-read a list it
+fetched *before* the run existed. Three reasons to fail, one assertion.
+
+It is now two assertions about two different facts:
+
+1. **the worker recorded the run as `manual`** — checked against `GET /v1/automations/{id}/runs` with `expect.poll`,
+   so a slow worker makes the test *wait* instead of fail;
+2. **the screen shows it** — the sheet is opened *after* the run exists, because a list fetched before the write is an
+   empty list, which is correct behaviour and not something a longer timeout can fix.
+
+### 16.2 The range chips now name the way out
+
+The detail screen's `1h / 1d / 7d / 30d` control sat above an empty chart with nothing to say what it was for. The empty
+sentence now ends *"— try a longer range."* on every window but the widest, which is the one instruction the control
+implies and never stated. Cheaper than hiding the control: the customer's next move is a tap they already have.
+
+### 16.3 The `hero-card` assertion
+
+`failures.spec` clicked a device tile and asserted `hero-card` visible. `hero-card` is a **dashboard** element, and the
+dashboard stays mounted underneath a pushed screen — so the assertion passed while the transition was in flight and
+failed when paint was slow. It now waits on the device screen it navigated to. *A test that waits on the previous
+screen cannot tell a navigation from a slow paint.*
