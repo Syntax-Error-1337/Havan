@@ -100,7 +100,7 @@ async fn claim(
     // Keyed by source and serial: a misconfigured device retries in a loop, and that
     // loop must not become a denial of service on somebody's home.
     let key = format!("rl:claim:{}:{}", peer.key(), body.sn);
-    limits::check(&state, &key, limits::CLAIM).await?;
+    limits::check(&state, &key, limits::CLAIM, "claim").await?;
 
     let claimed = match state
         .pairing
@@ -207,7 +207,7 @@ async fn certificate(
     // Issuance is expensive (key generation + signing) and a misconfigured device retries in
     // a loop, so it gets the same per-serial limiter as claiming.
     let key = format!("rl:cert:{}:{}", peer.key(), body.sn);
-    limits::check(&state, &key, limits::CLAIM).await?;
+    limits::check(&state, &key, limits::CLAIM, "certificate").await?;
 
     let device = match state
         .pairing

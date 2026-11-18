@@ -107,7 +107,16 @@ pub const CLAIM: Window = Window {
 const DEADLINE: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Refuse if this key has already used its window. Does not count the attempt.
-pub async fn check(state: &AppState, key: &str, window: Window) -> Result<(), ApiError> {
+///
+/// `scope` names what is being limited — `login`, `login-source`, `register`, `claim` — and goes into the refusal
+/// metric, so "somebody is guessing one password" and "somebody is spraying many accounts" are two lines on a dashboard
+/// rather than one.
+pub async fn check(
+    state: &AppState,
+    key: &str,
+    window: Window,
+    scope: &str,
+) -> Result<(), ApiError> {
     let peeked = tokio::time::timeout(DEADLINE, state.cache.peek(key)).await;
     match match peeked {
         Ok(result) => result,
@@ -117,7 +126,7 @@ pub async fn check(state: &AppState, key: &str, window: Window) -> Result<(), Ap
         }
     } {
         Ok(count) if i64::try_from(count).unwrap_or(i64::MAX) >= window.limit => {
-            kernel::metrics::rate_limited();
+            kernel::metrics::rate_limited(scope);
             Err(ApiError(AppError::code(
                 kernel::ErrorCode::RateLimited,
                 // Not "in a minute": the account window is a minute and the source window is five, and a message that

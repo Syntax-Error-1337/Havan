@@ -33,7 +33,10 @@ struct Registry {
     commands_dispatched: AtomicU64,
     commands_undelivered: AtomicU64,
     ws_connections: AtomicU64,
-    rate_limited: AtomicU64,
+    /// Refusals, by what was being counted. A per-account limit being hit is a person with the wrong password; the
+    /// source limit being hit is a script trying many accounts, and an operator needs to be able to tell them apart
+    /// without reading the audit log.
+    rate_limited: Mutex<BTreeMap<String, u64>>,
     started_unix: AtomicU64,
 }
 
@@ -98,8 +101,12 @@ pub fn ws_closed() {
         .store(current.saturating_sub(1), Ordering::Relaxed);
 }
 
-pub fn rate_limited() {
-    registry().rate_limited.fetch_add(1, Ordering::Relaxed);
+pub fn rate_limited(scope: &str) {
+    let mut counts = registry()
+        .rate_limited
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *counts.entry(scope.to_string()).or_default() += 1;
 }
 
 /// The Prometheus text exposition. Stable ordering, so a diff of two scrapes is readable
@@ -165,12 +172,23 @@ pub fn render() -> String {
         reg.ws_connections.load(Ordering::Relaxed)
     ));
 
-    out.push_str("# HELP haven_rate_limited_total Requests refused by a rate limit.\n");
+    out.push_str("# HELP haven_rate_limited_total Requests refused by a rate limit, by scope.\n");
     out.push_str("# TYPE haven_rate_limited_total counter\n");
-    out.push_str(&format!(
-        "haven_rate_limited_total {}\n",
-        reg.rate_limited.load(Ordering::Relaxed)
-    ));
+    {
+        let counts = reg
+            .rate_limited
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // A total of zero is worth one series: a dashboard that shows nothing at all looks broken, not quiet.
+        if counts.is_empty() {
+            out.push_str("haven_rate_limited_total{scope=\"none\"} 0\n");
+        }
+        for (scope, count) in counts.iter() {
+            out.push_str(&format!(
+                "haven_rate_limited_total{{scope=\"{scope}\"}} {count}\n"
+            ));
+        }
+    }
 
     let up = kernel_now_unix().saturating_sub(reg.started_unix.load(Ordering::Relaxed));
     out.push_str("# HELP haven_uptime_seconds Seconds since this process started.\n");
@@ -183,6 +201,28 @@ pub fn render() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two attacks, two lines.
+    ///
+    /// A single `haven_rate_limited_total` counter made a person with the wrong password and a script working through a
+    /// list of accounts look identical on a dashboard. The scope label is what lets an operator tell them apart, so it is
+    /// asserted by scraping the exposition rather than by trusting the code path.
+    #[test]
+    fn refusals_are_counted_per_scope() {
+        rate_limited("login");
+        rate_limited("login");
+        rate_limited("login-source");
+
+        let text = render();
+        assert!(
+            text.contains("haven_rate_limited_total{scope=\"login\"} 2"),
+            "{text}"
+        );
+        assert!(
+            text.contains("haven_rate_limited_total{scope=\"login-source\"} 1"),
+            "{text}"
+        );
+    }
 
     #[test]
     fn a_recorded_request_shows_up_once() {

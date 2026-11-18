@@ -763,12 +763,16 @@ them is a problem — so a legitimate sign-in never meets the limit.
 | Endpoint | Key | Failures per minute |
 |---|---|---|
 | `POST /auth/login` | source IP + email | 10 |
+| `POST /auth/login` | source IP, all accounts | 60 per 5 min |
 | `POST /vendor/auth/login` | source IP + email | 10 |
 | `POST /provision/claim` | source IP + serial | 10 |
 | `POST /auth/register` | source IP | 20 |
 
 Over the limit answers `429` with `{"error":{"code":"rate_limited","message":"…"}}`, and
-the refusal is counted in `haven_rate_limited_total`. The counter lives in Valkey (one
+the refusal is counted in `haven_rate_limited_total{scope="…"}`. The scope is what makes the metric
+readable: `login` means somebody is guessing one password, `login-source` means one address is working
+through many accounts, and those are different incidents with different responses. The same rule covers
+vendor sign-in, registration, claims, certificate issuance and the public invitation accept. The counter lives in Valkey (one
 `INCR` plus an `EXPIRE` on the first hit), so every replica shares one window. If the
 cache is unreachable the check **fails open**: a cache outage must not lock people out of
 their own homes, and the request is still recorded in the audit path.
@@ -788,7 +792,7 @@ it wrote — the operator's own next render is never the old brand.
 | `haven_http_request_duration_seconds` | histogram | `route` |
 | `haven_commands_dispatched_total` | counter | — |
 | `haven_ws_connections` | gauge | — |
-| `haven_rate_limited_total` | counter | — |
+| `haven_rate_limited_total` | counter | `scope` (`login`, `login-source`, `vendor-login`, `vendor-login-source`, `register`, `claim`, `certificate`, `invite-accept`) |
 | `haven_uptime_seconds` | gauge | — |
 
 The `route` label is the **matched** path (`/v1/devices/{id}`), never the raw URL:

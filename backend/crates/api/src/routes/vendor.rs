@@ -71,8 +71,14 @@ async fn login(
     );
     // The same two budgets as the customer sign-in: one per account, one per source.
     let source = format!("rl:vendor-login-source:{}", peer.key());
-    crate::limits::check(&state, &key, crate::limits::LOGIN).await?;
-    crate::limits::check(&state, &source, crate::limits::SOURCE).await?;
+    crate::limits::check(&state, &key, crate::limits::LOGIN, "vendor-login").await?;
+    crate::limits::check(
+        &state,
+        &source,
+        crate::limits::SOURCE,
+        "vendor-login-source",
+    )
+    .await?;
 
     let vendor_id = state.identity.resolve_vendor(&body.vendor).await?;
 

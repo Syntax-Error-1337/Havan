@@ -106,7 +106,7 @@ async fn accept(
     // Public, and it hashes a token and looks one up: the one unauthenticated endpoint in the vendor surface, so it gets
     // the source budget. Only failures count, and a wrong token is a failure.
     let key = format!("rl:vendor-invite-accept:{}", peer.key());
-    crate::limits::check(&state, &key, crate::limits::SOURCE).await?;
+    crate::limits::check(&state, &key, crate::limits::SOURCE, "invite-accept").await?;
 
     if body.display_name.trim().is_empty() {
         return refuse(&state, &key, "a display name is required").await;

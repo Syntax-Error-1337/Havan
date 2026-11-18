@@ -65,7 +65,7 @@ async fn register(
     Json(body): Json<RegisterBody>,
 ) -> ApiResult<(StatusCode, Json<Tokens>)> {
     let key = format!("rl:register:{}", peer.key());
-    limits::check(&state, &key, limits::REGISTER).await?;
+    limits::check(&state, &key, limits::REGISTER, "register").await?;
 
     // Kept for the invitation check below: the body is consumed by `register`.
     let email = body.email.clone();
@@ -112,8 +112,8 @@ async fn login(
     // Two budgets: one that follows the account, and one that follows the source. A spray across many addresses never
     // fills the first; a shared router never fills the second.
     let source = format!("rl:login-source:{}", peer.key());
-    limits::check(&state, &key, limits::LOGIN).await?;
-    limits::check(&state, &source, limits::SOURCE).await?;
+    limits::check(&state, &key, limits::LOGIN, "login").await?;
+    limits::check(&state, &source, limits::SOURCE, "login-source").await?;
 
     match state
         .identity
