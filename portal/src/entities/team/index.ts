@@ -57,6 +57,21 @@ export function useRemoveMember() {
   });
 }
 
+/**
+ * Withdraw an invitation nobody has accepted.
+ *
+ * An invitation is a working credential for seven days. Until this existed, one sent to the wrong address could not be
+ * called back — the only way to undo it was to wait.
+ */
+export function useRevokeInvite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<void>(`/vendor/team/invites/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.team }),
+  });
+}
+
 /** Which roles a given actor may hand out — mirrors the server rule, for the form only. */
 export function invitableRoles(actor: Role): Array<Exclude<Role, 'owner'>> {
   if (actor === 'owner') return ['admin', 'developer', 'viewer'];

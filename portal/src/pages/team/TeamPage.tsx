@@ -1,7 +1,8 @@
 import { useState } from 'react';
 
-import { useInvite, useRemoveMember, useTeam, type Role } from '../../entities/team';
+import { useInvite, useRemoveMember, useRevokeInvite, useTeam, type Role } from '../../entities/team';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { storedToken } from '../../shared/api/client';
 
 const ROLES: Array<Exclude<Role, 'owner'>> = ['admin', 'developer', 'viewer'];
 
@@ -20,10 +21,13 @@ export function TeamPage() {
   const { data, isPending, error } = useTeam();
   const invite = useInvite();
   const remove = useRemoveMember();
+  const revoke = useRevokeInvite();
 
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Exclude<Role, 'owner'>>('developer');
   const [token, setToken] = useState<string | null>(null);
+  const selfId = currentUserId();
+  const owners = data?.members.filter((m) => m.role === 'owner') ?? [];
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -112,13 +116,33 @@ export function TeamPage() {
                   {m.last_login_at ? new Date(m.last_login_at).toLocaleString() : 'never'}
                 </td>
                 <td>
-                  <button
-                    className="btn"
-                    onClick={() => remove.mutate(m.user_id)}
-                    disabled={remove.isPending}
-                  >
-                    Remove
-                  </button>
+                  {/* Only the removals the server would accept are offered. It refuses two: yourself ("ask another
+                      owner") and the last owner, whose departure would leave the account unowned. A button that can
+                      only fail is a button that teaches nothing. */}
+                  {m.user_id === selfId ? (
+                    <span className="muted">You</span>
+                  ) : m.role === 'owner' && owners.length === 1 ? (
+                    <span className="muted" title="The account would have no owner">
+                      Owner
+                    </span>
+                  ) : (
+                    <button
+                      className="btn"
+                      onClick={() => {
+                        // Removing somebody cannot be undone, and this is one press away from a list of colleagues.
+                        if (
+                          window.confirm(
+                            `Remove ${m.display_name} (${m.email})? They lose access immediately.`,
+                          )
+                        ) {
+                          remove.mutate(m.user_id);
+                        }
+                      }}
+                      disabled={remove.isPending}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -138,6 +162,7 @@ export function TeamPage() {
                 <th>Email</th>
                 <th>Role</th>
                 <th>Expires</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -148,6 +173,21 @@ export function TeamPage() {
                   <td className={i.expired ? 'error' : 'muted'}>
                     {i.expired ? 'expired' : new Date(i.expires_at).toLocaleDateString()}
                   </td>
+                  <td>
+                    {/* An invitation is a way in for seven days. Withdrawing one sent to the wrong address is the only
+                        way to take it back before it expires. */}
+                    <button
+                      className="btn"
+                      disabled={revoke.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Withdraw the invitation for ${i.email}?`)) {
+                          revoke.mutate(i.id);
+                        }
+                      }}
+                    >
+                      Withdraw
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -156,4 +196,22 @@ export function TeamPage() {
       )}
     </>
   );
+}
+
+/**
+ * Who is signed in, read from the token's own subject.
+ *
+ * Unverified on purpose: the server decides what anybody may do, and this only decides which buttons are worth drawing.
+ * A forged subject in a client's memory changes the picture on the screen and nothing else.
+ */
+function currentUserId(): string | null {
+  const token = storedToken();
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof decoded.sub === 'string' ? decoded.sub : null;
+  } catch {
+    return null;
+  }
 }

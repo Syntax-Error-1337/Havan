@@ -37,7 +37,7 @@ const team: Team = {
   ],
 };
 
-function stubFetch() {
+function stubFetch(payload: Team = team) {
   const calls: { url: string; method: string; body?: string }[] = [];
   vi.stubGlobal(
     'fetch',
@@ -52,7 +52,7 @@ function stubFetch() {
           headers: { 'content-type': 'application/json' },
         });
       }
-      return new Response(JSON.stringify(team), {
+      return new Response(JSON.stringify(payload), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
@@ -101,5 +101,54 @@ describe('TeamPage', () => {
     const posted = calls.find((c) => c.method === 'POST');
     expect(posted?.url).toContain('/vendor/team');
     expect(posted?.body).toContain('new@acme.test');
+  });
+});
+
+describe('removing somebody', () => {
+  function tokenFor(sub: string) {
+    const payload = btoa(JSON.stringify({ sub }));
+    return `h.${payload}.s`;
+  }
+
+  it('is not offered for yourself, nor for the last owner', async () => {
+    localStorage.setItem('haven.portal.token', tokenFor('u-owner'));
+    stubFetch();
+    renderPage();
+
+    // The server refuses both of these; a button that can only fail teaches nothing.
+    expect(await screen.findByText('You')).toBeTruthy();
+    expect(screen.getByText('Owner')).toBeTruthy();
+    expect(screen.queryAllByRole('button', { name: 'Remove' })).toHaveLength(1);
+    localStorage.removeItem('haven.portal.token');
+  });
+
+  it('asks first when it does something that cannot be undone', async () => {
+    // A third person, so there is a row the signed-in developer is allowed to remove.
+    localStorage.setItem('haven.portal.token', tokenFor('u-dev'));
+    const calls = stubFetch({
+      ...team,
+      members: [
+        ...team.members,
+        {
+          user_id: 'u-viewer',
+          email: 'viewer@acme.test',
+          display_name: 'Viewer',
+          role: 'viewer',
+          last_login_at: null,
+          sso_bound: false,
+        },
+      ],
+    });
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('viewer@acme.test'));
+    await vi.waitFor(() =>
+      expect(calls.some((c) => c.method === 'DELETE' && c.url.includes('u-viewer'))).toBe(true),
+    );
+    localStorage.removeItem('haven.portal.token');
   });
 });

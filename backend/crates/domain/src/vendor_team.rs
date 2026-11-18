@@ -156,6 +156,17 @@ pub trait VendorTeamRepo {
         user_id: Uuid,
     ) -> impl Future<Output = Result<Role, AppError>> + Send;
 
+    /// Cancel an invitation that has not been accepted.
+    ///
+    /// The gap this closes: an invitation is a working credential for seven days, and there was no way to withdraw one
+    /// sent to the wrong address. Whoever may invite may also withdraw.
+    fn revoke_invite(
+        &self,
+        vendor_id: Uuid,
+        actor: Uuid,
+        invite_id: Uuid,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
     fn remove(
         &self,
         vendor_id: Uuid,

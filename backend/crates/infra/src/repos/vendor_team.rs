@@ -255,6 +255,48 @@ impl VendorTeamRepo for PgVendorTeam {
             .ok_or_else(|| AppError::not_found("team member"))
     }
 
+    async fn revoke_invite(
+        &self,
+        vendor_id: Uuid,
+        actor: Uuid,
+        invite_id: Uuid,
+    ) -> Result<(), AppError> {
+        let mut tx = self.vendor_tx(vendor_id).await?;
+
+        let actor_role: (String,) =
+            sqlx::query_as("SELECT role FROM vendor_users WHERE vendor_id = $1 AND id = $2")
+                .bind(vendor_id)
+                .bind(actor)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(db)?;
+        let actor_role =
+            Role::parse(&actor_role.0).ok_or_else(|| AppError::Internal("role".into()))?;
+        if !actor_role.can_manage_team() {
+            return Err(AppError::forbidden(
+                "only an owner or an admin can cancel an invitation",
+            ));
+        }
+
+        let removed = sqlx::query(
+            "DELETE FROM vendor_invites WHERE id = $1 AND vendor_id = $2 AND accepted_at IS NULL",
+        )
+        .bind(invite_id)
+        .bind(vendor_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+        tx.commit().await.map_err(db)?;
+
+        // Already accepted, already revoked, or never here: one answer, because the caller cannot tell them apart and
+        // does not need to.
+        if removed == 0 {
+            return Err(AppError::not_found("invitation"));
+        }
+        Ok(())
+    }
+
     async fn remove(&self, vendor_id: Uuid, actor: Uuid, user_id: Uuid) -> Result<(), AppError> {
         let mut tx = self.vendor_tx(vendor_id).await?;
 

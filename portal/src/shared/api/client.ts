@@ -27,6 +27,16 @@ const STORAGE_KEY = 'haven.portal.token';
 
 let token: string | null = localStorage.getItem(STORAGE_KEY);
 
+/**
+ * The token as it stands in storage, read fresh.
+ *
+ * `getToken()` returns a module-level copy taken at import: fine for a request, wrong for a render that has to know who
+ * is signed in now — a sign-in later in the session would leave the copy stale until the page reloaded.
+ */
+export function storedToken(): string | null {
+  return localStorage.getItem(STORAGE_KEY);
+}
+
 export function getToken(): string | null {
   return token;
 }

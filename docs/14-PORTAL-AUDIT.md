@@ -77,6 +77,19 @@ worse than the gap.
 Still open on this screen: no filter by action or actor, no search, and no export — an auditor with a specific question
 still reads the whole feed.
 
+## Team — found and fixed
+
+Three defects on one screen, all about what a control promises.
+
+| What | Why it mattered | Now |
+| --- | --- | --- |
+| **Remove** on every row, including your own and the last owner's | The server refuses both ("you cannot remove yourself; ask another owner"; a sole owner's departure leaves the account unowned), so two of those buttons could only ever fail | Your row reads **You**; a sole owner's row reads **Owner**. The others offer Remove |
+| Remove with **no confirmation** | One press beside a colleague's name, and it cannot be undone | Asks first, naming the person and what they lose |
+| **No way to withdraw an invitation** | An invitation is a working credential for seven days; one sent to the wrong address could only be waited out | `DELETE /vendor/team/invites/{id}` and a **Withdraw** on each pending row, with a confirmation. Owners and admins may withdraw — whoever may invite may un-invite. A second withdrawal is a 404, because "already gone" and "never existed" are the same answer to the caller |
+
+The signed-in member is read from the token's own subject — unverified, because the server decides what anybody may do and
+this only decides which buttons are worth drawing.
+
 ## What was not found
 
 The rest of the portal held up: Licences states the model in one sentence ("charged when a device is activated, not when

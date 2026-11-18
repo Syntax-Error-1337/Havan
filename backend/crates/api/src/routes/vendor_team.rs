@@ -7,6 +7,7 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::routing::{delete, get, post};
 use domain::vendor_team::{Role, Team, VendorTeamRepo, may_invite};
 use serde::Deserialize;
@@ -20,6 +21,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/vendor/team", get(team).post(invite))
         .route("/vendor/team/members/{id}", delete(remove))
+        .route("/vendor/team/invites/{id}", delete(revoke_invite))
         .route("/vendor/invites/accept", post(accept))
 }
 
@@ -119,6 +121,38 @@ async fn accept(
         "user_id": user_id,
         "next": "log in at /v1/vendor/auth/login"
     })))
+}
+
+/// `DELETE /v1/vendor/team/invites/{id}` — withdraw an invitation nobody has accepted.
+async fn revoke_invite(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    peer: crate::limits::Peer,
+    Path(id): Path<Uuid>,
+) -> ApiResult<StatusCode> {
+    state
+        .vendor_team
+        .revoke_invite(vendor.vendor_id, vendor.user_id, id)
+        .await
+        .map_err(ApiError)?;
+
+    state
+        .audit
+        .record(
+            domain::audit::AuditEntry::new(
+                vendor.vendor_id,
+                domain::audit::ActorKind::User,
+                "team.invite_revoked",
+                "vendor_invite",
+            )
+            .by(vendor.user_id)
+            .on(id)
+            .with_request(&vendor.request_id)
+            .from_ip(peer.ip()),
+        )
+        .await;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn remove(

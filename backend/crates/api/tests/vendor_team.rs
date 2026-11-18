@@ -221,3 +221,94 @@ async fn an_admin_cannot_remove_another_admin() {
         .unwrap_err();
     assert_eq!(err.code_kind(), ErrorCode::Forbidden);
 }
+
+#[tokio::test]
+async fn an_invitation_can_be_withdrawn_before_anybody_uses_it() {
+    let Some(f) = fixture().await else { return };
+    let team = infra::PgVendorTeam::new(f.pg.clone());
+
+    let email = format!("withdraw-{}@vendor.test", &f.vendor_id.to_string()[20..32]);
+    let token = team
+        .invite(f.vendor_id, f.owner_id, &email, Role::Developer)
+        .await
+        .expect("invite");
+
+    // The invitation is a working credential; withdrawing it has to take effect for the credential too.
+    let team_view = team.team(f.vendor_id).await.expect("team");
+    let invite = team_view
+        .invites
+        .iter()
+        .find(|i| i.email == email)
+        .expect("listed")
+        .id;
+
+    team.revoke_invite(f.vendor_id, f.owner_id, invite)
+        .await
+        .expect("revoke");
+
+    let after = team.team(f.vendor_id).await.expect("team");
+    assert!(
+        after.invites.iter().all(|i| i.id != invite),
+        "the invitation is gone from the list"
+    );
+
+    let refused = team
+        .accept(&token, "Withdrawn", "withdraw-Password-1")
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused.code_kind(),
+        ErrorCode::NotFound,
+        "a withdrawn token is not a way in"
+    );
+
+    // A second withdrawal is a 404, not a second success: the caller cannot tell "already gone" from "never existed",
+    // and does not need to.
+    let again = team
+        .revoke_invite(f.vendor_id, f.owner_id, invite)
+        .await
+        .unwrap_err();
+    assert_eq!(again.code_kind(), ErrorCode::NotFound);
+}
+
+#[tokio::test]
+async fn a_developer_cannot_withdraw_an_invitation() {
+    let Some(f) = fixture().await else { return };
+    let team = infra::PgVendorTeam::new(f.pg.clone());
+    let pool = admin_pool(&f).await;
+
+    let developer = Uuid::now_v7();
+    sqlx::query(
+        r#"INSERT INTO vendor_users (id, vendor_id, email, display_name, role, password_hash)
+           VALUES ($1, $2, $3, 'Developer', 'developer', 'x')"#,
+    )
+    .bind(developer)
+    .bind(f.vendor_id)
+    .bind(format!(
+        "dev-{}@vendor.test",
+        &developer.to_string()[20..32]
+    ))
+    .execute(&pool)
+    .await
+    .expect("developer");
+
+    let email = format!("keep-{}@vendor.test", &f.vendor_id.to_string()[20..32]);
+    team.invite(f.vendor_id, f.owner_id, &email, Role::Viewer)
+        .await
+        .expect("invite");
+    let invite = team
+        .team(f.vendor_id)
+        .await
+        .expect("team")
+        .invites
+        .iter()
+        .find(|i| i.email == email)
+        .expect("listed")
+        .id;
+
+    let refused = team
+        .revoke_invite(f.vendor_id, developer, invite)
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code_kind(), ErrorCode::Forbidden);
+}
