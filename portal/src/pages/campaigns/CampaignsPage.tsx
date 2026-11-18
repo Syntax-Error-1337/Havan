@@ -171,7 +171,9 @@ export function CampaignsPage() {
               <thead>
                 <tr>
                   <th>Product</th>
-                  <th>Rollout</th>
+                  {/* The cell holds a percentage of the fleet, not the name of a rollout — the header said one thing and
+                      the column another. */}
+                  <th title="Share of the product's fleet this rollout covers">Target</th>
                   <th>State</th>
                   <th>Progress</th>
                   <th>Actions</th>
@@ -208,42 +210,57 @@ export function CampaignsPage() {
                         </span>
                       </td>
                       <td>
-                        {row.campaign.status === 'draft' ? (
-                          <button
-                            className="btn btn--primary"
-                            disabled={start.isPending}
-                            onClick={() => start.mutate(row.campaign.id)}
-                          >
-                            Start
-                          </button>
-                        ) : row.campaign.status === 'running' ? (
-                          // A rollout going badly needs a stop, and it needs it at
-                          // 2am without a terminal.
-                          <button
-                            className="btn"
-                            disabled={halt.isPending && halt.variables === row.campaign.id}
-                            onClick={() => halt.mutate(row.campaign.id)}
-                          >
-                            {halt.isPending && halt.variables === row.campaign.id ? 'Halting…' : 'Halt'}
-                          </button>
-                        ) : (
-                          <div className="row" style={{ gap: 8 }}>
-                            {/* A finished rollout is exactly when someone finds out the
-                                image was bad — so the way back belongs next to Halt. */}
+                        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                          {row.campaign.status === 'draft' ? (
+                            <button
+                              className="btn btn--primary"
+                              disabled={start.isPending}
+                              onClick={() => start.mutate(row.campaign.id)}
+                            >
+                              Start
+                            </button>
+                          ) : row.campaign.status === 'running' ? (
+                            // A rollout going badly needs a stop, and it needs it at
+                            // 2am without a terminal.
+                            <button
+                              className="btn"
+                              disabled={halt.isPending && halt.variables === row.campaign.id}
+                              onClick={() => halt.mutate(row.campaign.id)}
+                            >
+                              {halt.isPending && halt.variables === row.campaign.id
+                                ? 'Halting…'
+                                : 'Halt'}
+                            </button>
+                          ) : (
+                            // A finished rollout is exactly when someone finds out the
+                            // image was bad — so the way back belongs next to Halt.
                             <button
                               className="btn"
                               disabled={rollback.isPending && rollback.variables === row.campaign.id}
-                              onClick={() => rollback.mutate(row.campaign.id)}
+                              onClick={() => {
+                                // Rolling back a finished rollout changes the firmware on real devices across the
+                                // fleet. It asks first, and says what it is undoing.
+                                if (
+                                  window.confirm(
+                                    `Roll ${product?.name ?? 'this product'} back from the ${row.campaign.rollout_pct}% rollout? Every device it reached goes back to the previous firmware.`,
+                                  )
+                                ) {
+                                  rollback.mutate(row.campaign.id);
+                                }
+                              }}
                             >
                               {rollback.isPending && rollback.variables === row.campaign.id
                                 ? 'Rolling back…'
                                 : 'Roll back'}
                             </button>
-                            <Link className="muted" to={`/products/${row.campaign.product_id}/firmware`}>
-                              Firmware
-                            </Link>
-                          </div>
-                        )}
+                          )}
+                          {/* The firmware this rollout ships, in every state: a draft is being written against an image
+                              and a running rollout is delivering one. It was only offered once the rollout had
+                              finished, which is the one moment there is nothing left to decide about it. */}
+                          <Link className="muted" to={`/products/${row.campaign.product_id}/firmware`}>
+                            Firmware
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );

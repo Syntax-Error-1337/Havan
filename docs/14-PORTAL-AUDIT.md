@@ -116,6 +116,23 @@ verified against it. The delete that would have removed it again needed approval
 in the development database. `delete from webhook_outbox where last_error = '502 Bad Gateway'` takes it out; nothing
 depends on it, and it is the only fabricated row this audit added.
 
+## Rollouts — found and fixed
+
+| What | Why it mattered | Now |
+| --- | --- | --- |
+| The column headed **Rollout** held a percentage | The header promised the name of a rollout and the cell held *how much of the fleet it covers* — the reader had to work out that 100% was a target, not a rollout | **Target**, with a title saying what the percentage means |
+| **Roll back** had no confirmation | It changes firmware on every device the rollout reached | Asks first, naming the product, the share of the fleet, and that devices go back to the previous firmware |
+| The **Firmware** link only appeared on finished rollouts | A draft is being written against an image and a running rollout is delivering one; the link was offered only at the moment there is nothing left to decide | Present in every state, beside the action |
+
+The rest of the screen is unusually good: the progress cell leads with failures rather than a percentage ("3 failed",
+"108 failed"), a halted campaign says *stopped*, not *done*, and a started rollout that matched nobody says so.
+
+## Products — walked, nothing fixed
+
+The list is honest about the rule it enforces ("3 products · a product must be published before a customer can pair
+it"), certification is its own column rather than folded into status, and deleting asks. The per-product editor is the
+one screen this pass did not reach.
+
 ## What was not found
 
 The rest of the portal held up: Licences states the model in one sentence ("charged when a device is activated, not when

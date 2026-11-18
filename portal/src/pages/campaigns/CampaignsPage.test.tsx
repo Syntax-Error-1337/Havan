@@ -91,6 +91,8 @@ describe('rollouts', () => {
     );
     renderPage();
 
+    // Rolling back changes firmware on real devices across the fleet, so it asks first.
+    vi.stubGlobal('confirm', vi.fn(() => true));
     await userEvent.click(await screen.findByRole('button', { name: 'Roll back' }));
 
     const posted = calls.find((c) => c.url.endsWith('/campaigns/camp-1/rollback'));
@@ -113,6 +115,7 @@ describe('rollouts', () => {
     });
     renderPage();
 
+    vi.stubGlobal('confirm', vi.fn(() => true));
     await userEvent.click(await screen.findByRole('button', { name: 'Roll back' }));
 
     // Both versions, because "rolled back" without "to what" is not an answer.
