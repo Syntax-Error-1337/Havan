@@ -53,9 +53,15 @@ export function Box({
 }
 
 export type AppTextProps = TextProps & {
-  variant?: 'tiny' | 'caption' | 'subhead' | 'body' | 'title' | 'display';
+  variant?: 'tiny' | 'caption' | 'subhead' | 'body' | 'title' | 'display' | 'numeral' | 'gauge';
   tone?: 'text' | 'muted' | 'accent' | 'danger' | 'success';
-  weight?: '400' | '500' | '600' | '700';
+  /**
+   * `200` and `300` are for numerals only.
+   *
+   * Apple's own hierarchy is size *and* weight, and a 34 pt figure at 300 reads as a reading rather than as a
+   * shouted label. They are not offered for body copy: at 11–17 pt a light weight stops carrying its contrast.
+   */
+  weight?: '200' | '300' | '400' | '500' | '600' | '700';
 };
 
 export function AppText({

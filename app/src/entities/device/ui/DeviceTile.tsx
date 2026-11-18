@@ -1,10 +1,9 @@
 import { View } from 'react-native';
 
 import { useTheme, tokens } from '../../../app-shell/theme';
-import { AppText, Glass, Icon, iconForCategory } from '../../../shared/ui';
-import { accentFor, glowFor } from '../../../shared/config/tokens';
-import { withAlpha } from '../../../shared/ui/Glass';
-import { reading, valueWithUnit } from '../../../shared/ui/units';
+import { AppText, Card, DeviceArtField, iconForCategory } from '../../../shared/ui';
+import { accentFor } from '../../../shared/config/tokens';
+import { reading, unitSuffix, valueWithUnit } from '../../../shared/ui/units';
 import { useSetPoint } from '../model/queries';
 import { commandNotice } from '../model/notices';
 import { primaryPoint, type Device } from '../model/types';
@@ -14,14 +13,15 @@ import { PillSwitch, controlFor } from './controls';
 /**
  * One device as a tile.
  *
- * A grouped list row told you what a device was called; this tells you what it is before you read the
- * name — the glyph comes from the product's category, the colour from the same category, and the
- * control from the primary point's own type. That is what makes a bulb, a lock and a camera look like
- * one designed set instead of three screens that happen to share a background.
+ * A grouped list row told you what a device was called; this tells you what it *is* before you read the name — the
+ * glyph comes from the product's category, the field behind it comes from the same colour, and the control comes from
+ * the primary point's own type. That is what makes a bulb, a lock and a camera look like one designed set instead of
+ * three screens that happen to share a background.
  *
  * Two shapes: a grid tile (stacked, half width) and a wide one for a room that holds a single device.
- * The wide one puts the control beside the name, because a card with one line of text and a switch
- * far below it is a card with a hole in the middle.
+ *
+ * The reading is the largest thing on the card now. It used to sit at body size *under* the device's name, which put
+ * the emphasis on the label and left the number — the only reason anyone opens the app — to be hunted for.
  */
 export function DeviceTile({
   device,
@@ -35,18 +35,18 @@ export function DeviceTile({
 }) {
   const { color, dark } = useTheme();
   const accent = accentFor(device.category, color.accent, dark);
-  const glow = glowFor(device.category, color.glow);
 
-  // "Online" is what the platform believes; silence is what it has actually heard. A device that
-  // stopped reporting an hour ago is not online in any sense the customer cares about.
+  // "Online" is what the platform believes; silence is what it has actually heard. A device that stopped reporting
+  // an hour ago is not online in any sense the customer cares about.
   const state = freshness(device);
   const silent = silenceWords(device);
-  const quiet = state === 'stale';
+  const live = state === 'live';
 
   const point = primaryPoint(device);
   const setPoint = useSetPoint(device.id);
   const kind = point ? controlFor(point) : 'readout';
   const on = point?.value === true || (typeof point?.value === 'number' && point.value > 0);
+  const numeric = typeof point?.value === 'number';
 
   const toggle = () => {
     if (!point?.writable) return;
@@ -60,32 +60,16 @@ export function DeviceTile({
         ? point.value
           ? 'On'
           : 'Off'
-        : // The same rounding as the detail screen: `18.27 °C` is what the sensor sent, not what the room is,
-          // and this string is now spoken aloud as well as drawn.
-          valueWithUnit(
-            typeof point.value === 'number' ? reading(point.value) : point.value,
-            point.unit,
-          )
+        : // The same rounding as the detail screen: `18.27 °C` is what the sensor sent, not what the room is, and
+          // this string is now spoken aloud as well as drawn.
+          valueWithUnit(reading(point.value as number), point.unit)
       : '—';
 
-  const icon = (
-    <View
-      style={{
-        width: wide ? 44 : 40,
-        height: wide ? 44 : 40,
-        borderRadius: wide ? 22 : 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: withAlpha(accent, dark ? 0.22 : 0.14),
-      }}
-    >
-      <Icon name={iconForCategory(device.category)} size={wide ? 22 : 20} color={accent} filled={on} />
-    </View>
-  );
+  // The numeral and its unit are two elements: `°C` belongs beside a 34-point number, not inside it, so it sits a
+  // size smaller on the same baseline instead of shrinking the number to fit the suffix.
+  const numberPart = numeric ? reading(point!.value as number) : readout;
+  const unitPart = numeric ? unitSuffix(point!.unit) : '';
 
-  // One statement, not two. This was a pill reading "Offline" with a line underneath reading
-  // "Silent for 1h" — the same fact twice in two vocabularies, on every tile in a house where
-  // something is wrong. The dot carries the colour, the words carry the detail.
   const status = (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
       <View
@@ -93,19 +77,16 @@ export function DeviceTile({
           width: 6,
           height: 6,
           borderRadius: 3,
-          backgroundColor: state === 'live' ? color.success : state === 'stale' ? color.warning : color.muted,
-          opacity: quiet ? 0.75 : 1,
+          backgroundColor: live ? color.success : state === 'stale' ? color.warning : color.muted,
         }}
       />
       <AppText
         variant="tiny"
         numberOfLines={1}
         style={{
-          // Offline is dim, not invisible: at 10-point it still has to clear 4.5:1, and muted-on-a-tinted
-          // card was the one thing a reviewer consistently could not read.
-          // 78 %, not 62 %: measured from rendered pixels, 62 % white on a translucent card over the mesh came
-          // out at 3.2:1 for the one line that says whether the thing in your hand is working.
-          color: state === 'stale' ? color.warning : withAlpha(color.text, state === 'live' ? 0.78 : 0.84),
+          // Offline is dim, not invisible: at 11 pt it still has to clear 4.5:1 on the card, and it is the one line
+          // that says whether the thing in your hand is working.
+          color: state === 'stale' ? color.warning : color.muted,
         }}
       >
         {stateLine(device, point)}
@@ -122,94 +103,123 @@ export function DeviceTile({
         label={`${device.name} ${on ? 'on' : 'off'}`}
         onChange={toggle}
       />
-    ) : (
-      <AppText
-        variant="title"
-        weight="700"
-        style={{ color: state === 'live' ? accent : color.muted }}
-        numberOfLines={1}
-      >
-        {readout}
-      </AppText>
-    );
+    ) : null;
+
+  const label = `${device.name}, ${readout}, ${
+    live ? 'online' : state === 'stale' ? `silent, ${silent ?? 'not heard from'}` : 'offline'
+  }`;
+
+  const failure = setPoint.isError ? (
+    <AppText
+      variant="tiny"
+      numberOfLines={2}
+      style={{ paddingHorizontal: tokens.space.md, paddingBottom: tokens.space.sm, color: color.danger }}
+    >
+      {commandNotice(setPoint.error)}
+    </AppText>
+  ) : null;
+
+  // One anatomy at two widths, on purpose.
+  //
+  // The first version gave a full-width card the old list-row structure and a half-width card a new art field, so the
+  // grid held two tile families that only shared a radius — a reviewer called it exactly that. There is one rule now:
+  // **the field holds the reading and the control; the name and the state sit under it.** A wide card is the same
+  // card with a longer field, not a different component.
+  const fieldHeight = wide ? 60 : 84;
 
   return (
-    <Glass
+    <Card
       onPress={onPress}
-      // The halo and the border are the tile's "this is alive" signal, and they were still full-strength on
-      // a sensor whose reading was twelve hours old: the words said quiet, the card glowed. A stale tile
-      // keeps its category colour but loses the halo, and the whole card steps back a little.
-      // (The accent is passed opaque on purpose: `Glass` derives its own alphas from it, and handing it a
-      // pre-faded colour made it fall back to the raw string — a 45%-yellow card, brighter than a live one.)
       accent={accent}
-      glow={state === 'live' ? glow : undefined}
-      // No subtree opacity: it would take the status text with it. The tile already says what it is with the
-      // halo, the dot, the words and the disabled control.
-      style={{ flex: 1, minHeight: wide ? 104 : 132 }}
+      padded={false}
+      accessibilityLabel={label}
       testID={`device-tile-${device.serial}`}
-      // The reading is in the label. A screen reader used to announce "Room Sensor, silent, Silent for 4h" and
-      // never the temperature — the one number the card exists to show, and the one a person asks for.
-      accessibilityLabel={`${device.name}, ${readout}, ${
-        state === 'live' ? 'online' : state === 'stale' ? `silent, ${silent ?? 'not heard from'}` : 'offline'
-      }`}
+      style={{ flex: 1, minHeight: wide ? 108 : 150 }}
     >
-      {/* Two shapes, chosen by the width the tile actually has. A half-width tile is about 140 points of
-          content: icon, name and a switch on one line leaves forty points for the name, and "Floor Lamp"
-          becomes "F…". So the grid stacks (icon and control on top, name and state under it) and the
-          single-device row, which has the whole width, puts them side by side. */}
-      {wide ? (
-        <View style={{ flex: 1, gap: tokens.space.sm, justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm }}>
-            {icon}
-            <View style={{ flex: 1, gap: 1 }}>
-              <AppText variant="subhead" weight="600" numberOfLines={1}>
-                {device.name}
+      {/* Inset by 6: a product sits inside its frame rather than bleeding to the edge of the card. */}
+      <View style={{ padding: 6 }}>
+        <DeviceArtField
+          accent={accent}
+          glyph={iconForCategory(device.category)}
+          height={fieldHeight}
+          dimmed={!live}
+        >
+          {control ? <View style={{ position: 'absolute', top: 4, right: 8 }}>{control}</View> : null}
+          {/* Named where the number is. "Offline · 1d ago" under the card is a fact about the device; this is a fact
+              about *this number*, and it is the one a person misreads: a bright 21.5 °C from yesterday looks live. */}
+          {live ? null : (
+            <AppText
+              variant="tiny"
+              numberOfLines={1}
+              style={{
+                position: 'absolute',
+                top: 7,
+                left: 10,
+                letterSpacing: 0.6,
+                textTransform: 'uppercase',
+                color: color.muted,
+              }}
+            >
+              Last known
+            </AppText>
+          )}
+          <View
+            style={{
+              position: 'absolute',
+              left: 10,
+              // The reading sits on the field's centre line for a wide card and on its floor for a tall one.
+              bottom: wide ? fieldHeight / 2 - 16 : 4,
+              flexDirection: 'row',
+              alignItems: 'baseline',
+            }}
+          >
+            <AppText
+              variant={wide ? 'title' : 'numeral'}
+              weight="300"
+              numberOfLines={1}
+              style={{
+                letterSpacing: -0.5,
+                // The number keeps its full weight in every state: it is the reason the card exists, and an
+                // unreadable "18.3" is a worse defect than a stale one. What marks it as history is the field's
+                // dimming and the LAST KNOWN tag — not a grey numeral that fails the contrast floor it sits on.
+                color: color.text,
+              }}
+            >
+              {numberPart}
+            </AppText>
+            {unitPart ? (
+              <AppText variant="caption" tone="muted">
+                {unitPart}
               </AppText>
-              {status}
-            </View>
-            <View>{control}</View>
-          </View>
-        </View>
-      ) : (
-        <View style={{ flex: 1, gap: tokens.space.xs }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
-            {icon}
-            {kind === 'toggle' && point?.writable ? (
-              <View style={{ marginLeft: 'auto', marginTop: 2 }}>{control}</View>
             ) : null}
           </View>
-          <View style={{ gap: 1, marginTop: 'auto' }}>
-            <AppText variant="subhead" weight="600" numberOfLines={1}>
-              {device.name}
-            </AppText>
-            {status}
-          </View>
-          {kind === 'toggle' && point?.writable ? null : <View>{control}</View>}
-        </View>
-      )}
+        </DeviceArtField>
+      </View>
 
-      {setPoint.isError ? (
-        <AppText variant="tiny" numberOfLines={2} style={{ marginTop: 6, color: color.danger }}>
-          {commandNotice(setPoint.error)}
+      <View style={{ paddingHorizontal: tokens.space.md, paddingBottom: tokens.space.md, gap: 2 }}>
+        <AppText variant="subhead" weight="600" numberOfLines={1}>
+          {device.name}
         </AppText>
-      ) : null}
-    </Glass>
+        {status}
+      </View>
+
+      {failure}
+    </Card>
   );
 }
 
 /** One line that says what the device is doing, in the words a person would use. */
 function stateLine(device: Device, point: ReturnType<typeof primaryPoint>): string {
-  // One line, and it says both which and how long: "Offline" alone cannot tell a person whether the bulb
-  // dropped a minute ago or a week ago, and that difference is what they act on. The state word and the age
-  // used to live in two separate places on the tile, which is two sentences for one fact.
+  // One line, and it says both which and how long: "Offline" alone cannot tell a person whether the bulb dropped a
+  // minute ago or a week ago, and that difference is what they act on. The state word and the age used to live in
+  // two separate places on the tile, which is two sentences for one fact.
   if (!device.online) return `Offline · ${relative(device.last_seen_at)}`;
   if (freshness(device) === 'stale') return silenceWords(device) ?? 'Not heard from';
   if (!point) return device.category;
   const value = point.value;
   if (typeof value === 'boolean') return value ? 'On' : 'Off';
   if (typeof value === 'number') {
-    // The number is the tile's headline, so this line answers the only question left about it: how old
-    // is it? "Reading · 21.5 °C" above a large 21.5 °C was the same fact told twice.
+    // The number is the tile's headline, so this line answers the only question left about it: how old is it?
     const at = point.updated_at ?? device.last_seen_at;
     return at ? `Updated ${relative(at)}` : 'Reading';
   }

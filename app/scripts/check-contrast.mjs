@@ -95,6 +95,9 @@ const checks = (p) => {
   const surface = p.surface;
   const glass = p.glass.startsWith('#') ? p.glass : null;
   const glassOnBg = glass ? over(glass, bg) : over(p.glass, bg);
+  // The card is its own surface now, and it is not the background: a token judged against the wrong surface is how
+  // the first version of `muted` passed this gate and failed on a real screen.
+  const cardOnBg = over(p.card, bg);
 
   return [
     ['text on bg', over(p.text, bg), parse(bg), 4.5],
@@ -103,6 +106,12 @@ const checks = (p) => {
     ['muted on bg', over(p.muted, bg), parse(bg), 4.5],
     ['muted on surface', over(p.muted, surface), parse(surface), 4.5],
     ['muted on glass', over(p.muted, bg), glassOnBg, 4.5],
+    ['text on card', over(p.text, bg), cardOnBg, 4.5],
+    ['muted on card', over(p.muted, bg), cardOnBg, 4.5],
+    ['accentInk on card', parse(p.accentInk), cardOnBg, 4.5],
+    ['danger on card', parse(p.danger), cardOnBg, 4.5],
+    ['warning on card', parse(p.warning), cardOnBg, 4.5],
+    ['success on card', parse(p.success), cardOnBg, 4.5],
     ['accent on bg', parse(p.accent), parse(bg), 3],
     ['accent on surface', parse(p.accent), parse(surface), 3],
     // The accent as *text*: 4.5, because letters are not glyphs. `accent` alone measures 4.08:1 as an

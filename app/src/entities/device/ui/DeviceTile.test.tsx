@@ -70,7 +70,11 @@ describe('a device that stopped reporting', () => {
     // shape printed the same fact twice, in two vocabularies, on every tile in a house with a fault.
     expect(view.getByText('Silent for 4h')).toBeTruthy();
     expect(view.queryByText('Silent')).toBeNull();
-    expect(view.getByText('21.5 °C')).toBeTruthy();
+    // The numeral and its unit are two elements now — `°C` sits a size smaller beside a 34-point reading — so the
+    // test asks for the number and the unit rather than for a string the screen no longer contains. The sentence a
+    // screen reader gets is still the whole "21.5 °C", and the test below holds that.
+    expect(view.getByText('21.5')).toBeTruthy();
+    expect(view.getByText('°C')).toBeTruthy();
   });
 
   it('is Offline and says how long, in one line', async () => {

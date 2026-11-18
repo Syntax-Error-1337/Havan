@@ -66,6 +66,22 @@ export type Palette = {
   thumb: string;
   /** A label on a filled danger button — white reads as an action, black as a warning. */
   dangerOn: string;
+  /**
+   * A content surface.
+   *
+   * Not `glass`. Apple's rule is blunt — `materials.md › Liquid Glass`: "Don't use Liquid Glass in the content
+   * layer … it can result in unnecessary complexity and a confusing visual hierarchy" — and this app had glass on
+   * every card, which is the defect the rule names. A card is a *material*: near-opaque, lit from above, one
+   * shadow. Glass is rationed to the functional layer (the tab bar, the sheets, the floating room capsule) where
+   * something colourful actually scrolls beneath it and the blur has a job.
+   */
+  card: string;
+  /** The 1 pt highlight along a card's top edge. A surface with a light source reads deeper than a flat one. */
+  cardEdge: string;
+  /** Behind white text that sits on a category-tinted art field. Never a text shadow: that fails on light fields. */
+  scrim: string;
+  /** A gauge's or slider's unfilled rail. */
+  track: string;
 };
 
 /** iOS light appearance. */
@@ -111,6 +127,11 @@ export const light: Palette = {
   shadow: 'rgba(15,23,42,0.18)',
   thumb: '#FFFFFF',
   dangerOn: '#FFFFFF',
+  // 96 %, not 100 %: a card still has to sit *on* the canvas for the lit edge and the shadow to read.
+  card: 'rgba(255,255,255,0.96)',
+  cardEdge: 'rgba(255,255,255,0.90)',
+  scrim: 'rgba(8,10,18,0.38)',
+  track: 'rgba(120,120,128,0.16)',
 };
 
 /** iOS dark appearance. Not a dimmed light theme: different values by design. */
@@ -149,6 +170,10 @@ export const dark: Palette = {
   shadow: '#000000',
   thumb: '#FFFFFF',
   dangerOn: '#FFFFFF',
+  card: 'rgba(20,24,33,0.88)',
+  cardEdge: 'rgba(255,255,255,0.10)',
+  scrim: 'rgba(0,0,0,0.42)',
+  track: 'rgba(120,120,128,0.32)',
 };
 
 export const tokens = {
@@ -176,11 +201,41 @@ export const tokens = {
     title: 22,
     /** largeTitle — one per screen, at the top. */
     display: 34,
+    /**
+     * The reading. `typography.md › Using system fonts` asks for hierarchy from size and weight rather than from a
+     * second family, and a device's number is the reason the card exists — it had been drawn at body size under a
+     * device name, which is the wrong way round.
+     */
+    numeral: 34,
+    /** The same idea at the top of the hero, inside the gauge. Ultra-light: at 44 pt a hairline weight still reads. */
+    gauge: 44,
   },
-  lineHeight: { tiny: 13, caption: 18, subhead: 20, body: 22, title: 28, display: 41 },
-  radius: { sm: 8, md: 10, lg: 12, xl: 16, pill: 999 },
+  lineHeight: { tiny: 13, caption: 18, subhead: 20, body: 22, title: 28, display: 41, numeral: 38, gauge: 46 },
+  radius: {
+    sm: 8,
+    md: 10,
+    lg: 12,
+    xl: 16,
+    /** A card. 22 on a 168 pt tile reads as a soft product; 16 read as a web card. */
+    card: 22,
+    /** The art field inside a card, and inner controls that are not pills. */
+    field: 12,
+    pill: 999,
+  },
   space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 },
-  motion: { fast: 140, base: 220, slow: 380 },
+  /**
+   * One light source, three heights.
+   *
+   * Offsets and blur only; the colour comes from the palette's `shadow` at render time, and `shared/ui/Card` turns
+   * these into `shadowOffset/shadowRadius/shadowOpacity` on iOS, `elevation` on Android and `boxShadow` on web —
+   * three properties that must agree, which is exactly the drift one helper prevents.
+   */
+  elevation: {
+    1: { y: 1, blur: 2, opacity: 0.06 },
+    2: { y: 8, blur: 24, opacity: 0.1 },
+    3: { y: 12, blur: 32, opacity: 0.18 },
+  },
+  motion: { fast: 140, base: 220, slow: 380, gauge: 380 },
   /** A finger, not a mouse: 44 pt is the smallest reliable target. */
   touch: { min: 44 },
   /**
