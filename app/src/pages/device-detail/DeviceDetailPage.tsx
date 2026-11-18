@@ -121,7 +121,13 @@ export function DeviceDetailPage() {
   return (
     <Screen>
       {sheet}
-      <Box p="lg" gap="lg">
+      {/* A scroll view, because a phone is not a browser.
+          The web build lets the *document* scroll, so everything below 844 points was reachable in the browser
+          and unreachable on iOS — including "Remove this device", which sat at y=872. */}
+      <ScrollView
+        contentContainerStyle={{ padding: tokens.space.lg, paddingBottom: tokens.layout.tabBarClearance, gap: tokens.space.lg }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Every screen that was pushed onto the stack needs a way back off it, and this one had none: the
             only exits were the tab bar (which loses your place) and the platform's own gesture, which a
             screenshot cannot see and a desktop browser does not have. */}
@@ -389,7 +395,7 @@ export function DeviceDetailPage() {
             ) : null}
           </Box>
         ) : null}
-      </Box>
+      </ScrollView>
     </Screen>
   );
 }

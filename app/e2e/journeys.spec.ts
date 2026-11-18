@@ -48,7 +48,13 @@ test('a device opens with its readings and its room', async ({ page }) => {
   await expect(page.getByText(/Temperature/).first()).toBeVisible();
   // The room row is at the bottom now, above the destructive action.
   await expect(page.getByText('In which room')).toBeVisible();
-  await expect(page.getByText('Remove this device')).toBeVisible();
+
+  // And the destructive action is *reachable*: this screen had no scroll container, and on a phone everything
+  // below 844 points was simply cut off — the browser hid it by scrolling the whole document.
+  const remove = page.getByTestId('remove-device');
+  await remove.scrollIntoViewIfNeeded();
+  await expect(remove).toBeInViewport();
+  await expect(remove).toBeVisible();
 });
 
 test('a rule can be run by hand, and the run is recorded as a manual one', async ({ page }) => {

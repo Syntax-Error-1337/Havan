@@ -152,6 +152,33 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### A phone is not a browser
+
+The device detail screen had eleven controls and **no scroll container**. On the web that looks fine, because
+the *document* scrolls — everything below 844 points is reachable with a trackpad. On a phone the root view does
+not scroll, so the bottom of the screen was simply gone: `Remove this device` sat at y = 872 in an 844-point
+viewport, unreachable, with no way to know it was there.
+
+Measured before and after at 390×844:
+
+| | before | after |
+|---|---|---|
+| document scrolls | **yes** (`docH` 901 > 844) | no |
+| inner scroll container | **none** | `scrollHeight` 1033 > 844 |
+| `Remove this device` bottom | 872 (off screen) | 696, above the tab bar |
+
+The fix is a `ScrollView` with `paddingBottom: tabBarClearance` — the same inset the seven tab screens were each
+remembering for themselves. The regression test is a browser assertion that would have caught it:
+`scrollIntoViewIfNeeded()` then `toBeInViewport()`.
+
+Every route was then measured for the same defect — `document.documentElement.scrollHeight > innerHeight` means
+"relies on the browser to scroll", which is exactly the thing a phone does not do. All nine routes now scroll
+inside their own container or fit.
+
+Two smaller findings from the same pass: the point readout printed the sensor's wire precision (`18.27 °C` in the
+metric card while the hero above it said `18.3`) — `reading()` is applied there now — and `/add-device` reserved
+24 points at the bottom, which is less than the floating bar covers.
+
 ### The brand colour that never moved
 
 `applyBrand` moved the accent, the text *on* the accent, and its halo — but not `accentInk`, which is the colour

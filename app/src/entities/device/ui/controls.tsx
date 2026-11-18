@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme, tokens } from '../../../app-shell/theme';
 import { AppText } from '../../../shared/ui';
 import { withAlpha } from '../../../shared/ui/Glass';
-import { unitSuffix, valueWithUnit } from '../../../shared/ui/units';
+import { reading, unitSuffix, valueWithUnit } from '../../../shared/ui/units';
 import { useSetPoint } from '../model/queries';
 import { commandNotice } from '../model/notices';
 import type { Device, DevicePoint } from '../model/types';
@@ -327,7 +327,7 @@ export function PointControl({
 
         {point.kind !== 'bool' && kind === 'slider' ? (
           <AppText variant="title" weight="600" style={{ color: accent }}>
-            {String(point.value ?? point.min ?? 0)}
+            {reading(Number(point.value ?? point.min ?? 0))}
             {unitSuffix(point.unit) ? (
               <AppText variant="caption" tone="muted">{unitSuffix(point.unit)}</AppText>
             ) : null}
@@ -342,7 +342,7 @@ export function PointControl({
                 ? point.value
                   ? 'Yes'
                   : 'No'
-                : valueWithUnit(point.value, point.unit)}
+                : valueWithUnit(typeof point.value === 'number' ? reading(point.value) : point.value, point.unit)}
           </AppText>
         ) : null}
       </View>

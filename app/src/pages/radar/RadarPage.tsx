@@ -151,7 +151,10 @@ export function PhoneHandoff() {
   // Scrolls, because a handoff is four blocks of text on a screen that might be 667 points tall with the
   // customer's text size turned up. A dead end that is also cut off is worse than the dead end it replaced.
   return (
-    <ScrollView contentContainerStyle={{ gap: 20, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={{ gap: 20, paddingBottom: tokens.layout.tabBarClearance }}
+      showsVerticalScrollIndicator={false}
+    >
       <Glass style={{ padding: 16, alignItems: 'center', gap: 8 }} accent={color.accent}>
         <Box
           center
