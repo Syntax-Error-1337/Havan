@@ -25,6 +25,17 @@ export function valueWithUnit(value: string | number, unit?: string | null): str
   return `${text} ${trimmed}`;
 }
 
+/**
+ * A reading, rounded to the precision a person reads at.
+ *
+ * `18.27 °C` is what a sensor sent, not what a room is: the extra decimal is false precision on a device whose
+ * own accuracy is ±0.5, and it makes the number harder to scan. Whole numbers stay whole.
+ */
+export function reading(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 /** The unit on its own, for the places that draw it in a second, quieter text node beside the number. */
 export function unitSuffix(unit?: string | null): string | null {
   if (!unit || !unit.trim()) return null;

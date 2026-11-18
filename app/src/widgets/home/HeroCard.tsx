@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { AppText, AreaChart, Glass, Icon, iconForCapability } from '../../shared/ui';
 import { withAlpha } from '../../shared/ui/Glass';
-import { valueWithUnit } from '../../shared/ui/units';
+import { reading, valueWithUnit } from '../../shared/ui/units';
 import { accentFor, glowFor } from '../../shared/config/tokens';
 import {
   freshness,
@@ -62,7 +62,8 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
       month: 'short',
     });
     if (day === today) return hour;
-    return `${day === yesterday ? 'Yest' : day} ${hour}`;
+    // "Yesterday" in full: `Yest 7 AM` looked like a typo, and the axis has room for the word.
+    return `${day === yesterday ? 'Yesterday' : day} ${hour}`;
   };
 
   // The chart's own scale, in words: a line with no numbers on it answers "did it move" and
@@ -180,7 +181,7 @@ export function HeroCard({ device, onOpen }: { device: Device; onOpen?: () => vo
                   : color.text,
             }}
           >
-            {value === null ? '—' : value}
+            {value === null ? '—' : reading(value)}
           </AppText>
           {point?.unit ? (
             <AppText variant="subhead" tone="muted" style={{ marginBottom: 8 }}>

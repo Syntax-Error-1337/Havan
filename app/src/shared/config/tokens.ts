@@ -74,7 +74,9 @@ export const light: Palette = {
   // secondaryLabel: black at 60%.
   // secondaryLabel at 72%, not Apple's 60%: at 60% it measures 3.3:1 on the grouped background,
   // which is below the 4.5:1 floor the contrast gate enforces. Slightly darker, still secondary.
-  muted: 'rgba(60,60,67,0.82)',
+  // 0.82 measured 4.06:1 where this text is really drawn — on the mesh, not on a white card. The same
+  // lesson as dark mode's 0.60: the token is judged against the surface it lands on.
+  muted: 'rgba(60,60,67,0.90)',
   // The system blue is 4.02:1 against white text — a button label nobody could pass AA with. This is
   // the same hue two steps deeper, 5.8:1.
   accent: '#0062CC',
@@ -89,7 +91,9 @@ export const light: Palette = {
   danger: '#C81E11',
   bgTop: '#F7F8FC',
   bgBottom: '#E8ECF6',
-  glass: 'rgba(255,255,255,0.78)',
+  // 0.78 of white over a pale mesh is a shape you have to look for. Light-mode glass has to hold its own edge;
+  // dark-mode glass is a brightening, light-mode glass is a whiteness, and both are judged on the mesh.
+  glass: 'rgba(255,255,255,0.92)',
   glow: 'rgba(0,122,255,0.14)',
   accentAlt: '#8B5CF6',
   bgMid: '#EDF1FA',

@@ -175,17 +175,10 @@ export function AreaChart({
                 strokeLinecap="round"
               />
             ) : null}
-            {/* A dotted drop to the axis, not just a floating dot: it says "the last reading was here" and
-                makes the empty stretch to the right read as time that passed without data, rather than as a
-                line that gave up halfway. */}
-            <Path
-              d={`M${(nowX ?? plot).toFixed(1)},${y(now).toFixed(1)} L${(nowX ?? plot).toFixed(1)},${height}`}
-              stroke={gapColor ?? accent}
-              strokeWidth="1"
-              strokeDasharray="1 4"
-              fill="none"
-              strokeOpacity="0.7"
-            />
+            {/* There was a dotted drop from the marker to the axis here, meant to say "the last reading was
+                here". Two reviewers, shown the same card, read it as a temperature that had plunged to the
+                floor — a vertical line at the end of a chart is a cliff, whatever it is labelled. The marker
+                and the dotted connector to the line carry the same fact without drawing a fall. */}
             <Circle cx={nowX ?? plot} cy={y(now)} r="4" fill={accent} />
             <Circle
               cx={nowX ?? plot}

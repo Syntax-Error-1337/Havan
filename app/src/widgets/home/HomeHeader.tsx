@@ -68,7 +68,8 @@ export function HomeHeader({
             borderColor: withAlpha(color.accent, 0.42),
           }}
         >
-          <AppText variant="caption" weight="600" style={{ color: color.accent }}>
+          {/* `accentInk`, not `accent`: the fill that makes a good circle is a 4.1:1 label at 13 pt. */}
+          <AppText variant="caption" weight="600" style={{ color: color.accentInk }}>
             {initials || 'H'}
           </AppText>
         </View>

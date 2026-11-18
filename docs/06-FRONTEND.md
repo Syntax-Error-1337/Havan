@@ -152,6 +152,39 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The appearance nobody screenshotted
+
+Every design review so far had been in dark mode. Light mode had a palette, a contrast gate that passed, and no
+picture of it — and it scored **6.5/10** the first time anybody looked.
+
+The palette gate could not have caught the worst of it, because the gate judges a token against a *surface* and
+the failure was text drawn straight onto the **mesh**. Measured in rendered pixels, `6 devices · 4 rooms` at
+13 pt was **4.06:1** — legible in a mock, not under a window. Light `muted` went 0.82 → **0.90**, and the same
+sentence now measures **4.91:1**; the eyebrow went 4.65 → **5.66**, `0/1 online` 4.58 → **5.55**. This is the
+third time the same lesson has arrived in this project: a token is not the surface it is drawn on, and light
+mode has its own surface.
+
+Three more things only light mode showed:
+
+- **Glass at 78 % white is a shape you have to look for.** On a pale mesh, dark-mode glass *brightens* a
+  surface; light-mode glass has to be *white enough to have an edge*. 0.78 → **0.92**.
+- **A 12 % shadow on near-white is a rumour.** The tab bar's elevation went to **0.18** in light; the value in
+  dark was already right, which is exactly what a single-appearance review hides.
+- **The avatar monogram was accent-as-text** — `#146EF5` on its own 22 % tint, **4.11:1** at 13 pt. It uses
+  `accentInk` now, which is the rule the rest of the app already followed.
+
+And two things that were wrong in both appearances, spotted in the light screenshot:
+
+- **`18.27 °C` is not a room temperature.** `reading()` in `shared/ui/units.ts` rounds to the precision a person
+  reads at; whole numbers stay whole.
+- **`Yest 7 AM` looked like a typo.** The axis says `Yesterday 8 AM`.
+- **A vertical line at the end of a chart is a cliff**, whatever it is labelled. The dotted drop from the live
+  marker to the axis existed to say "the last reading was here" and two reviewers independently read it as a
+  temperature that had plunged to the floor. Removed; the marker and its dotted connector carry the fact.
+
+Light mode now scores **7/10** with the same reviewer, in the same words: *"more honest than before … the
+sensor's age, 'last reading', and the empty space to now all help."*
+
 ### A chart nobody could argue with
 
 The device detail screen scored **4/10** by eye and every one of the complaints was real. Three of them were

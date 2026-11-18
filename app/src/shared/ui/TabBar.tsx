@@ -70,7 +70,8 @@ export function TabBar({
         // The one shadow in the app: the bar has to separate from the content scrolling under it,
         // and a border alone disappears over a bright card.
         shadowColor: color.shadow,
-        shadowOpacity: dark ? 0.45 : 0.12,
+        // Light needs more shadow than 0.12 to read as floating: on near-white, a 12 % shadow is a rumour.
+        shadowOpacity: dark ? 0.45 : 0.18,
         shadowRadius: 18,
         shadowOffset: { width: 0, height: 8 },
         elevation: 12,
