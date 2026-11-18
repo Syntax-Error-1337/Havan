@@ -76,6 +76,39 @@ export function Skeleton({
 }
 
 /** The home screen's shape, before it has any data. */
+/**
+ * A list that is loading, in the shape of the list.
+ *
+ * Alerts, automations and homes each showed a single grey word — "Loading…" — in the middle of an empty
+ * screen. On a slow connection that is a second and a half of a screen that looks broken, and then the
+ * layout jumps. These rows are the height and rhythm of a real card, so the page settles into place instead
+ * of rebuilding itself.
+ */
+export function ListSkeleton({
+  rows = 3,
+  rowHeight = 84,
+  showHeader = true,
+}: {
+  rows?: number;
+  rowHeight?: number;
+  /** A page title block above the rows, for a screen that draws its own header. */
+  showHeader?: boolean;
+}) {
+  return (
+    <View testID="list-skeleton" style={{ paddingHorizontal: tokens.space.lg, gap: tokens.space.md }}>
+      {showHeader ? (
+        <View style={{ gap: 6 }}>
+          <Skeleton height={34} width="55%" />
+          <Skeleton height={13} width="40%" />
+        </View>
+      ) : null}
+      {Array.from({ length: rows }, (_, i) => (
+        <Skeleton key={i} height={rowHeight} />
+      ))}
+    </View>
+  );
+}
+
 export function HomeSkeleton() {
   return (
     <View style={{ paddingHorizontal: tokens.space.lg, gap: tokens.space.md }}>

@@ -1,7 +1,7 @@
 import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Box, AppText, Button, Glass, Icon, QueryError, Screen, ScreenHeader } from '../../shared/ui';
+import { Box, AppText, Button, Glass, Icon, ListSkeleton, QueryError, Screen, ScreenHeader } from '../../shared/ui';
 import { withAlpha } from '../../shared/ui/Glass';
 import { signalAccent } from '../../shared/config/tokens';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -54,12 +54,16 @@ export function AlertsPage() {
           paddingBottom: tokens.layout.tabBarClearance,
         }}
       >
-        {/* "Nothing new" is a claim about the alerts; on a failed request the app has not counted them. */}
-        <AppText variant="caption" tone="muted">
-          {isError ? '— unread' : unread === 0 ? 'Nothing new' : `${unread} unread`}
-        </AppText>
+        {/* "Nothing new" is a claim about the alerts, and it can only be made once they have been counted.
+            It also appeared *while they were still loading* — the feed said "Nothing new" above three
+            skeletons, which is the screen contradicting itself in its first second. */}
+        {isPending ? null : (
+          <AppText variant="caption" tone="muted">
+            {isError ? '— unread' : unread === 0 ? 'Nothing new' : `${unread} unread`}
+          </AppText>
+        )}
 
-        {isPending ? <AppText tone="muted">Loading…</AppText> : null}
+        {isPending ? <ListSkeleton rows={3} rowHeight={104} showHeader={false} /> : null}
 
         {isError ? (
           <QueryError

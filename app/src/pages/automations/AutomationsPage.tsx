@@ -7,7 +7,9 @@ import {
   AppText,
   Button,
   ChipPicker,
+  ListSkeleton,
   QueryError,
+  Skeleton,
   Screen,
   ScreenScroll,
   ValueField,
@@ -81,7 +83,7 @@ export function AutomationsPage() {
           />
         ) : null}
 
-        {isLoading ? <AppText tone="muted">Loading…</AppText> : null}
+        {isLoading ? <ListSkeleton rows={3} rowHeight={104} showHeader={false} /> : null}
 
         {/* Not while the form is open: an empty-state card underneath the editor that just appeared is the
           screen telling the customer two different things at once. */}
@@ -191,7 +193,7 @@ export function AutomationsPage() {
 function History({ rule }: { rule: Automation }) {
   const { data: runs, isLoading } = useAutomationRuns(rule.id);
 
-  if (isLoading) return <AppText variant="caption" tone="muted">Loading…</AppText>;
+  if (isLoading) return <Skeleton height={13} width="60%" />;
   if (!runs?.length) {
     return (
       <AppText variant="caption" tone="muted">

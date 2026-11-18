@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { AppText, Box, Button, Glass, Icon, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
+import { AppText, Box, Button, Glass, Icon, ListSkeleton, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
 import { useCreateHome, useHomes } from '../../entities/home';
 import { useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -65,7 +65,7 @@ export function HomesPage() {
       <ScreenScroll gap={tokens.space.md}>
         {isPending ? (
           <AppText variant="caption" tone="muted">
-            Loading your homes…
+            <ListSkeleton rows={3} rowHeight={88} showHeader={false} />
           </AppText>
         ) : isError ? (
           // The server's own reason *and* a way to ask again: the reason alone is a dead end, and the retry
