@@ -139,6 +139,8 @@ check: testdb ## fmt + clippy + tests + no secrets + routes match handlers + rea
 	$(CARGO) fmt --all --check
 	bash scripts/no-secrets.sh
 	python3 scripts/route-arity.py --self-test
+	python3 scripts/portal-routes.py --self-test
+	python3 scripts/portal-routes.py
 	$(MAKE) contrast
 	$(MAKE) tokens
 	$(MAKE) time-serde
@@ -156,6 +158,8 @@ check-fast: ## fmt + lints + the cheap gates, no database suites (~90 s on a war
 	$(CARGO) fmt --all --check
 	bash scripts/no-secrets.sh
 	python3 scripts/route-arity.py --self-test
+	python3 scripts/portal-routes.py --self-test
+	python3 scripts/portal-routes.py
 	$(MAKE) contrast
 	$(MAKE) tokens
 	$(MAKE) time-serde

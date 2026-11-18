@@ -359,6 +359,20 @@ a second factor, a missing code is `401` with `details.totp = "required"` and a 
 with `details.totp = "invalid"` — different answers, because "ask me for a code" and "try again" send
 the portal somewhere different.
 
+### What keeps these tables honest
+
+Three checks, all mechanical, all in `make check`:
+
+| Check | Fails when |
+|---|---|
+| `scripts/route-arity.py --self-test` | a route provides a different number of path parameters than its handler extracts |
+| `scripts/portal-routes.py` | the portal asks for a `/vendor` or `/ops` path the routers do not declare |
+| `every_vendor_route_is_in_the_api_doc` (Rust) | a `/vendor` route is served but not mentioned anywhere in this file |
+
+None of them read a hand-written list: the first two parse the router sources, so a new route is caught the moment it is
+added rather than the moment somebody remembers. The doc check reads the routers too, which is why it found five
+undocumented routes the first time it ran.
+
 ## Operator (internal)
 
 ### Appearance

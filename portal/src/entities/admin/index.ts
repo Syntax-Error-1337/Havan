@@ -204,11 +204,16 @@ export function useCertificationQueue() {
 export function useDecideCertification() {
   const qc = useQueryClient();
   return useMutation({
+    // Two literal paths rather than one built from `decision`: a template string hides the union from the compiler and
+    // from `scripts/portal-routes.py`, so widening the union to a third value would have POSTed to a path nothing serves
+    // and read as "the product is not there".
     mutationFn: (input: { productId: string; decision: 'certify' | 'revoke'; note?: string }) =>
-      adminRequest<unknown>(`/ops/products/${input.productId}/certification/${input.decision}`, {
-        method: 'POST',
-        body: JSON.stringify({ note: input.note }),
-      }),
+      adminRequest<unknown>(
+        input.decision === 'certify'
+          ? `/ops/products/${input.productId}/certification/certify`
+          : `/ops/products/${input.productId}/certification/revoke`,
+        { method: 'POST', body: JSON.stringify({ note: input.note }) },
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminKeys.queue });
       qc.invalidateQueries({ queryKey: adminKeys.overview });
