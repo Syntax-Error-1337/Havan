@@ -116,6 +116,38 @@ On the client, one pushed frame at that size patched a single tile and moved the
 with **no additional dashboard request** (resource entries: 1 before, 1 after), and 80 tiles were mounted
 once all six pages were loaded — windowed rendering, not 1 200 mounted rows.
 
+## Re-measured on this tree, with the tool in the repository
+
+The numbers above were taken when those screens were built. Since then the portal gained sortable fleet columns, audit
+filters and an export — enough movement that "it was fast in March" is a claim, not a fact. `scripts/measure-latency.py`
+re-runs the two that matter, against the live API and the seeded fleet, and prints medians plus p95:
+
+    DEMO_PASSWORD=... VENDOR_PASSWORD=... python3 scripts/measure-latency.py
+
+**Dashboard, 1 200-device home, 200 per page** (median of 5 runs per page): 42.4 · 36.9 · 40.4 · 41.9 · 42.6 · 41.2 ms.
+Page six costs page one, and the spread is host noise rather than a trend — the property the cursor exists for still
+holds, four months of commits later.
+
+**Vendor fleet, 1 909 devices, 200 per page** (median of 15 round-robin runs):
+
+| query | median | p95 |
+|---|---|---|
+| default, newest first | **24.7 ms** | 25.3 ms |
+| serial A–Z | **24.3 ms** | 32.1 ms |
+| last seen, newest first | **25.0 ms** | 30.3 ms |
+| search `HUGE-01` | **16.3 ms** | 17.5 ms |
+
+Sorting costs nothing worth naming — the same query with a different `ORDER BY` over the same index range. The sorted
+walk is flat to page five (25.9 · 24.8 · 23.2 · 21.2 · 24.2 ms), which is the keyset claim holding for the *sortable*
+path and not only for the newest-first one it was designed for.
+
+Search is the fastest of the four and should be: `q` uses the trigram index to arrive at fewer rows before the page cap
+applies, so it does less work than a full ordering.
+
+Two things this measurement does not say, and the doc should not imply: the fleet is 1 909 devices on one laptop's
+Postgres, not millions; and a laptop running a browser, a portal and a database is a noisy instrument — which is why the
+queries are measured round-robin rather than one at a time, and why the report gives a distribution instead of a number.
+
 ## The live stream: one Redis subscription per channel, not per socket
 
 `/v1/stream` gave every websocket its own Redis pub/sub connection. Readable code, and the wrong shape for
