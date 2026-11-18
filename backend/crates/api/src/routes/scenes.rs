@@ -17,6 +17,7 @@ pub fn router() -> Router<AppState> {
         .route("/homes/{id}/scenes", get(list).post(create))
         .route("/scenes/{scene_id}", delete(remove).patch(update))
         .route("/scenes/{scene_id}/activate", post(activate))
+        .route("/scenes/{scene_id}/move", post(move_scene))
 }
 
 #[derive(Deserialize)]
@@ -147,6 +148,38 @@ async fn remove(
         .delete(scene_id, auth.user.id)
         .await
         .map_err(ApiError)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct MoveBody {
+    /// Towards the top of the list, where the hot controls are.
+    up: bool,
+}
+
+/// `POST /v1/scenes/{id}/move` — one place up or down.
+///
+/// The scene's home comes from the scene, not from the caller: a home id in the body would be a second way to name it,
+/// and the two could disagree.
+async fn move_scene(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(scene_id): Path<Uuid>,
+    Json(body): Json<MoveBody>,
+) -> ApiResult<StatusCode> {
+    let scene = state
+        .scenes
+        .get(scene_id, auth.user.id)
+        .await
+        .map_err(ApiError)?
+        .ok_or_else(|| ApiError(kernel::AppError::not_found("scene")))?;
+
+    state
+        .scenes
+        .move_scene(scene.home_id, scene_id, auth.user.id, body.up)
+        .await
+        .map_err(ApiError)?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 

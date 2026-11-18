@@ -88,6 +88,18 @@ pub trait SceneRepo {
 
     fn delete(&self, id: Uuid, user_id: Uuid) -> impl Future<Output = Result<(), AppError>> + Send;
 
+    /// Move a scene one place towards the top (`up`) or the bottom of its home's list.
+    ///
+    /// The positions are rewritten densely on every move rather than swapped in place: a column that accumulates gaps
+    /// eventually has two scenes claiming the same place, and the order then depends on the tie-break.
+    fn move_scene(
+        &self,
+        home_id: Uuid,
+        id: Uuid,
+        user_id: Uuid,
+        up: bool,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
     /// Change the name, the icon, or the actions of a scene that already exists.
     ///
     /// A scene could be created and deleted and nothing in between, so a typo in a scene's name meant deleting it and

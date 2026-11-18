@@ -32,7 +32,9 @@ test('the house is on the screen after signing in', async ({ page }) => {
 
   // The home's own name, a device count that is a fact about the home, and at least one device tile.
   await expect(page.getByText('Workshop')).toBeVisible();
-  await expect(page.getByText(/\d+ devices/)).toBeVisible();
+  // "6 devices · 4 rooms", the header's summary of the home. The bare /\d+ devices/ matched the scene strip as well —
+  // a scene with no actions reads "0 devices" — so the assertion failed on strict mode as soon as demo data had scenes.
+  await expect(page.getByText(/\d+ devices · \d+ rooms/)).toBeVisible();
   await expect(page.getByText(/Lights|Humidity|Sensor/).first()).toBeVisible();
 });
 

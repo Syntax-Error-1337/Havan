@@ -2,6 +2,7 @@ export {
   outcome,
   useActivateScene,
   useCreateScene,
+  useMoveScene,
   useDeleteScene,
   useRenameScene,
   useScenes,

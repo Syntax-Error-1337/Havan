@@ -362,6 +362,10 @@ export function ScenesPage() {
           sceneId={renaming.id}
           name={renaming.name}
           homeId={homeId ?? undefined}
+          // Read from the list as it is now, not as it was when the sheet opened: a move made by somebody else in the
+          // house reorders both phones, and the sheet's idea of "top" must be today's.
+          position={(scenes ?? []).findIndex((s) => s.id === renaming.id)}
+          total={(scenes ?? []).length}
           onClose={() => setRenaming(null)}
         />
       ) : null}

@@ -4,7 +4,7 @@ import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { withAlpha } from '../../shared/config/tokens';
 import { AppText, useToast } from '../../shared/ui';
-import { useRenameScene } from '../../entities/scene';
+import { useMoveScene, useRenameScene } from '../../entities/scene';
 
 /**
  * Rename a scene.
@@ -17,17 +17,26 @@ export function RenameSceneSheet({
   sceneId,
   name,
   homeId,
+  position,
+  total,
   onClose,
 }: {
   sceneId: string;
   name: string;
   homeId: string | undefined;
+  /** Where it sits now, so "up" can be refused at the top instead of doing nothing when pressed. */
+  position: number;
+  total: number;
   onClose: () => void;
 }) {
   const { color, dark } = useTheme();
   const toast = useToast();
   const rename = useRenameScene(homeId);
+  const move = useMoveScene(homeId);
   const [draft, setDraft] = useState(name);
+
+  const atTop = position === 0;
+  const atBottom = position >= total - 1;
 
   const next = draft.trim();
   const changed = next.length > 0 && next !== name;
@@ -110,6 +119,70 @@ export function RenameSceneSheet({
               </AppText>
             ) : null}
           </View>
+
+          {/* The order lives here rather than on the row: the row already carries a name, Run and Delete, and a fourth
+              control on a 390-point screen is a row that no longer fits. Arranging a list belongs next to naming what
+              is in it. */}
+          {total > 1 ? (
+            <View style={{ gap: tokens.space.xs }}>
+              <AppText variant="tiny" tone="muted">
+                Order
+              </AppText>
+              <View style={{ flexDirection: 'row', gap: tokens.space.md }}>
+                <Pressable
+                  onPress={() =>
+                    move.mutate(
+                      { id: sceneId, up: true },
+                      { onSuccess: () => toast(`Moved “${name}” up`) },
+                    )
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel="Move up"
+                  accessibilityState={{ disabled: atTop || move.isPending }}
+                  disabled={atTop || move.isPending}
+                  style={{
+                    flex: 1,
+                    minHeight: tokens.touch.min,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderRadius: tokens.radius.md,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: color.border,
+                    opacity: atTop ? 0.4 : 1,
+                  }}
+                >
+                  <AppText style={{ color: atTop ? color.muted : color.accent }}>Move up</AppText>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    move.mutate(
+                      { id: sceneId, up: false },
+                      { onSuccess: () => toast(`Moved “${name}” down`) },
+                    )
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel="Move down"
+                  accessibilityState={{ disabled: atBottom || move.isPending }}
+                  disabled={atBottom || move.isPending}
+                  style={{
+                    flex: 1,
+                    minHeight: tokens.touch.min,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderRadius: tokens.radius.md,
+                    borderWidth: StyleSheet.hairlineWidth,
+                    borderColor: color.border,
+                    opacity: atBottom ? 0.4 : 1,
+                  }}
+                >
+                  <AppText style={{ color: atBottom ? color.muted : color.accent }}>Move down</AppText>
+                </Pressable>
+              </View>
+              <AppText variant="tiny" tone="muted">
+                This is the order the dashboard shows.
+              </AppText>
+            </View>
+          ) : null}
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: tokens.space.xl }}>
             <Pressable

@@ -64,6 +64,24 @@ export function outcome(activation: Activation): string {
   return `${activation.dispatched} sent · ${activation.failed.length} failed`;
 }
 
+/**
+ * Move a scene one place in the list.
+ *
+ * The list was ordered by creation time and could not be changed, so the scene somebody uses every day sat wherever it
+ * landed. Moving is a move, not a re-save: the actions are untouched.
+ */
+export function useMoveScene(homeId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, up }: { id: string; up: boolean }) =>
+      request<void>(`/scenes/${id}/move`, {
+        method: 'POST',
+        body: JSON.stringify({ up }),
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.scenes(homeId ?? 'none') }),
+  });
+}
+
 export function useCreateScene(homeId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({

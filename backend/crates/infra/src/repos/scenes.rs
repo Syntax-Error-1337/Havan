@@ -71,9 +71,12 @@ impl SceneRepo for PgScenes {
         let actions = serde_json::to_value(&scene.actions)
             .map_err(|e| AppError::Internal(format!("scene actions: {e}")))?;
 
+        // A new scene lands on top, which is where `created_at DESC` used to put it: `MAX + 1` in the same statement, so
+        // two scenes created at once cannot both claim the top place.
         sqlx::query(
-            r#"INSERT INTO scenes (id, home_id, name, icon, actions)
-               VALUES ($1, $2, $3, $4, $5)"#,
+            r#"INSERT INTO scenes (id, home_id, name, icon, actions, sort_order)
+               VALUES ($1, $2, $3, $4, $5,
+                       (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM scenes WHERE home_id = $2))"#,
         )
         .bind(scene.id)
         .bind(home_id)
@@ -90,7 +93,9 @@ impl SceneRepo for PgScenes {
     async fn list(&self, home_id: Uuid, user_id: Uuid) -> Result<Vec<Scene>, AppError> {
         let mut tx = self.tx(user_id).await?;
         let rows = sqlx::query_as::<_, Row>(&format!(
-            "SELECT {COLUMNS} FROM scenes WHERE home_id = $1 ORDER BY created_at DESC"
+            // The person's order first (bigger is nearer the top), then the moment it was made: two scenes that share a
+            // position — a migrated row, or a home written by two requests at once — still come back in a stable order.
+            "SELECT {COLUMNS} FROM scenes WHERE home_id = $1 ORDER BY sort_order DESC, created_at DESC"
         ))
         .bind(home_id)
         .fetch_all(&mut *tx)
@@ -127,6 +132,57 @@ impl SceneRepo for PgScenes {
             return Err(AppError::not_found("scene"));
         }
         Ok(())
+    }
+
+    async fn move_scene(
+        &self,
+        home_id: Uuid,
+        id: Uuid,
+        user_id: Uuid,
+        up: bool,
+    ) -> Result<(), AppError> {
+        let mut tx = self.tx(user_id).await?;
+
+        // The list as the screen shows it, then the swap. Reading it in the same transaction as the write is what stops
+        // two people reordering the same home from producing an order neither of them asked for.
+        let ordered: Vec<(Uuid,)> = sqlx::query_as(
+            "SELECT id FROM scenes WHERE home_id = $1 ORDER BY sort_order DESC, created_at DESC",
+        )
+        .bind(home_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        let ids: Vec<Uuid> = ordered.into_iter().map(|(id,)| id).collect();
+        let Some(at) = ids.iter().position(|candidate| *candidate == id) else {
+            return Err(AppError::not_found("scene"));
+        };
+        let to = if up {
+            at.checked_sub(1)
+        } else {
+            Some(at + 1).filter(|next| *next < ids.len())
+        };
+
+        // Already at the end: not an error, and not a reason to rewrite the table. The screens do not offer the control
+        // there, so this is the case where somebody's list changed under them.
+        let Some(to) = to else {
+            tx.commit().await.map_err(db)?;
+            return Ok(());
+        };
+
+        let mut reordered = ids.clone();
+        reordered.swap(at, to);
+
+        for (position, scene_id) in reordered.iter().enumerate() {
+            sqlx::query("UPDATE scenes SET sort_order = $2 WHERE id = $1")
+                .bind(scene_id)
+                .bind((reordered.len() - position) as i32)
+                .execute(&mut *tx)
+                .await
+                .map_err(db)?;
+        }
+
+        tx.commit().await.map_err(db)
     }
 
     async fn update(&self, id: Uuid, user_id: Uuid, change: SceneChange) -> Result<(), AppError> {
