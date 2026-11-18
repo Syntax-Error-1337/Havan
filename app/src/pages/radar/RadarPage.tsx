@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 
 import { Box, AppText, Button, Card, Icon, Screen, ScreenScroll } from '../../shared/ui';
 import { useTheme, tokens } from '../../app-shell/theme';
+import { NoDeviceHelp } from './NoDeviceHelp';
 import { withAlpha } from '../../shared/config/tokens';
 import { request } from '../../shared/api/client';
 import { serialTailMatches, signalBars, type NearbyDevice } from '../../shared/lib/ble';
@@ -236,6 +237,10 @@ export function PhoneHandoff() {
         </View>
       </Box>
 
+      {/* Also here, not only on the scanning screen: the reason somebody comes back to *this* page from their phone is
+          that the device did not appear, and the answer should not require them to guess where to look for it. */}
+      <NoDeviceHelp hint="If it did not show up on the phone, these are the things worth checking." />
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Back to your home"
@@ -312,9 +317,15 @@ function ScanView({
       </Box>
 
       {devices.length === 0 ? (
-        <AppText tone="muted" style={{ textAlign: 'center' }}>
-          Nothing yet. Devices show up within a few seconds.
-        </AppText>
+        // After the first few seconds the encouraging sentence stops being true, so the help sits directly under it:
+        // this screen's previous answer to the commonest first-run failure was "they show up within a few seconds".
+        <NoDeviceHelp
+          hint={
+            state === 'denied'
+              ? 'Bluetooth is refused, so nothing can be found here.'
+              : 'Nothing yet — these are the things worth checking.'
+          }
+        />
       ) : null}
 
       <Box gap="sm">

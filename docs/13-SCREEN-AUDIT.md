@@ -47,7 +47,7 @@ and leaving.
 | --- | --- |
 | Handoff explains itself, prints the link, offers copy — after this pass' fixes | done |
 | The scan screen's nearby-device rows are plain rows; the radar animation is the only art | P2 |
-| No "the device is not appearing" path (factory-reset instructions, AP-mode fallback) | **P1** — the most common first-run failure has no documented next step |
+| **No "the device is not appearing" path** — *done*: a collapsed list of the seven checks this hardware actually enforces (2.4 GHz only, WPA2-PSK AES, a previously-claimed device stops advertising, guest-network isolation, two metres, permissions), on both the scanning screen and the browser handoff | done |
 
 ### Alerts (`/alerts`)
 | Finding | Priority |
