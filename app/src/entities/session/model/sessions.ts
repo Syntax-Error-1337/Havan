@@ -30,6 +30,67 @@ export function useSessions() {
   });
 }
 
+export type TotpState = 'off' | 'pending' | 'on';
+
+export interface StartedTotp {
+  /** The seed. It is in this response and nowhere it can be read again. */
+  secret: string;
+  /** `otpauth://totp/...` — what an authenticator app accepts. */
+  uri: string;
+}
+
+export function useTotp() {
+  return useQuery({
+    queryKey: ['session', 'totp'],
+    queryFn: () => request<{ state: TotpState }>('/me/totp'),
+    staleTime: 30_000,
+  });
+}
+
+/** Begin an enrolment. The seed comes back once; a second factor must not be readable later. */
+export function useStartTotp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<StartedTotp>('/me/totp', { method: 'POST' }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['session', 'totp'] }),
+  });
+}
+
+export function useConfirmTotp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) =>
+      request<{ state: TotpState }>('/me/totp/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['session', 'totp'] }),
+  });
+}
+
+export function useDisableTotp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<void>('/me/totp', { method: 'DELETE' }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['session', 'totp'] }),
+  });
+}
+
+/**
+ * Does this failure mean "the password was right, send a code"?
+ *
+ * The server answers `second_factor_required` for exactly that case. Matching the code rather than the message keeps
+ * this honest when the wording changes.
+ */
+export function needsSecondFactor(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'second_factor_required'
+  );
+}
+
 /**
  * Change the password, with the old one as proof.
  *

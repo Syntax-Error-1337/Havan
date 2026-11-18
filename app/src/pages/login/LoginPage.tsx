@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { Box, BrandMark, Button, Screen, AppText } from '../../shared/ui';
 import { useTheme, tokens } from '../../app-shell/theme';
-import { useLogin, useRegister, useSession } from '../../entities/session';
+import { needsSecondFactor, useLogin, useRegister, useSession } from '../../entities/session';
 import { ApiError } from '../../shared/api/client';
 
 /**
@@ -16,6 +16,14 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [reveal, setReveal] = useState(false);
+  /**
+   * Set when the server said the password was right and the account has a second factor.
+   *
+   * It is a state, not an error: nothing went wrong, and the screen's job changed from "who are you" to "prove it is
+   * still you". Showing it as a red failure would send people to reset a password that works.
+   */
+  const [codeFor, setCodeFor] = useState(false);
+  const [code, setCode] = useState('');
 
   const signIn = useSession((s) => s.signIn);
   const login = useLogin();
@@ -27,10 +35,20 @@ export function LoginPage() {
     try {
       const pair =
         mode === 'signin'
-          ? await login.mutateAsync({ email: email.trim(), password })
+          ? await login.mutateAsync({
+              email: email.trim(),
+              password,
+              ...(codeFor && code.trim() ? { code: code.trim() } : {}),
+            })
           : await register.mutateAsync({ email: email.trim(), password });
       await signIn({ access: pair.access, refresh: pair.refresh });
     } catch (e) {
+      if (needsSecondFactor(e)) {
+        // The password was accepted. Ask for the second factor and keep it out of the error line.
+        setCodeFor(true);
+        setError(null);
+        return;
+      }
       setError(
         e instanceof ApiError
           ? e.message
@@ -39,7 +57,11 @@ export function LoginPage() {
     }
   };
 
-  const canSubmit = email.includes('@') && password.length >= 10 && !pending;
+  const canSubmit =
+    email.includes('@') &&
+    password.length >= 10 &&
+    !pending &&
+    (!codeFor || code.trim().length === 6);
 
   return (
     <Screen>
@@ -120,6 +142,29 @@ export function LoginPage() {
                 </Pressable>
               </View>
             </Box>
+
+            {/* Only after the server says the password was accepted. Shown earlier, it would be a field most people
+                have nothing to type into. */}
+            {codeFor ? (
+              <Box gap="xs">
+                <AppText variant="tiny" tone="muted" style={{ letterSpacing: 1.1 }}>
+                  CODE FROM YOUR AUTHENTICATOR
+                </AppText>
+                <TextInput
+                  value={code}
+                  onChangeText={setCode}
+                  placeholder="123456"
+                  placeholderTextColor={color.muted}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  autoFocus
+                  autoComplete="one-time-code"
+                  textContentType="oneTimeCode"
+                  accessibilityLabel="Six-digit code"
+                  style={inputStyle(color)}
+                />
+              </Box>
+            ) : null}
           </Box>
 
           {error ? (
@@ -140,6 +185,10 @@ export function LoginPage() {
             onPress={() => {
               setMode(mode === 'signin' ? 'signup' : 'signin');
               setError(null);
+              // A code belongs to one attempt at one account; carrying it into the other mode would resubmit it against
+              // a form that never asked.
+              setCodeFor(false);
+              setCode('');
             }}
             accessibilityRole="button"
             hitSlop={12}

@@ -73,6 +73,45 @@ describe('login', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('asks for the second factor when the password was right, and sends it with the next attempt', async () => {
+    const calls = stubApi((url) => {
+      if (url.endsWith('/auth/login')) {
+        const last = calls[calls.length - 1]!;
+        const sent = JSON.parse(String(last.body ?? '{}')) as { code?: string };
+        if (!sent.code) {
+          // The account has a second factor; the password itself was accepted.
+          return {
+            status: 401,
+            body: {
+              error: {
+                code: 'second_factor_required',
+                message: 'this account has a second factor: send the code from your authenticator',
+              },
+            },
+          };
+        }
+        return { body: { access: 'a-token', refresh: 'r-token', expires_in: 900 } };
+      }
+      return { body: { id: 'u1', email: 'someone@haven.dev' } };
+    });
+
+    const view = await renderLogin();
+    await fireEvent.changeText(view.getByLabelText('Email'), 'someone@haven.dev');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'correct horse battery');
+    await fireEvent.press(view.getByText('Sign in'));
+
+    // A missing second factor is not an error: nothing went wrong, the screen's job changed.
+    const field = await view.findByLabelText('Six-digit code');
+    expect(view.queryByText(/Something went wrong/)).toBeNull();
+
+    await fireEvent.changeText(field, '123456');
+    await fireEvent.press(view.getByText('Sign in'));
+
+    await waitFor(() => expect(useSession.getState().access).toBe('a-token'));
+    const sent = JSON.parse(String(calls[calls.length - 1]!.body ?? '{}')) as { code?: string };
+    expect(sent.code).toBe('123456');
+  });
+
   it('signs in, then writes the session to the keychain', async () => {
     const calls = stubApi((url) => {
       if (url.endsWith('/auth/login')) {
@@ -84,7 +123,6 @@ describe('login', () => {
     const view = await renderLogin();
     await fireEvent.changeText(view.getByLabelText('Email'), 'someone@haven.dev');
     await fireEvent.changeText(view.getByLabelText('Password'), 'correct horse battery');
-    console.log('PROBE button disabled', view.getByText('Sign in').parent?.parent?.props?.accessibilityState);
     await fireEvent.press(view.getByText('Sign in'));
 
     await waitFor(() => expect(useSession.getState().access).toBe('a-token'));

@@ -5,7 +5,7 @@ export type Tokens = { access: string; refresh: string; expires_in: number };
 
 export function useLogin() {
   return useMutation({
-    mutationFn: (input: { email: string; password: string }) =>
+    mutationFn: (input: { email: string; password: string; code?: string }) =>
       request<Tokens>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(input),

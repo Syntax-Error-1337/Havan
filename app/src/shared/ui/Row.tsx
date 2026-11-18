@@ -26,6 +26,7 @@ export function Row({
   disabled,
   destructive,
   chevron = true,
+  testID,
 }: {
   title: string;
   subtitle?: string;
@@ -41,6 +42,8 @@ export function Row({
    * must not wear one: a chevron promises another screen, and the promise is the tap's whole meaning.
    */
   chevron?: boolean;
+  /** For tests and for the e2e suite: a row is a target, and a title is a fragile way to name it. */
+  testID?: string;
 }) {
   const { color } = useTheme();
 
@@ -78,6 +81,7 @@ export function Row({
         <Pressable
           onPress={onPress}
           disabled={disabled}
+          testID={testID}
           accessibilityRole="button"
           accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
           accessibilityState={{ disabled: Boolean(disabled) }}

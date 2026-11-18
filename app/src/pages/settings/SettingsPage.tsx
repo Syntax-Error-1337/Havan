@@ -5,6 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 
 import { RoomRow } from './RoomRow';
 import { ChangePasswordSheet } from './ChangePasswordSheet';
+import { TwoFactorSheet } from './TwoFactorSheet';
 
 import {
   canManage,
@@ -41,7 +42,7 @@ import {
   useSetTimeZone,
 } from '../../entities/home';
 import { deviceTimeZone } from '../../shared/lib/timeZone';
-import { useMe, useSession, useSessions, useSignOutOthers } from '../../entities/session';
+import { useMe, useSession, useSessions, useSignOutOthers, useTotp } from '../../entities/session';
 import { usePushTokens, useTurnOffAlerts } from '../../entities/notification';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
@@ -68,6 +69,7 @@ export function SettingsPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const { data: sessions } = useSessions();
+  const totp = useTotp();
   const { data: pushTokens } = usePushTokens();
   const turnOffAlerts = useTurnOffAlerts();
   const signOutOthers = useSignOutOthers();
@@ -113,6 +115,7 @@ export function SettingsPage() {
   // Local until the server confirms; the switch must move when the finger does.
   const [atHome, setAtHome] = useState(true);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [twoFactorOpen, setTwoFactorOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [roomName, setRoomName] = useState('');
 
@@ -418,6 +421,20 @@ export function SettingsPage() {
             subtitle="This one included"
             value={sessions?.count !== undefined ? String(sessions.count) : '—'}
           />
+          {/* The account can unlock a front door, and until now the only proof of identity was a password. */}
+          <Row
+            title="Two-factor authentication"
+            subtitle={
+              totp.data?.state === 'on'
+                ? 'On — a code is asked for at sign-in'
+                : totp.data?.state === 'pending'
+                  ? 'Not finished — a code is not asked for yet'
+                  : 'Off — your password alone signs you in'
+            }
+            value={totp.data?.state === 'on' ? 'On' : totp.data?.state === 'pending' ? 'Set up' : 'Off'}
+            onPress={() => setTwoFactorOpen(true)}
+            testID="totp-row"
+          />
           <Row
             title="Sign out other devices"
             // The consequence, not the arithmetic: the count is one row above, and what a person needs before pressing
@@ -472,6 +489,7 @@ export function SettingsPage() {
         </AppText>
       </ScreenScroll>
       {passwordOpen ? <ChangePasswordSheet onClose={() => setPasswordOpen(false)} /> : null}
+      {twoFactorOpen ? <TwoFactorSheet onClose={() => setTwoFactorOpen(false)} /> : null}
       {confirm.sheet}
     </Screen>
   );
