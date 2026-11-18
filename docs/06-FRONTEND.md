@@ -152,6 +152,21 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The gesture that did nothing
+
+The dashboard had pull-to-refresh; **alerts, automations, scenes and the home switcher did not**. On iOS that is
+the first gesture a customer tries when a list looks stale, and it did nothing — which reads as "this list is
+stuck", not "this list refreshes differently".
+
+`ScreenScroll` gained `onRefresh` / `refreshing` and builds the `RefreshControl` from the theme (tint, colours,
+progress background), so the four screens pass a callback and nothing else. Alerts moved onto the shared body to
+get it, which is also where a real bug surfaced: the shared body's `contentContainerStyle` was placed **before**
+`{...rest}`, so a caller passing its own horizontal inset replaced the whole style object — and the tab-bar
+clearance vanished with it. Measured in the DOM: `padding: 0px 16px 148px; gap: 12px` after the merge, versus
+`0px` before it. The styles merge now, and `ScreenScroll.test.tsx` pins the four behaviours that used to be
+remembered per screen: the refresh control exists only when a screen offers a refresh, `keyboardShouldPersistTaps`
+is `handled`, the bottom clearance is there, and the control's `onRefresh` is the callback the screen passed.
+
 ### Two presses, two answers
 
 Running a scene from the dashboard's strip said what happened — *"Sent · 3 devices"*, or the reason it did not.

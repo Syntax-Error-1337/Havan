@@ -62,7 +62,7 @@ export function HomesPage() {
     <Screen>
       <ScreenHeader title="Homes" onBack={leave} />
 
-      <ScreenScroll gap={tokens.space.md}>
+      <ScreenScroll gap={tokens.space.md} onRefresh={() => void refetch()}>
         {isPending ? (
           <AppText variant="caption" tone="muted">
             <ListSkeleton rows={3} rowHeight={88} showHeader={false} />

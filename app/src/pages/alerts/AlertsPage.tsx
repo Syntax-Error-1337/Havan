@@ -1,7 +1,18 @@
 import { ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { Box, AppText, Button, Glass, Icon, ListSkeleton, QueryError, Screen, ScreenHeader } from '../../shared/ui';
+import {
+  Box,
+  AppText,
+  Button,
+  Glass,
+  Icon,
+  ListSkeleton,
+  QueryError,
+  Screen,
+  ScreenHeader,
+  ScreenScroll,
+} from '../../shared/ui';
 import { withAlpha } from '../../shared/ui/Glass';
 import { signalAccent } from '../../shared/config/tokens';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -22,7 +33,7 @@ import {
  * matters: a list where everything is styled equally is a list nobody scans.
  */
 export function AlertsPage() {
-  const { data: alerts, isPending, isError, refetch } = useNotifications();
+  const { data: alerts, isPending, isError, isFetching, refetch } = useNotifications();
   const markRead = useMarkRead();
   const markAll = useMarkAllRead();
 
@@ -47,12 +58,13 @@ export function AlertsPage() {
         }
       />
 
-      <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: tokens.space.lg,
-          gap: tokens.space.md,
-          paddingBottom: tokens.layout.tabBarClearance,
-        }}
+      {/* Pull to refresh: the one gesture an iOS customer tries first, and it did nothing on this screen. */}
+      <ScreenScroll
+        padded={false}
+        gap={tokens.space.md}
+        onRefresh={() => void refetch()}
+        refreshing={isFetching && !isPending}
+        contentContainerStyle={{ paddingHorizontal: tokens.space.lg }}
       >
         {/* "Nothing new" is a claim about the alerts, and it can only be made once they have been counted.
             It also appeared *while they were still loading* — the feed said "Nothing new" above three
@@ -104,7 +116,7 @@ export function AlertsPage() {
             </Box>
           );
         })}
-      </ScrollView>
+      </ScreenScroll>
     </Screen>
   );
 }

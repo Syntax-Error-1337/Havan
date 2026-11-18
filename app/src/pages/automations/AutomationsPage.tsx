@@ -55,7 +55,7 @@ export function AutomationsPage() {
   return (
     <Screen>
       {sheet}
-      <ScreenScroll gap={tokens.space.md}>
+      <ScreenScroll gap={tokens.space.md} onRefresh={() => void refetch()}>
         {/* At 200% zoom a 195-point row cannot hold a display-size title and a button side by side; wrapping
             puts the button underneath instead of past the right edge. */}
         <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 8 }}>

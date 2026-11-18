@@ -125,7 +125,7 @@ export function ScenesPage() {
           tab bar's Automations destination, and the only exit was the platform's own gesture. */}
       <ScreenHeader title="Scenes" />
       {/* The shared body: bottom clearance, taps that land while the keyboard is up, and avoidance. */}
-      <ScreenScroll gap={tokens.space.md}>
+      <ScreenScroll gap={tokens.space.md} onRefresh={() => void refetch()}>
         <Box gap="xs">
           <AppText variant="caption" tone="muted">
             One press, several devices. A scene cannot be scheduled — that is what automations are for.

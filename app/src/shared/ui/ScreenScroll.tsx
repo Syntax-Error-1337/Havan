@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, type ScrollViewProps } from 'react-native';
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, type ScrollViewProps } from 'react-native';
 
-import { tokens } from '../../app-shell/theme';
+import { tokens, useTheme } from '../../app-shell/theme';
 
 /**
  * A scrolling screen body that behaves correctly on a phone.
@@ -26,8 +26,18 @@ export function ScreenScroll({
   paddingTop,
   style,
   avoidKeyboard = true,
+  onRefresh,
+  refreshing = false,
+  contentContainerStyle,
   ...rest
 }: ScrollViewProps & {
+  /**
+   * Pull to refresh. The dashboard had it and every other list did not, so the one gesture an iOS customer
+   * tries first did nothing on four screens — which reads as "this list is stuck" rather than "this list does
+   * not refresh that way".
+   */
+  onRefresh?: () => void;
+  refreshing?: boolean;
   children: ReactNode;
   /** Whether the body gets the standard 16-point gutter. Off for a screen that draws edge-to-edge sections. */
   padded?: boolean;
@@ -37,18 +47,36 @@ export function ScreenScroll({
   /** Turn off for a body with no inputs: the wrapper is not free, and a static screen never needs it. */
   avoidKeyboard?: boolean;
 }) {
+  const { color } = useTheme();
   const scroll = (
     <ScrollView
+      testID="screen-scroll"
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={color.muted}
+            colors={[color.accent]}
+            progressBackgroundColor={color.surface}
+          />
+        ) : undefined
+      }
       // `handled`, not `always`: a tap on a button must land, and a tap on empty space should still dismiss.
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{
-        paddingTop: paddingTop ?? (padded ? tokens.space.lg : 0),
-        paddingHorizontal: padded ? tokens.space.lg : 0,
-        paddingBottom: tokens.layout.tabBarClearance,
-        gap,
-      }}
+      // Merged, not replaced: a caller adds its own horizontal inset, and a caller's object that arrived
+      // *after* this one silently dropped the tab-bar clearance — the list then ended under the floating bar.
+      contentContainerStyle={[
+        {
+          paddingTop: paddingTop ?? (padded ? tokens.space.lg : 0),
+          paddingHorizontal: padded ? tokens.space.lg : 0,
+          paddingBottom: tokens.layout.tabBarClearance,
+          gap,
+        },
+        contentContainerStyle,
+      ]}
       style={style}
       {...rest}
     >
