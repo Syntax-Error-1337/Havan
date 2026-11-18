@@ -224,17 +224,27 @@ fn map_point(row: PointRow) -> (Uuid, Point) {
 }
 
 impl DeviceRepo for PgDevices {
-    async fn list_for_home(&self, home_id: Uuid, user_id: Uuid) -> Result<Vec<Device>, AppError> {
+    async fn list_for_home(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        search: Option<&str>,
+    ) -> Result<Vec<Device>, AppError> {
         let mut tx = self.pg.scoped(&ctx_for(user_id)).await?;
 
+        // `search` narrows in SQL rather than in the client, because the client only holds one page: a home
+        // with 1,200 devices showed 200 of them, and a serial on page four "did not exist". The trigram
+        // indexes from migration 0041 make `%substring%` an index probe.
         let rows = sqlx::query_as::<_, DeviceRow>(&format!(
             r#"SELECT {DEVICE_COLUMNS}
                FROM devices d
                LEFT JOIN rooms r ON r.id = d.room_id
                WHERE d.home_id = $1
+                 AND ($2::text IS NULL OR d.serial ILIKE '%' || $2 || '%' OR d.name ILIKE '%' || $2 || '%')
                ORDER BY r.sort NULLS FIRST, d.name"#
         ))
         .bind(home_id)
+        .bind(search)
         .fetch_all(&mut *tx)
         .await
         .map_err(db)?;
@@ -246,9 +256,11 @@ impl DeviceRepo for PgDevices {
                FROM device_points dp
                JOIN devices d ON d.id = dp.device_id
                WHERE d.home_id = $1
+                 AND ($2::text IS NULL OR d.serial ILIKE '%' || $2 || '%' OR d.name ILIKE '%' || $2 || '%')
                ORDER BY dp.code"#,
         )
         .bind(home_id)
+        .bind(search)
         .fetch_all(&mut *tx)
         .await
         .map_err(db)?;

@@ -4,6 +4,7 @@ export { PointControl, controlFor, PillSwitch, titleFor } from './ui/controls';
 export {
   useDevices,
   useDevice,
+  useDeviceSearch,
   useRemoveDevice,
   useRenameDevice,
   useSetPoint,

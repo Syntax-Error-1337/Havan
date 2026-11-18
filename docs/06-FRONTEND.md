@@ -152,6 +152,29 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### A search that only searched the page
+
+The dashboard's search filtered the devices it had **loaded**. On the 1,200-device demo home that is 200 of them,
+so a serial on page six "did not exist" — and the empty state said *"200 devices in this home"*, a claim about the
+house made from one page of it.
+
+Three fixes, in the order they matter:
+
+- **The server searches the home.** `/devices?home_id=…&q=…` takes the query and narrows in SQL
+  (`serial ILIKE … OR name ILIKE …`), which is an index probe because migration 0041 added the trigram indexes for
+  exactly this. The dashboard asks it when the home is bigger than what it has loaded, debounced at 250 ms, and
+  merges the answer with the loaded pages by id.
+- **The search box matches the serial.** `matchesQuery` looked at name, room, category and product key — not the
+  number printed on the bottom of the device, which is the first thing a person reads to support. The server
+  found it and the client filter then discarded it, which is how the two halves disagreed.
+- **The counts tell the truth.** `1 in 1,200 devices` when a query has been searched across the house;
+  `N of 200 loaded` when it has not; and the empty state says *"No match in the 200 loaded of 1,200 in this home.
+  Load the rest below to search them."*
+
+Verified live against the 1,200-device home at 390×844: typing `HUGE-01199` — a device that is not in the loaded
+200 — returns **Sensor 1199** with the count `1 in 1,200 devices`. Without the server search the same query showed
+`0 of 200 loaded` and "Nothing matches".
+
 ### The gesture that did nothing
 
 The dashboard had pull-to-refresh; **alerts, automations, scenes and the home switcher did not**. On iOS that is

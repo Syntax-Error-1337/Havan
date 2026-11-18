@@ -24,6 +24,9 @@ pub fn router() -> Router<AppState> {
 #[derive(Deserialize)]
 struct ListQuery {
     home_id: Uuid,
+    /// Narrows to devices whose name or serial contains this. The client's own search only sees the pages it
+    /// has loaded, which on a large home is a fraction of the house.
+    q: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -50,7 +53,7 @@ async fn list(
     Ok(Json(
         state
             .devices
-            .list(q.home_id, auth.user.id)
+            .list(q.home_id, auth.user.id, q.q)
             .await
             .map_err(ApiError)?,
     ))

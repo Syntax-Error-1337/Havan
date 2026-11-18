@@ -10,6 +10,8 @@ import type { Device } from '../../entities/device';
  *
  * What it matches, in order of how people actually type:
  * - the device's name ("floor lamp")
+ * - **its serial**, which is what is printed on the thing in the customer's hand and the first thing support
+ *   asks for — it was missing, so a serial typed into the box matched nothing even when the device was loaded
  * - the room it is in ("bedroom")
  * - its category ("light", "sensor") — a word people use, unlike `hv_acme_bulb1`
  *
@@ -25,7 +27,7 @@ export function matchesQuery(device: Device, query: string): boolean {
     .split(/\s+/)
     .filter(Boolean)
     .every((word) =>
-      [device.name, device.room_name ?? '', device.category, device.product_key]
+      [device.name, device.serial ?? '', device.room_name ?? '', device.category, device.product_key]
         .map(fold)
         .some((haystack) => haystack.includes(word)),
     );

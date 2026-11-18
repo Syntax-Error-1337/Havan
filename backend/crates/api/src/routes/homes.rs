@@ -351,7 +351,7 @@ async fn dashboard(
         None => (
             state
                 .devices
-                .list(id, auth.user.id)
+                .list(id, auth.user.id, None)
                 .await
                 .map_err(ApiError)?,
             None,

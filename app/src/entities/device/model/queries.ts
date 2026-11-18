@@ -16,6 +16,25 @@ export function useDevices(homeId: string | undefined) {
   });
 }
 
+/**
+ * Devices in this home whose name or serial contains `query`, searched on the server.
+ *
+ * The dashboard's own filter runs over the pages it has loaded. On a home of 1,200 devices that is 200 of them,
+ * so a serial on page four "did not exist" — the customer's only evidence being an empty screen. The server has
+ * trigram indexes for exactly this (migration 0041), and this asks it.
+ */
+export function useDeviceSearch(homeId: string | undefined, query: string) {
+  const needle = query.trim();
+  return useQuery({
+    queryKey: [...qk.devices(homeId ?? 'none'), 'search', needle],
+    enabled: Boolean(homeId) && needle.length >= 2,
+    queryFn: () =>
+      request<Device[]>(`/devices?home_id=${homeId}&q=${encodeURIComponent(needle)}`),
+    // A typed query changes faster than a request should; the dashboard debounces before calling this.
+    staleTime: 10_000,
+  });
+}
+
 export function useDevice(id: string | undefined) {
   return useQuery({
     queryKey: qk.device(id ?? 'none'),

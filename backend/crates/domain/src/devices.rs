@@ -213,6 +213,7 @@ pub trait DeviceRepo {
         &self,
         home_id: Uuid,
         user_id: Uuid,
+        search: Option<&str>,
     ) -> impl Future<Output = Result<Vec<Device>, AppError>> + Send;
 
     /// One page of a home's devices, in the order the home screen draws them.
@@ -244,7 +245,7 @@ pub trait DeviceRepo {
         Self: Sync,
     {
         async move {
-            let all = self.list_for_home(home_id, user_id).await?;
+            let all = self.list_for_home(home_id, user_id, None).await?;
             let total = all.len() as i64;
             let start = after
                 .as_ref()
@@ -405,9 +406,27 @@ where
         }
     }
 
-    pub async fn list(&self, home_id: Uuid, user_id: Uuid) -> Result<Vec<Device>, AppError> {
+    pub async fn list(
+        &self,
+        home_id: Uuid,
+        user_id: Uuid,
+        search: Option<String>,
+    ) -> Result<Vec<Device>, AppError> {
         self.homes.require(home_id, user_id).await?;
-        self.devices.list_for_home(home_id, user_id).await
+        // Sanitised here, like the fleet screen's: `%` and `_` are wildcards, and a customer typing a serial
+        // with an underscore in it must not turn their search into a pattern.
+        let needle = search
+            .as_deref()
+            .map(|raw| raw.trim().chars().take(64).collect::<String>())
+            .filter(|raw| !raw.is_empty())
+            .map(|raw| {
+                raw.replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_")
+            });
+        self.devices
+            .list_for_home(home_id, user_id, needle.as_deref())
+            .await
     }
 
     /// One page, with the home check first so a stranger learns nothing about the page size.
@@ -737,13 +756,27 @@ mod tests {
     }
 
     impl DeviceRepo for FakeDevices {
-        async fn list_for_home(&self, home_id: Uuid, _user: Uuid) -> Result<Vec<Device>, AppError> {
+        async fn list_for_home(
+            &self,
+            home_id: Uuid,
+            _user: Uuid,
+            search: Option<&str>,
+        ) -> Result<Vec<Device>, AppError> {
+            // The fake honours the query the same way the SQL does — case-insensitive contains on name or
+            // serial — so a service test cannot pass on a search the repository would have applied.
+            let needle = search.map(str::to_lowercase);
             Ok(self
                 .devices
                 .lock()
                 .unwrap()
                 .iter()
                 .filter(|d| d.home_id == Some(home_id))
+                .filter(|d| match &needle {
+                    None => true,
+                    Some(q) => {
+                        d.name.to_lowercase().contains(q) || d.serial.to_lowercase().contains(q)
+                    }
+                })
                 .cloned()
                 .collect())
         }
@@ -868,7 +901,7 @@ mod tests {
     #[tokio::test]
     async fn a_member_sees_the_home_devices() {
         let f = fixture();
-        assert_eq!(f.svc.list(f.home, f.member).await.unwrap().len(), 1);
+        assert_eq!(f.svc.list(f.home, f.member, None).await.unwrap().len(), 1);
     }
 
     /// The reading's own clock has to reach the client, or a screen can only ask whether the *device* is
@@ -929,7 +962,7 @@ mod tests {
     async fn unclaim_detaches_the_device_from_the_home() {
         let f = fixture();
         f.svc.unclaim(f.device, f.owner).await.unwrap();
-        assert!(f.svc.list(f.home, f.owner).await.unwrap().is_empty());
+        assert!(f.svc.list(f.home, f.owner, None).await.unwrap().is_empty());
     }
 
     #[tokio::test]

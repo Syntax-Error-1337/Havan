@@ -14,7 +14,8 @@ import {
   QueryError,
   useActionSheet,
 } from '../../shared/ui';
-import { DeviceTile } from '../../entities/device';
+import { DeviceTile, useDeviceSearch } from '../../entities/device';
+import { useDebounced } from '../../shared/lib/useDebounced';
 import { summarise } from '../../entities/device/model/summary';
 import {
   DEVICE_PAGE_MAX,
@@ -184,9 +185,23 @@ export function DashboardPage() {
   const [homeNameTyped, setHomeNameTyped] = useState('');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
-  const categories = useMemo(() => categoriesOf(devices), [devices]);
-  const filtered = useMemo(() => filterDevices(devices, query, category), [devices, query, category]);
   const filtering = query.trim().length > 0 || category !== null;
+
+  const categories = useMemo(() => categoriesOf(devices), [devices]);
+  const settleQuery = useDebounced(query.trim(), 250);
+  // A home bigger than one page: the in-memory filter only knows what has been loaded, so the server is asked
+  // as well and the two answers are merged. `useDebounced` keeps that from being one request per keystroke.
+  const searchingServer = devices.length < (dashboard?.devices_total ?? devices.length);
+  const remote = useDeviceSearch(homeId ?? undefined, searchingServer ? settleQuery : '');
+  const searchable = useMemo(() => {
+    if (!searchingServer || !remote.data?.length) return devices;
+    const seen = new Set(devices.map((d) => d.id));
+    return [...devices, ...remote.data.filter((d: (typeof devices)[number]) => !seen.has(d.id))];
+  }, [devices, remote.data, searchingServer]);
+  const filtered = useMemo(
+    () => filterDevices(searchable, query, category),
+    [searchable, query, category],
+  );
   /// A search box and category chips on a home with nothing in it are controls that can only fail.
   const filterable = devices.length > 0;
 
@@ -476,8 +491,16 @@ export function DashboardPage() {
               </ScrollView>) : null}
 
               {filtering ? (
+                // "of 200 devices" was the *loaded* page on a home with 1,200 in it: the count claimed the
+                // search had covered the house when it had covered a tenth of it.
                 <AppText variant="tiny" tone="muted" testID="search-count">
-                  {filtered.length} of {devices.length} device{devices.length === 1 ? '' : 's'}
+                  {devices.length < totalDevices
+                    ? query.trim().length >= 2
+                      ? // A typed query searched the whole home on the server, so the honest denominator is
+                        // the house, not the page that happens to be loaded.
+                        `${filtered.length} in ${totalDevices.toLocaleString()} devices`
+                      : `${filtered.length} of ${devices.length.toLocaleString()} loaded`
+                    : `${filtered.length} of ${devices.length.toLocaleString()} device${devices.length === 1 ? '' : 's'}`}
                 </AppText>
               ) : null}
 
@@ -554,8 +577,11 @@ export function DashboardPage() {
                 Nothing matches
               </AppText>
               <AppText tone="muted" style={{ textAlign: 'center' }}>
-                {devices.length} device{devices.length === 1 ? '' : 's'} in this home. Try a room, a
-                name, or a kind of device.
+                {devices.length < totalDevices
+                  ? // On a home bigger than one page, "nothing matches" is only true of what has been
+                    // loaded — and the thing they are looking for is probably in the rest.
+                    `No match in the ${devices.length.toLocaleString()} loaded of ${totalDevices.toLocaleString()} in this home. Load the rest below to search them.`
+                  : `${devices.length} device${devices.length === 1 ? '' : 's'} in this home. Try a room, a name, or a kind of device.`}
               </AppText>
               <Pressable
                 accessibilityRole="button"

@@ -32,6 +32,13 @@ describe('device search', () => {
     expect(matchesQuery(lamp, 'bedroom')).toBe(false);
   });
 
+  it('finds by serial, which is what is printed on the device and what support asks for', () => {
+    // The serial was not in the haystack: a customer typing the number off the bottom of a bulb got nothing,
+    // on a device that was on the screen behind the search box.
+    expect(matchesQuery(device({ id: 'x', serial: 'HUGE-01199' }), 'HUGE-01199')).toBe(true);
+    expect(matchesQuery(device({ id: 'y', serial: 'HUGE-01199' }), '01199')).toBe(true);
+  });
+
   it('finds by the room a device is in, which is how people describe it', () => {
     expect(matchesQuery(sensor, 'bedroom')).toBe(true);
     expect(matchesQuery(lamp, 'living')).toBe(true);
