@@ -152,6 +152,35 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### Where the home is, and why it is asked for
+
+Last pass left a hole stated plainly: the engine's sun conditions need `homes.geo_lat`/`geo_lon`, the API has accepted
+them for months, and **the app had no way to set them** — so "after sunset" was unreachable on any home a customer
+created. Settings → Home now has a **Location** row: `Not set` until it is, then `51.5074, -0.1278` at four decimal
+places (about eleven metres — far more precision than a sunrise needs, far less noise than the float the API
+returns).
+
+Decisions:
+
+- **Two fields, not a map.** A map is a dependency and a location permission for a setting most customers never
+  open. What the inline editor owes instead is honesty: a title, a helper line (*"Decimal degrees. Sunrise and
+  sunset rules read this."*), a range that explains itself on error, and Cancel/Save drawn as the app's buttons.
+- **Empty means clear.** A customer who moves house can say "not any more"; the paired `null`s go in one request.
+- **One half of a pair is refused before the round trip** — `parseLocation` returns `'invalid'`, the service would
+  answer 400 anyway.
+- **`90` and `180` are accepted.** The poles and the date line are places, and an off-by-one there is a bug in the
+  form, not in the customer.
+
+Review-driven corrections, all from the first screenshot: the editor had **no title** (two fields appeared between
+"Time zone" and "Devices" with nothing to say what Cancel would cancel); its labels used the screen's all-caps
+*section header* treatment, so LATITUDE read as a heading rather than a field; and Cancel was a bare grey word in
+the card's footer, which reads as disabled. Now: a bold **Location** title, sentence-case labels, and the app's
+`Button` pair. Scored **8.5/10** from 6.
+
+Verified live, as a chain rather than three screens: `Not set` → typed `51.5074 / -0.1278` → Save → row reads
+`51.5074, -0.1278` → open `/automations` → *New rule* → the **Only if** row now offers *After sunset* and *After
+sunrise*, and the "this home has no location" hint is gone. The demo home carries those coordinates from here on.
+
 ### The half of a rule nobody could write
 
 The engine has evaluated `Condition::Present`, `TimeOfDay`, `Solar` and `DeviceState` since the first version — and

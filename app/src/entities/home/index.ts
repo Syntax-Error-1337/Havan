@@ -1,4 +1,4 @@
-export { useHomes, useCreateHome, useRenameHome, useSetTimeZone } from './model/queries';
+export { useHomes, useCreateHome, useRenameHome, useSetLocation, useSetTimeZone } from './model/queries';
 export { useCurrentHome } from './model/current';
 export {
   useRooms,
@@ -15,4 +15,4 @@ export {
   type Dashboard,
 } from './model/dashboard';
 export { useSetPresence } from './model/presence';
-export { canManage, type Home, type Role } from './model/types';
+export { canManage, formatLocation, parseLocation, type Home, type Role } from './model/types';

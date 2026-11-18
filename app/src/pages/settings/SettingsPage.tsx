@@ -2,10 +2,17 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { canManage, useCurrentHome } from '../../entities/home';
+import {
+  canManage,
+  formatLocation,
+  parseLocation,
+  useCurrentHome,
+  type Home,
+} from '../../entities/home';
 import {
   Box,
   AppText,
+  Button,
   Row,
   Screen,
   ScreenHeader,
@@ -25,6 +32,7 @@ import {
   useRenameHome,
   useRenameRoom,
   useRooms,
+  useSetLocation,
   useSetTimeZone,
 } from '../../entities/home';
 import { deviceTimeZone } from '../../shared/lib/timeZone';
@@ -49,6 +57,7 @@ export function SettingsPage() {
   const appearance = usePreferences((s) => s.appearance);
   const setAppearance = usePreferences((s) => s.setAppearance);
   const setTimeZone = useSetTimeZone();
+  const setLocation = useSetLocation();
 
   const { homeId } = useCurrentHome();
   const signOut = useSession((s) => s.signOut);
@@ -151,6 +160,21 @@ export function SettingsPage() {
                 : 'That timezone was not accepted.'}
             </AppText>
           ) : null}
+
+          {/* Where the home is. Optional, and the only reason it is asked for is the rules that talk about the
+              sun: without coordinates the engine's Solar condition is `false` forever, so the rule editor does
+              not offer "after sunset" at all. */}
+          <LocationRow
+            home={home}
+            saving={setLocation.isPending}
+            error={
+              setLocation.error instanceof Error ? setLocation.error.message : null
+            }
+            onSave={(next) => {
+              if (!home) return;
+              setLocation.mutate({ id: home.id, lat: next?.lat ?? null, lon: next?.lon ?? null });
+            }}
+          />
           {/* `home.role` is not in the payload, so the rule comes from the homes list. */}
           {/* `devices.length` is a *page* of the dashboard's cursor, and on this screen the query often
               answers with none of it — so a six-device home said "Devices 0". The total is the only count
@@ -288,6 +312,125 @@ export function SettingsPage() {
 }
 
 /** A row that becomes an input when tapped, and saves on Return or the Save button. */
+/**
+ * Latitude and longitude, in two fields nobody enjoys.
+ *
+ * The alternative — a map — is a dependency and a permission for a setting that half the customers never open.
+ * What this owes the person instead is honesty: what it is for, what a value looks like, and what happens if
+ * they type nonsense. Empty means "clear it", so a customer who moves house can.
+ */
+function LocationRow({
+  home,
+  saving,
+  error,
+  onSave,
+}: {
+  home: Home | undefined;
+  saving: boolean;
+  error: string | null;
+  onSave: (next: { lat: number; lon: number } | null) => void;
+}) {
+  const { color } = useTheme();
+  const [editing, setEditing] = useState(false);
+  const [lat, setLat] = useState('');
+  const [lon, setLon] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const current = formatLocation(home?.geo_lat, home?.geo_lon);
+
+  const save = () => {
+    const parsed = parseLocation(lat, lon);
+    if (parsed === 'invalid') {
+      setProblem('Latitude runs −90 to 90 and longitude −180 to 180. Leave both empty to clear.');
+      return;
+    }
+    setProblem(null);
+    setEditing(false);
+    onSave(parsed);
+  };
+
+  if (!editing) {
+    return (
+      <Row
+        title="Location"
+        subtitle="Used by sunrise and sunset rules"
+        value={current}
+        onPress={() => {
+          setLat(home?.geo_lat != null ? String(home.geo_lat) : '');
+          setLon(home?.geo_lon != null ? String(home.geo_lon) : '');
+          setProblem(null);
+          setEditing(true);
+        }}
+      />
+    );
+  }
+
+  return (
+    <Box gap="sm" p="md">
+      {/* The editor had no title of its own, so two fields appeared between "Time zone" and "Devices" with no
+          statement of what they belonged to or what Cancel would cancel. */}
+      <AppText weight="600">Location</AppText>
+      <AppText variant="tiny" tone="muted">
+        Decimal degrees. Sunrise and sunset rules read this.
+      </AppText>
+      {[
+        { label: 'Latitude', value: lat, set: setLat, placeholder: '51.5074' },
+        { label: 'Longitude', value: lon, set: setLon, placeholder: '-0.1278' },
+      ].map((field) => (
+        <Box key={field.label} gap="xs">
+          {/* Sentence case: all-caps with letter spacing is this screen's *section header* treatment, and the
+              first version gave the field labels the same voice as ACCOUNT and HOME. */}
+          <AppText variant="tiny" tone="muted">
+            {field.label}
+          </AppText>
+          <TextInput
+            value={field.value}
+            onChangeText={field.set}
+            placeholder={field.placeholder}
+            placeholderTextColor={color.placeholder}
+            keyboardType="numbers-and-punctuation"
+            autoCorrect={false}
+            accessibilityLabel={field.label.toLowerCase()}
+            style={{
+              backgroundColor: color.elevated,
+              borderWidth: 1,
+              borderColor: color.border,
+              borderRadius: tokens.radius.md,
+              padding: tokens.space.md,
+              color: color.text,
+              fontSize: tokens.font.body,
+            }}
+          />
+        </Box>
+      ))}
+      {problem ? (
+        <AppText variant="tiny" tone="danger">
+          {problem}
+        </AppText>
+      ) : null}
+      {error ? (
+        <AppText variant="tiny" tone="danger">
+          {error}
+        </AppText>
+      ) : null}
+      {/* Real buttons, not two words at the end of a field: a grey "Cancel" in the card's footer reads as
+          disabled, and the app already has one way to draw an action. */}
+      <Box row gap="sm" style={{ marginTop: tokens.space.xs }}>
+        <Button
+          label="Cancel"
+          variant="ghost"
+          style={{ flex: 1 }}
+          onPress={() => {
+            setEditing(false);
+            setProblem(null);
+          }}
+        />
+        <Button label="Save" style={{ flex: 1 }} loading={saving} onPress={save} />
+      </Box>
+    </Box>
+  );
+}
+
 function EditableRow({
   title,
   value,

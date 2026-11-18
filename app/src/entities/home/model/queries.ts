@@ -41,6 +41,27 @@ export function useSetTimeZone() {
   });
 }
 
+/**
+ * Where the home is, for the rules that talk about sunrise and sunset.
+ *
+ * `null` clears it: both coordinates are sent as null together, because the service refuses a location with only
+ * one of them — and a customer who moves house should be able to say "not any more".
+ */
+export function useSetLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; lat: number | null; lon: number | null }) =>
+      request<void>(`/homes/${input.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ geo_lat: input.lat, geo_lon: input.lon }),
+      }),
+    onSuccess: (_data, input) => {
+      void qc.invalidateQueries({ queryKey: qk.homes });
+      void qc.invalidateQueries({ queryKey: qk.dashboard(input.id) });
+    },
+  });
+}
+
 export function useRenameHome() {
   const qc = useQueryClient();
   return useMutation({
