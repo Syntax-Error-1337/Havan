@@ -256,3 +256,97 @@ async fn signing_up_joins_the_homes_that_invited_the_address() {
         .expect("json");
     assert_eq!(pending.as_array().map(|p| p.len()), Some(0));
 }
+
+/// Tenancy on the invitation list itself.
+///
+/// The token is the interesting secret in this flow, and the routes that reveal it are the admin ones. Two properties,
+/// both of which are one missing `WHERE home_id` away from being false: a member of another house cannot read the list,
+/// and cannot withdraw an invitation out of it. The second matters more — a stray `DELETE` that answered 204 while
+/// accepting any id would let any signed-in person cancel anybody's invitation if they had seen the id once.
+#[tokio::test]
+async fn another_house_cannot_read_or_withdraw_an_invitation() {
+    let Some((base, _state)) = boot().await else {
+        eprintln!("skipping: TEST_DATABASE_URL / TEST_REDIS_URL not set");
+        return;
+    };
+    let client = reqwest::Client::new();
+
+    let owner = register(&base, &format!("owner4-{}@haven.dev", Uuid::now_v7())).await;
+    let home_id = home(&base, &owner).await;
+    let invited: serde_json::Value = client
+        .post(format!("{base}/v1/homes/{home_id}/members"))
+        .bearer_auth(&owner)
+        .json(&serde_json::json!({ "email": format!("guest4-{}@haven.dev", Uuid::now_v7()), "role": "member" }))
+        .send()
+        .await
+        .expect("invite")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(invited["outcome"], "invited");
+
+    // The route answers a bare array of invitations, not an envelope.
+    let pending: serde_json::Value = client
+        .get(format!("{base}/v1/homes/{home_id}/invitations"))
+        .bearer_auth(&owner)
+        .send()
+        .await
+        .expect("list")
+        .json()
+        .await
+        .expect("json");
+    let invitation_id = pending[0]["id"].as_str().expect("id").to_string();
+
+    // Somebody from a different house, with a perfectly valid session.
+    let stranger = register(&base, &format!("stranger4-{}@haven.dev", Uuid::now_v7())).await;
+    let home_of_their_own = home(&base, &stranger).await;
+    assert_ne!(home_of_their_own, home_id);
+
+    let peek = client
+        .get(format!("{base}/v1/homes/{home_id}/invitations"))
+        .bearer_auth(&stranger)
+        .send()
+        .await
+        .expect("peek");
+    // 404 rather than 403: the refusal should not confirm that the house exists to somebody outside it.
+    assert!(
+        matches!(peek.status().as_u16(), 403 | 404),
+        "another house's invitations are not readable, got {}",
+        peek.status()
+    );
+
+    let withdraw = client
+        .delete(format!(
+            "{base}/v1/homes/{home_id}/invitations/{invitation_id}"
+        ))
+        .bearer_auth(&stranger)
+        .send()
+        .await
+        .expect("withdraw");
+    assert!(
+        matches!(withdraw.status().as_u16(), 403 | 404),
+        "expected a refusal, got {}",
+        withdraw.status()
+    );
+
+    // And it is still there for the house it belongs to — the refusal was a decision, not a side effect.
+    let still_pending: serde_json::Value = client
+        .get(format!("{base}/v1/homes/{home_id}/invitations"))
+        .bearer_auth(&owner)
+        .send()
+        .await
+        .expect("list")
+        .json()
+        .await
+        .expect("json");
+    let ids: Vec<String> = still_pending
+        .as_array()
+        .expect("array")
+        .iter()
+        .filter_map(|i| i["id"].as_str().map(str::to_string))
+        .collect();
+    assert!(
+        ids.contains(&invitation_id),
+        "the invitation survived the stranger"
+    );
+}
