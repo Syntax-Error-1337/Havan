@@ -108,6 +108,7 @@ impl AuditRepo for PgAudit {
         vendor_id: Uuid,
         before: Option<Uuid>,
         limit: i64,
+        filter: &domain::audit::AuditFilter,
     ) -> Result<Vec<AuditRow>, AppError> {
         let mut tx = self
             .pg
@@ -126,12 +127,18 @@ impl AuditRepo for PgAudit {
                 WHERE a.vendor_id = $1
                   AND ($2::uuid IS NULL
                        OR (a.ts, a.id) < (SELECT ts, id FROM audit_log WHERE id = $2))
+                  -- Exact action, because the values are a closed set the portal lists.
+                  AND ($4::text IS NULL OR a.action = $4)
+                  -- Part of an address, because the person asking usually has half a memory of it.
+                  AND ($5::text IS NULL OR u.email ILIKE '%' || $5 || '%')
                 ORDER BY a.ts DESC, a.id DESC
                 LIMIT $3"#,
         )
         .bind(vendor_id)
         .bind(before)
         .bind(limit)
+        .bind(filter.action.as_deref())
+        .bind(filter.actor.as_deref())
         .fetch_all(&mut *tx)
         .await
         .map_err(db)?;

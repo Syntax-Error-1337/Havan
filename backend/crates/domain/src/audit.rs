@@ -127,6 +127,40 @@ pub struct AuditPage {
     pub next_cursor: Option<String>,
 }
 
+/// What a reader is looking for in the trail.
+///
+/// A trail nobody can interrogate is a record, not evidence: "who revoked a key last Tuesday" was answered by reading
+/// every row since Tuesday. Each field narrows what is scanned; none of them changes what is stored.
+#[derive(Debug, Clone, Default)]
+pub struct AuditFilter {
+    /// Exact action, e.g. `api_key.revoked`. Exact rather than a substring because the values are a closed set the
+    /// portal offers as a list.
+    pub action: Option<String>,
+    /// Part of the actor's address. A substring, because the person asking usually has half a memory of it.
+    pub actor: Option<String>,
+}
+
+impl AuditFilter {
+    /// Trimmed and capped, so a filter cannot be made long enough to be a denial of service by hand.
+    pub fn clean(&self) -> Self {
+        let clean = |value: &Option<String>| {
+            value
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(|v| v.chars().take(120).collect::<String>())
+        };
+        Self {
+            action: clean(&self.action),
+            actor: clean(&self.actor),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.action.is_none() && self.actor.is_none()
+    }
+}
+
 pub trait AuditRepo {
     fn record(&self, entry: &AuditEntry) -> impl Future<Output = Result<(), AppError>> + Send;
 
@@ -135,6 +169,7 @@ pub trait AuditRepo {
         vendor_id: Uuid,
         before: Option<Uuid>,
         limit: i64,
+        filter: &AuditFilter,
     ) -> impl Future<Output = Result<Vec<AuditRow>, AppError>> + Send;
 
     /// The same page across every vendor, for the operator.
@@ -178,9 +213,14 @@ impl<R: AuditRepo + Send + Sync> AuditService<R> {
         vendor_id: Uuid,
         before: Option<Uuid>,
         limit: Option<i64>,
+        filter: &AuditFilter,
     ) -> Result<AuditPage, AppError> {
         let limit = limit.unwrap_or(50).clamp(1, 200);
-        let mut entries = self.repo.page(vendor_id, before, limit + 1).await?;
+        let filter = filter.clean();
+        let mut entries = self
+            .repo
+            .page(vendor_id, before, limit + 1, &filter)
+            .await?;
 
         let next_cursor = if i64::try_from(entries.len()).unwrap_or(0) > limit {
             entries.truncate(usize::try_from(limit).unwrap_or(50));
@@ -240,6 +280,7 @@ mod tests {
             _vendor_id: Uuid,
             _before: Option<Uuid>,
             limit: i64,
+            _filter: &AuditFilter,
         ) -> Result<Vec<AuditRow>, AppError> {
             Ok(self
                 .rows
@@ -287,7 +328,7 @@ mod tests {
             written: std::sync::Mutex::new(vec![]),
         }));
         let page = service
-            .page(Uuid::from_u128(9), None, Some(2))
+            .page(Uuid::from_u128(9), None, Some(2), &AuditFilter::default())
             .await
             .expect("page");
         assert_eq!(page.entries.len(), 2);
@@ -301,7 +342,7 @@ mod tests {
             written: std::sync::Mutex::new(vec![]),
         }));
         let page = service
-            .page(Uuid::from_u128(9), None, Some(2))
+            .page(Uuid::from_u128(9), None, Some(2), &AuditFilter::default())
             .await
             .expect("page");
         assert!(page.next_cursor.is_none());

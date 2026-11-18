@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { useAudit, type AuditEntry } from '../../entities/audit';
 import { TableFrame } from '../../shared/ui/TableFrame';
 
@@ -9,20 +11,19 @@ import { TableFrame } from '../../shared/ui/TableFrame';
  * rollout. Read-only on purpose — a trail you can edit from the UI is not a trail.
  */
 export function AuditPage() {
+  const [action, setAction] = useState('');
+  const [actor, setActor] = useState('');
+  // Trimmed on the way in: a filter of spaces is the same as no filter, and asking the server to scan for it is waste.
+  const filters = { action: action.trim() || undefined, actor: actor.trim() || undefined };
+  const narrowed = Boolean(filters.action || filters.actor);
+
   const { data, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
-    useAudit();
+    useAudit(filters);
 
   const entries = data?.pages.flatMap((p) => p.entries) ?? [];
 
-  if (isPending) return <p className="muted">Reading the trail…</p>;
-  if (error) {
-    return (
-      <div className="card">
-        <p className="error">{error.message}</p>
-        <button onClick={() => void refetch()}>Try again</button>
-      </div>
-    );
-  }
+  // Deliberately not an early return: a filter that unmounts the page while it loads takes the box the person is typing
+  // in with it, so every keystroke ended in "Reading the trail…" and a lost caret.
 
   return (
     <div>
@@ -31,7 +32,71 @@ export function AuditPage() {
         Newest first. Append-only: nothing here can be edited or deleted from the portal.
       </p>
 
-      {entries.length === 0 ? (
+      {/* Two filters, because the two questions are "what happened" and "who did it". An empty box is no filter: the
+          server sees the parameter only when there is something in it. */}
+      <div className="row" style={{ gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <label className="field" style={{ margin: 0 }}>
+          <span>Action</span>
+          <input
+            list="audit-actions"
+            value={action}
+            onChange={(e) => setAction(e.target.value)}
+            placeholder="api_key.revoked"
+            aria-label="Filter by action"
+            data-testid="audit-action"
+          />
+        </label>
+        <datalist id="audit-actions">
+          {/* Suggested from what the trail actually contains, not from a list in this file: a hardcoded set drifts the
+              first time a new action is added to the platform, and the field would offer yesterday's vocabulary. */}
+          {[...new Set(entries.map((entry) => entry.action))].sort().map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+        <label className="field" style={{ margin: 0 }}>
+          <span>Actor</span>
+          <input
+            value={actor}
+            onChange={(e) => setActor(e.target.value)}
+            placeholder="part of an email"
+            aria-label="Filter by actor"
+            data-testid="audit-actor"
+          />
+        </label>
+        {narrowed ? (
+          <button
+            className="btn"
+            onClick={() => {
+              setAction('');
+              setActor('');
+            }}
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+
+      {isPending ? <p className="muted">Reading the trail…</p> : null}
+
+      {error ? (
+        <div className="card">
+          <p className="error">{error.message}</p>
+          <button onClick={() => void refetch()}>Try again</button>
+        </div>
+      ) : null}
+
+      {!isPending && !error && entries.length === 0 && narrowed ? (
+        <div className="card">
+          <p className="muted">
+            Nothing matches {filters.action ? `the action ${filters.action}` : ''}
+            {filters.action && filters.actor ? ' for ' : ''}
+            {filters.actor ? `an actor containing “${filters.actor}”` : ''}. The trail is append-only — this is an
+            empty answer, not a missing one.
+          </p>
+        </div>
+      ) : null}
+
+      {!isPending && !error && entries.length === 0 && !narrowed ? (
         <div className="card">
           <p className="muted">
             Nothing recorded yet. Publishing a product, creating or revoking an API key and

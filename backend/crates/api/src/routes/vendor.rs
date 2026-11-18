@@ -412,6 +412,10 @@ async fn analytics(
 struct AuditQuery {
     limit: Option<i64>,
     cursor: Option<Uuid>,
+    /// Exact action, e.g. `api_key.revoked`.
+    action: Option<String>,
+    /// Part of the actor's address.
+    actor: Option<String>,
 }
 
 async fn audit(
@@ -422,7 +426,15 @@ async fn audit(
     Ok(Json(
         state
             .audit
-            .page(vendor.vendor_id, q.cursor, q.limit)
+            .page(
+                vendor.vendor_id,
+                q.cursor,
+                q.limit,
+                &domain::audit::AuditFilter {
+                    action: q.action,
+                    actor: q.actor,
+                },
+            )
             .await
             .map_err(ApiError)?,
     ))

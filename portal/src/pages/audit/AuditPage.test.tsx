@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -110,5 +111,32 @@ describe('the target, named', () => {
     );
     // Nothing named: the kind and a short id still say which sort of thing changed.
     expect(targetLabel(entry({ target_kind: 'vendor_webhook', detail: {} }))).toMatch(/^vendor webhook /);
+  });
+});
+
+describe('narrowing the trail', () => {
+  it('sends the filters to the server, and says an empty answer is an answer', async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        urls.push(String(input));
+        return new Response(JSON.stringify({ entries: [], next_cursor: null }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+    );
+
+    renderPage();
+
+    await userEvent.type(await screen.findByTestId('audit-action'), 'api_key.revoked');
+    await vi.waitFor(() =>
+      expect(urls.some((u) => u.includes('action=api_key.revoked'))).toBe(true),
+    );
+
+    // An empty result under a filter must not read as "the trail is empty".
+    expect(await screen.findByText(/Nothing matches the action api_key\.revoked/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing recorded yet/)).toBeNull();
   });
 });

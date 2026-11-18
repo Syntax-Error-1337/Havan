@@ -1,1 +1,1 @@
-export { useAudit, type AuditEntry, type AuditPage } from './model/queries';
+export { useAudit, type AuditEntry, type AuditFilters, type AuditPage } from './model/queries';

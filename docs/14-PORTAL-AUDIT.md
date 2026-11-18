@@ -74,8 +74,23 @@ The trail answered "when" and "what action" and nothing else. A reviewer's first
 Old rows keep their old detail. There is no honest way to backfill what was never recorded, and inventing one would be
 worse than the gap.
 
-Still open on this screen: no filter by action or actor, no search, and no export — an auditor with a specific question
-still reads the whole feed.
+### Narrowing it (the iteration after)
+
+Two filters, because the two questions are "what happened" and "who did it": **Action** (exact — the values are a closed
+set, and the field suggests the ones the trail actually contains rather than a list hardcoded in the page) and **Actor**
+(part of an address, because the person asking usually has half a memory of it). Both are trimmed and capped in the
+domain, and both travel with the cursor — page two of `api_key.revoked` is the second page of that action, not the second
+page of everything.
+
+An empty answer under a filter says so: *"Nothing matches the action api_key.revoked … this is an empty answer, not a
+missing one."* The unfiltered empty state stays separate.
+
+Found while testing it: the page **returned early while loading**, which unmounted the filter box the moment it was typed
+into — every keystroke ended in "Reading the trail…" and a lost caret. The header and filters now stay put; only the list
+reports that it is reading.
+
+**Still open:** export. It wants a server-side CSV endpoint that honours the same filters, not a client-side dump of
+whatever happens to be loaded — the difference between an audit artefact and a screenshot of one.
 
 ## Team — found and fixed
 

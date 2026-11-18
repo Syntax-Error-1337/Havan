@@ -23,11 +23,34 @@ export type AuditPage = {
 };
 
 /** The vendor's own trail, newest first, a page at a time. Read-only by design. */
-export function useAudit() {
+export type AuditFilters = {
+  /** Exact action, from the closed set the trail actually contains. */
+  action?: string;
+  /** Part of an actor's address. */
+  actor?: string;
+};
+
+/**
+ * The trail, a page at a time, optionally narrowed.
+ *
+ * The filters travel with the cursor: page two of "webhook.created" is the second page of that action, not the second
+ * page of everything. They are part of the query key for the same reason — a filter that does not restart the list
+ * would append today's answers to yesterday's question.
+ */
+export function useAudit(filters: AuditFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.action) params.set('action', filters.action);
+  if (filters.actor) params.set('actor', filters.actor);
+  const narrowed = params.toString();
+
   return useInfiniteQuery({
-    queryKey: ['audit'],
-    queryFn: ({ pageParam }) =>
-      request<AuditPage>(`/vendor/audit${pageParam ? `?cursor=${pageParam}` : ''}`),
+    queryKey: ['audit', narrowed],
+    queryFn: ({ pageParam }) => {
+      const query = new URLSearchParams(narrowed);
+      if (pageParam) query.set('cursor', pageParam);
+      const qs = query.toString();
+      return request<AuditPage>(`/vendor/audit${qs ? `?${qs}` : ''}`);
+    },
     initialPageParam: null as string | null,
     getNextPageParam: (last: AuditPage) => last.next_cursor,
   });
