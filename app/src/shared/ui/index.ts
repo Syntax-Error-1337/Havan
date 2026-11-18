@@ -1,3 +1,4 @@
+export { BrandMark } from './BrandMark';
 export { Box, AppText } from './Box';
 export { Button } from './Button';
 export { AreaChart } from './AreaChart';

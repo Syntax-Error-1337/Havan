@@ -152,6 +152,28 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The first ninety seconds
+
+Every screen in the app had been photographed except the two a **new customer** meets first. Walking them as a real
+account (register → name the home → empty dashboard) found the weakest screen in the product:
+
+- **"Name your home" scored 6/10.** It had no mark — sign-in carried `HV Haven` and this screen, one tap later,
+  carried only a question, so the app appeared to change product at the moment of sign-up. And its field showed
+  `My home` as a **placeholder**, so pressing "Create home" created a home the customer had never seen: the screen's
+  outcome disagreed with its own field.
+- The exit — *"Use a different account"* — was a `paddingVertical` word with a hit slop, not a 44-point control.
+
+Now: the same **`BrandMark`** component as sign-in (extracted, because two copies of a mark is how a product starts
+looking like two products), the field **prefilled** with `My home` and text selected on focus (what it shows is what
+it creates), `tokens.color.placeholder` instead of the near-black `muted`, and a real 44-point exit.
+
+The regression test asserts `value === 'My home'` before typing — the placeholder version passed every existing test,
+because a placeholder is not a value and nothing was checking the difference. **9/10** after.
+
+The empty-home dashboard that follows scored **7/10** and stays as it is; its criticisms were Bluetooth-specific
+copy (accurate — this platform pairs over BLE, and the radar screen handles `denied`/`unsupported` itself) and a
+0-rooms home offering "add a room", which is the point of the screen.
+
 ### The people in the home
 
 The API has served `GET /homes/{id}/members`, invitations, role changes and removals since the first version. The app

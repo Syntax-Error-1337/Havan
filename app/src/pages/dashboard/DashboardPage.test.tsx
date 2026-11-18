@@ -81,6 +81,9 @@ describe('a brand-new account', () => {
     // By testID: the input sits inside a labelled wrapper, and `findByLabelText` may hand back the
     // wrapper, where `changeText` does nothing at all.
     const nameField = await view.findByTestId('first-home-name');
+    // Prefilled with the name it will create: as a placeholder, "Create home" quietly made a home called
+    // "My home" that the customer had never seen, and the screen's outcome disagreed with its own field.
+    expect(nameField.props.value).toBe('My home');
     fireEvent.changeText(nameField, 'Flat 3');
     await waitFor(() => expect(nameField.props.value).toBe('Flat 3'));
     fireEvent.press(view.getByText('Create home'));

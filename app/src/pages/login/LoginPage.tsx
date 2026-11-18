@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
-import { Box, Button, Screen, AppText } from '../../shared/ui';
+import { Box, BrandMark, Button, Screen, AppText } from '../../shared/ui';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useLogin, useRegister, useSession } from '../../entities/session';
 import { ApiError } from '../../shared/api/client';
@@ -50,26 +50,8 @@ export function LoginPage() {
         <Box flex={1} p="xl" gap="lg" style={{ justifyContent: 'center' }}>
           <Box gap="xs">
             {/* The sign-in screen is the first frame a customer sees, so it wears the operator's
-                name and initials rather than ours. */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: color.accent,
-                }}
-              >
-                <AppText variant="caption" weight="700" style={{ color: color.onAccent }}>
-                  {brand.logoText}
-                </AppText>
-              </View>
-              <AppText variant="display" weight="700">
-                {brand.productName}
-              </AppText>
-            </View>
+                name and initials rather than ours — and so does the first-run screen, from the same component. */}
+            <BrandMark />
             <AppText tone="muted">
               {mode === 'signin'
                 ? 'Sign in to control your home.'

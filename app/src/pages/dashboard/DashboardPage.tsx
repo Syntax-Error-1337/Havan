@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import {
   Box,
+  BrandMark,
   Button,
   Screen,
   AppText,
@@ -182,7 +183,9 @@ export function DashboardPage() {
   // Search is local: the dashboard already holds every device, so asking the network again would be
   // slower and would flicker the grid. The rail and the hero keep showing the *home* — a filter is a
   // question about the list, not a claim that the other devices stopped existing.
-  const [homeNameTyped, setHomeNameTyped] = useState('');
+  // Prefilled, not placeheld: "Create home" with an empty field quietly made a home called "My home", so the
+  // screen did something the customer had not seen. What the field shows is what gets created.
+  const [homeNameTyped, setHomeNameTyped] = useState('My home');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const filtering = query.trim().length > 0 || category !== null;
@@ -234,6 +237,9 @@ export function DashboardPage() {
     return (
       <Screen>
         <Box p="xl" gap="md" center flex={1}>
+          {/* The screen after "Create account" looked like a different product: sign-in carried the mark and this
+              one carried a question. */}
+          <BrandMark size={52} />
           <AppText variant="title" weight="600">
             Name your home
           </AppText>
@@ -247,7 +253,8 @@ export function DashboardPage() {
             value={homeNameTyped}
             onChangeText={setHomeNameTyped}
             placeholder="My home"
-            placeholderTextColor={color.muted}
+            placeholderTextColor={color.placeholder}
+            selectTextOnFocus
             accessibilityLabel="Home name"
             testID="first-home-name"
             autoFocus
@@ -284,8 +291,8 @@ export function DashboardPage() {
           <Pressable
             onPress={() => void signOut()}
             accessibilityRole="button"
-            hitSlop={10}
-            style={{ paddingVertical: tokens.space.sm }}
+            accessibilityLabel="Use a different account"
+            style={{ minHeight: tokens.touch.min, justifyContent: 'center' }}
           >
             <AppText variant="caption" tone="muted">
               Use a different account
