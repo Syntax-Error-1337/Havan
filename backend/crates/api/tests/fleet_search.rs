@@ -17,6 +17,8 @@ fn filter(q: &str) -> FleetFilter {
         state: None,
         cursor: None,
         limit: Some(50),
+        sort: None,
+        dir: None,
     }
 }
 

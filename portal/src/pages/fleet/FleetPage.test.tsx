@@ -188,3 +188,37 @@ describe('the last-seen column', () => {
     );
   });
 });
+
+describe('sorting', () => {
+  it('asks the server for the column, and turns the order round on a second press', async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      // One row, because the table is only drawn when there is something in it - and the header is what is being sorted.
+      const body = url.includes('/vendor/devices')
+        ? { devices: [device()], next_cursor: null }
+        : { devices: { total: 1, online: 0, bound: 1, unbound: 0 } };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('button', { name: /sort by serial/i }));
+    await waitFor(() =>
+      expect(urls.some((u) => u.includes('sort=serial') && u.includes('dir=asc'))).toBe(true),
+    );
+
+    // Serials read A-Z, so the first press is ascending; the second reverses it rather than asking again.
+    await userEvent.click(await screen.findByRole('button', { name: /sort by serial, ascending/i }));
+    await waitFor(() =>
+      expect(urls.some((u) => u.includes('sort=serial') && u.includes('dir=desc'))).toBe(true),
+    );
+
+    // The header says which way the table is ordered, which is the only way a screen reader can know.
+    expect(screen.getByRole('columnheader', { name: /serial/i }).getAttribute('aria-sort')).toBe('descending');
+  });
+});

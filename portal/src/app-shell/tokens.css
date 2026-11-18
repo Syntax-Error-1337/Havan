@@ -464,3 +464,51 @@ select.input {
     scroll-behavior: auto !important;
   }
 }
+
+/* A sortable column header: the whole cell is the target, and the arrow sits against the label rather than floating. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  color: var(--text);
+}
+
+.th-sort::after {
+  content: '↕';
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+/* The active column is the one the table is actually ordered by, and it has to be findable at a glance — not only by a
+   twelve-pixel arrow in a header whose colour is the same as its neighbours'. */
+th[aria-sort='ascending'] .th-sort,
+th[aria-sort='descending'] .th-sort {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The inactive arrows step back: three columns offering a sort must not out-shout the one that is applied. */
+th[aria-sort='none'] .th-sort::after {
+  opacity: 0.3;
+}
+
+th[aria-sort='ascending'] .th-sort::after {
+  content: '↑';
+  opacity: 1;
+  color: var(--accent);
+}
+
+th[aria-sort='descending'] .th-sort::after {
+  content: '↓';
+  opacity: 1;
+  color: var(--accent);
+}

@@ -30,6 +30,23 @@ export function FleetPage() {
   const { data: stats } = useFleetStats();
 
   const devices = data?.pages.flatMap((p) => p.devices) ?? [];
+
+  /**
+   * Change the order, and start again from the first page.
+   *
+   * The cursor is a position in one particular order — page two of "serial A–Z" is nothing like page two of "newest
+   * first" — so a sort change has to reset the list rather than page into the old one.
+   */
+  const sortBy = (column: 'serial' | 'name' | 'last_seen') => {
+    const current = filter.sort ?? 'created';
+    const descending = filter.dir ? filter.dir === 'desc' : current === 'created' || current === 'last_seen';
+    const nextDescending = current === column ? !descending : column === 'last_seen';
+    setFilter({
+      ...filter,
+      sort: column,
+      dir: nextDescending ? 'desc' : 'asc',
+    });
+  };
   const total = stats?.devices.total ?? devices.length;
 
   /**
@@ -169,12 +186,23 @@ export function FleetPage() {
   <table className="table">
             <thead>
               <tr>
-                <th>Serial</th>
+                <SortableHeader
+                  label="Serial"
+                  column="serial"
+                  filter={filter}
+                  onSort={sortBy}
+                />
                 <th>Product</th>
-                <th>Name</th>
+                <SortableHeader label="Name" column="name" filter={filter} onSort={sortBy} />
                 <th>Status</th>
                 <th>Firmware</th>
-                <th className="nowrap">Last seen</th>
+                <SortableHeader
+                  label="Last seen"
+                  column="last_seen"
+                  filter={filter}
+                  onSort={sortBy}
+                  className="nowrap"
+                />
               </tr>
             </thead>
             <tbody>
@@ -223,4 +251,48 @@ export function ago(iso: string): string {
   if (seconds < 3_600) return `${Math.round(seconds / 60)}m ago`;
   if (seconds < 86_400) return `${Math.round(seconds / 3_600)}h ago`;
   return `${Math.round(seconds / 86_400)}d ago`;
+}
+
+/**
+ * A column header that is also the control.
+ *
+ * `aria-sort` is the part that matters: a screen reader announces "sorted ascending" from the header, which is the only
+ * way a sortable table is usable without sight. The arrow is drawn with a character rather than an icon font because one
+ * glyph is not worth a dependency, and it is `aria-hidden` so it is not read out as "black up-pointing triangle".
+ */
+function SortableHeader({
+  label,
+  column,
+  filter,
+  onSort,
+  className,
+}: {
+  label: string;
+  column: 'serial' | 'name' | 'last_seen';
+  filter: FleetFilter;
+  onSort: (column: 'serial' | 'name' | 'last_seen') => void;
+  className?: string;
+}) {
+  const active = filter.sort === column;
+  const descending = active
+    ? filter.dir === 'desc'
+    : (filter.sort ?? 'created') === 'created' || (filter.sort ?? 'created') === 'last_seen';
+
+  return (
+    <th
+      className={className}
+      aria-sort={active ? (descending ? 'descending' : 'ascending') : 'none'}
+    >
+      <button
+        type="button"
+        className="th-sort"
+        onClick={() => onSort(column)}
+        aria-label={`Sort by ${label.toLowerCase()}${active ? (descending ? ', descending' : ', ascending') : ''}`}
+      >
+        {label}
+        {/* Drawn by CSS from `aria-sort`, not text: a header that copies out as "Serial↕" is a header whose glyph
+            leaked into the table, and the arrow depends on state rather than on the column. */}
+      </button>
+    </th>
+  );
 }

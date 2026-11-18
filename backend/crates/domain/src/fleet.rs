@@ -56,9 +56,81 @@ pub struct FleetFilter {
     pub state: Option<String>,
     pub cursor: Option<String>,
     pub limit: Option<i64>,
+    /// What the table is ordered by. Absent means "newest first", which is what the page did before it could sort.
+    pub sort: Option<String>,
+    /// `asc` or `desc`. Absent means the direction that field is usually read in.
+    pub dir: Option<String>,
+}
+
+/// The columns a fleet table can be ordered by.
+///
+/// A closed set, because the value ends up in an `ORDER BY`: an enum mapped to a literal is the difference between a
+/// sort and an injection, and there is no reason to accept a string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FleetSort {
+    /// When the serial was manufactured into the platform — the only "newest" a vendor has.
+    #[default]
+    Created,
+    Serial,
+    Name,
+    LastSeen,
+}
+
+impl FleetSort {
+    pub fn parse(raw: &str) -> Result<Self, AppError> {
+        match raw {
+            "created" => Ok(Self::Created),
+            "serial" => Ok(Self::Serial),
+            "name" => Ok(Self::Name),
+            "last_seen" => Ok(Self::LastSeen),
+            other => Err(AppError::validation(format!(
+                "unknown sort {other}: use created, serial, name or last_seen"
+            ))),
+        }
+    }
+
+    /// The expression the keyset compares and the page orders by, for one table alias.
+    ///
+    /// A device that has never reported has no `last_seen_at`; it sorts as older than any device that has, rather than
+    /// sinking the comparison to NULL. Without the `COALESCE` the whole tuple comparison goes NULL and every never-seen
+    /// device disappears from page two onwards.
+    ///
+    /// Takes the alias because the keyset needs the same expression twice — once for the row, once for the cursor row it
+    /// is compared against — and the two are different aliases of the same table.
+    pub fn expression(self, alias: &str) -> String {
+        match self {
+            Self::Created => format!("{alias}.created_at"),
+            Self::Serial => format!("{alias}.serial"),
+            Self::Name => format!("{alias}.name"),
+            Self::LastSeen => format!("COALESCE({alias}.last_seen_at, 'epoch'::timestamptz)"),
+        }
+    }
 }
 
 impl FleetFilter {
+    /// The order the caller asked for, validated.
+    pub fn sort(&self) -> Result<FleetSort, AppError> {
+        match self.sort.as_deref() {
+            None | Some("") => Ok(FleetSort::Created),
+            Some(raw) => FleetSort::parse(raw),
+        }
+    }
+
+    /// Descending unless the caller said otherwise.
+    ///
+    /// The default per field is the direction it is usually read in: serials and names ascend (A–Z), timestamps descend
+    /// (newest first). Asking for `serial` and getting Z–A would be a surprise dressed as consistency.
+    pub fn descending(&self) -> Result<bool, AppError> {
+        match self.dir.as_deref() {
+            None | Some("") => Ok(!matches!(self.sort()?, FleetSort::Serial | FleetSort::Name)),
+            Some("asc") => Ok(false),
+            Some("desc") => Ok(true),
+            Some(other) => Err(AppError::validation(format!(
+                "direction must be asc or desc, not {other}"
+            ))),
+        }
+    }
+
     pub fn limit(&self) -> i64 {
         self.limit.unwrap_or(50).clamp(1, 200)
     }
@@ -170,10 +242,93 @@ impl<R: FleetRepo + Send + Sync> FleetService<R> {
 /// is a `422` with a sentence instead of an empty page that looks like "no devices".
 pub fn validate(filter: &FleetFilter) -> Result<(), AppError> {
     match filter.state.as_deref() {
-        None | Some("online" | "offline" | "bound" | "unbound") => Ok(()),
-        Some(other) => Err(AppError::validation(format!(
-            "unknown state filter {other}: use online, offline, bound or unbound"
-        ))),
+        None | Some("online" | "offline" | "bound" | "unbound") => {}
+        Some(other) => {
+            return Err(AppError::validation(format!(
+                "unknown state filter {other}: use online, offline, bound or unbound"
+            )));
+        }
+    }
+    // Both are checked here as well as at the point of use: a bad `sort` should be a 422 that says which value is
+    // wrong, not a 500 when the query is built.
+    filter.sort()?;
+    filter.descending()?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod sort_tests {
+    use super::*;
+
+    #[test]
+    fn a_sort_column_is_a_closed_set_and_says_which_value_is_wrong() {
+        assert_eq!(
+            FleetFilter::default().sort().expect("default"),
+            FleetSort::Created
+        );
+        assert_eq!(
+            FleetFilter {
+                sort: Some("serial".into()),
+                ..Default::default()
+            }
+            .sort()
+            .expect("serial"),
+            FleetSort::Serial
+        );
+
+        // The value ends up in an ORDER BY, so an unknown one is refused rather than passed through.
+        let err = FleetFilter {
+            sort: Some("d.created_at; DROP TABLE devices".into()),
+            ..Default::default()
+        }
+        .sort()
+        .expect_err("must refuse");
+        assert!(err.public_message().contains("unknown sort"));
+    }
+
+    #[test]
+    fn the_default_direction_is_the_one_the_field_is_read_in() {
+        let desc = |sort: &str, dir: Option<&str>| {
+            FleetFilter {
+                sort: Some(sort.into()),
+                dir: dir.map(str::to_string),
+                ..Default::default()
+            }
+            .descending()
+            .expect("valid")
+        };
+
+        // Timestamps newest first, text A-Z: asking for `serial` and getting Z-A is a surprise dressed as consistency.
+        assert!(desc("created", None));
+        assert!(desc("last_seen", None));
+        assert!(!desc("serial", None));
+        assert!(!desc("name", None));
+
+        // And an explicit direction wins.
+        assert!(desc("serial", Some("desc")));
+        assert!(!desc("created", Some("asc")));
+    }
+
+    #[test]
+    fn an_unknown_direction_is_refused() {
+        let err = FleetFilter {
+            sort: Some("serial".into()),
+            dir: Some("sideways".into()),
+            ..Default::default()
+        }
+        .descending()
+        .expect_err("must refuse");
+        assert!(err.public_message().contains("asc or desc"));
+    }
+
+    #[test]
+    fn a_never_seen_device_still_has_an_ordering_value() {
+        // Without the COALESCE the tuple comparison goes NULL for these rows and they vanish from page two onwards.
+        assert_eq!(
+            FleetSort::LastSeen.expression("d"),
+            "COALESCE(d.last_seen_at, 'epoch'::timestamptz)"
+        );
+        assert!(FleetSort::Serial.expression("d2").starts_with("d2."));
     }
 }
 

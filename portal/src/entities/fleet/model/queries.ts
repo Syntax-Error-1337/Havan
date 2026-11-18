@@ -34,6 +34,9 @@ export type FleetFilter = {
   state?: 'online' | 'offline' | 'bound' | 'unbound';
   /** Part of a serial or a device name — what support pastes from a customer's photo of the label. */
   q?: string;
+  /** The column the table is ordered by. Absent means newest first, which is what the page did before it could sort. */
+  sort?: 'created' | 'serial' | 'name' | 'last_seen';
+  dir?: 'asc' | 'desc';
 };
 
 function query(filter: FleetFilter, cursor?: string | null): string {
@@ -42,6 +45,8 @@ function query(filter: FleetFilter, cursor?: string | null): string {
   if (filter.product_key) params.set('product_key', filter.product_key);
   if (filter.state) params.set('state', filter.state);
   if (filter.q?.trim()) params.set('q', filter.q.trim());
+  if (filter.sort) params.set('sort', filter.sort);
+  if (filter.dir) params.set('dir', filter.dir);
   if (cursor) params.set('cursor', cursor);
   const qs = params.toString();
   return qs ? `?${qs}` : '';

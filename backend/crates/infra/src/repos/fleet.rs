@@ -70,8 +70,21 @@ impl FleetRepo for PgFleet {
             .as_deref()
             .and_then(|c| Uuid::parse_str(c).ok());
 
+        // The order is a closed set mapped to a literal expression, and the keyset below is written from the same two
+        // values, so a page break and a sort can never disagree about what "next" means. Id is the tie-break: two
+        // devices made in the same millisecond must not be able to swap places between pages.
+        let sort = filter.sort()?;
+        let descending = filter.descending()?;
+        let column = sort.expression("d");
+        let cursor_column = sort.expression("d2");
+        let (comparison, order) = if descending {
+            ("<", "DESC")
+        } else {
+            (">", "ASC")
+        };
+
         let mut tx = self.tx(vendor_id).await?;
-        let rows: Vec<Row> = sqlx::query_as(
+        let sql = format!(
             r#"SELECT d.id, d.product_key, p.name, d.name, d.serial, d.state,
                       d.home_id IS NOT NULL AS bound, d.online,
                       d.fw_version, d.last_seen_at, d.created_at
@@ -84,25 +97,31 @@ impl FleetRepo for PgFleet {
                        OR ($3 = 'offline' AND NOT d.online)
                        OR ($3 = 'bound'   AND d.home_id IS NOT NULL)
                        OR ($3 = 'unbound' AND d.home_id IS NULL))
+                  -- The keyset, in whichever column the page is ordered by. The sub-select recomputes the ordering
+                  -- value of the cursor row from its id, so a cursor stays a bare id and cannot be forged into a
+                  -- position the caller did not reach.
                   AND ($4::uuid IS NULL
-                       OR (d.created_at, d.id) < (SELECT created_at, id FROM devices WHERE id = $4))
+                       OR ({column}, d.id) {comparison}
+                          (SELECT {cursor_column}, d2.id FROM devices d2 WHERE d2.id = $4))
                   -- A pasted serial, or a remembered name. `ILIKE` with a trigram index (migration
                   -- 0041) keeps this a lookup rather than a scan of every device on the platform.
                   AND ($6::text IS NULL
                        OR d.serial ILIKE '%' || $6 || '%'
                        OR d.name ILIKE '%' || $6 || '%')
-                ORDER BY d.created_at DESC, d.id DESC
-                LIMIT $5"#,
-        )
-        .bind(vendor_id)
-        .bind(filter.product_key.as_deref())
-        .bind(filter.state.as_deref())
-        .bind(cursor)
-        .bind(limit)
-        .bind(filter.query())
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(db)?;
+                ORDER BY {column} {order}, d.id {order}
+                LIMIT $5"#
+        );
+
+        let rows: Vec<Row> = sqlx::query_as(&sql)
+            .bind(vendor_id)
+            .bind(filter.product_key.as_deref())
+            .bind(filter.state.as_deref())
+            .bind(cursor)
+            .bind(limit)
+            .bind(filter.query())
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(db)?;
         tx.commit().await.map_err(db)?;
 
         Ok(rows
