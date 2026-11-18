@@ -29,6 +29,7 @@ import {
   useRunAutomation,
   useToggleAutomation,
   type Automation,
+  type Condition,
 } from '../../entities/automation';
 
 /**
@@ -240,6 +241,45 @@ function History({ rule }: { rule: Automation }) {
  * value, and one action on one point. Anything richer is still a curl call —
  * better an honest small editor than a form that pretends.
  */
+/** The conditions a person can pick, and the one they get by not picking any. */
+export type ConditionChoice = 'any' | 'home' | 'away' | 'sunset' | 'sunrise';
+
+/**
+ * The chips, and the reason a home without a location sees fewer of them.
+ *
+ * `Condition::Solar` is evaluated against the home's own sunrise and sunset; with no coordinates the engine
+ * returns `false`, so a rule with "after sunset" would silently never run. Offering a control that can only
+ * fail is worse than not offering it — the customer would conclude the automation is broken.
+ */
+export function conditionOptions(hasLocation: boolean): { id: string; label: string }[] {
+  const options = [
+    // "Only if… any time" is a tautology; the first chip means "no condition at all".
+    { id: 'any', label: 'No condition' },
+    { id: 'home', label: 'Someone is home' },
+    { id: 'away', label: 'Nobody is home' },
+  ];
+  if (hasLocation) {
+    options.push({ id: 'sunset', label: 'After sunset' }, { id: 'sunrise', label: 'After sunrise' });
+  }
+  return options;
+}
+
+/** The wire shape the engine expects, from the chip the person pressed. */
+export function conditionFor(choice: ConditionChoice): Condition[] {
+  switch (choice) {
+    case 'home':
+      return [{ type: 'present', presence: 'home' }];
+    case 'away':
+      return [{ type: 'present', presence: 'away' }];
+    case 'sunset':
+      return [{ type: 'solar', event: 'sunset', offset_min: 0 }];
+    case 'sunrise':
+      return [{ type: 'solar', event: 'sunrise', offset_min: 0 }];
+    default:
+      return [];
+  }
+}
+
 function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void }) {
   const { color } = useTheme();
   const { data: devices } = useDevices(homeId);
@@ -254,6 +294,12 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
   const [target, setTarget] = useState<string | null>(null);
   const [targetCode, setTargetCode] = useState<string | null>(null);
   const [targetValue, setTargetValue] = useState('true');
+  // "Only if" — the second half of the sentence the engine has always been able to evaluate and the editor
+  // has always sent as an empty array.
+  const [condition, setCondition] = useState<ConditionChoice>('any');
+  const { data: homes } = useHomes();
+  const home = homes?.find((h) => h.id === homeId);
+  const hasLocation = typeof home?.geo_lat === 'number' && typeof home?.geo_lon === 'number';
 
   const points = (id: string | null) =>
     (devices ?? []).find((d) => d.id === id)?.points?.filter((p) => p.writable) ?? [];
@@ -296,7 +342,7 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
                   op: 'eq',
                   value: parsed(sourceValue),
                 },
-          conditions: [],
+          conditions: conditionFor(condition),
           actions: [
             { type: 'set_device', device_id: target, code: targetCode, value: parsed(targetValue) },
           ],
@@ -329,6 +375,21 @@ function NewRuleForm({ homeId, onDone }: { homeId: string; onDone: () => void })
         ]}
         onChange={(next) => setKind(next === 'device_state' ? 'device_state' : 'schedule')}
       />
+
+      {/* The engine has evaluated conditions since the first version; the editor sent `conditions: []`, so
+          "turn the light on when motion is detected, but only if someone is home" was a curl call. Presence and
+          day/night need no picker and no value, which is why they are the two offered first. */}
+      <ChipPicker
+        label="Only if"
+        value={condition}
+        options={conditionOptions(hasLocation)}
+        onChange={(next) => setCondition(next as ConditionChoice)}
+      />
+      {!hasLocation ? (
+        <AppText variant="tiny" tone="muted">
+          This home has no location set, so sunrise and sunset are not available here.
+        </AppText>
+      ) : null}
 
       {kind === 'schedule' ? (
         <Box gap="xs">

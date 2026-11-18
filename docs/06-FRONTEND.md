@@ -152,6 +152,35 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The half of a rule nobody could write
+
+The engine has evaluated `Condition::Present`, `TimeOfDay`, `Solar` and `DeviceState` since the first version — and
+the editor sent **`conditions: []`**, always. So *"turn the porch light on at sunset, but only if someone is home"*
+was a curl call. Every rule a customer built ran unconditionally, and the list said so: `Every 5 min → set
+switch.power`, with no hint that a condition was even possible.
+
+The editor now has **Only if**: *No condition · Someone is home · Nobody is home* — and, where the home has a
+location, *After sunset · After sunrise*. The list reads the whole sentence: `Every 5 min, if someone is home →
+set switch.power`.
+
+Two decisions worth keeping:
+
+- **Sun conditions are hidden where they cannot work.** `Condition::Solar` is evaluated against the home's own
+  coordinates; with none the engine returns `false`, so a rule with "after sunset" would silently never run. The
+  chips are not offered, and the editor says why: *"This home has no location set, so sunrise and sunset are not
+  available here."* Offering a control that can only fail is how a customer concludes the automation is broken.
+  (`homes.geo_lat`/`geo_lon` exist and the API returns them; the app's `Home` type was lying about it, and now
+  does not.)
+- **The engine's words are not the customer's.** `solar/sunset` is shown as *"it is dark"*, `present/away` as
+  *"nobody is home"*. `describeCondition` is unit-tested for each shape, and for a rule with two conditions
+  (`"if nobody is home and it is dark"`).
+
+Naming, from review: the first chip was "Any time", which reads as *"Only if any time"* — a tautology. It is
+**"No condition"**.
+
+Still true and worth stating: **the app cannot set a home's location**, so on a home created in the app the sun
+conditions stay out of reach. That is the next gap, not this one.
+
 ### The theme leak, closed for good
 
 Light mode had been reviewed screen by screen — and three screens still drew **black text fields on white cards**,

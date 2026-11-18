@@ -14,9 +14,16 @@ export type Action =
   | { type: 'set_device'; device_id: string; code: string; value: unknown }
   | { type: 'notify'; message: string };
 
+/** The conditions the engine evaluates before it runs the actions. */
+export type Condition =
+  | { type: 'device_state'; device_id: string; code: string; op: Op; value: unknown }
+  | { type: 'time_of_day'; after: string; before: string }
+  | { type: 'present'; presence: 'home' | 'away' }
+  | { type: 'solar'; event: 'sunrise' | 'sunset'; offset_min: number };
+
 export type AutomationDef = {
   trigger: Trigger;
-  conditions: unknown[];
+  conditions: Condition[];
   actions: Action[];
 };
 
@@ -129,6 +136,23 @@ export function useCreateAutomation(homeId: string | undefined) {
   });
 }
 
+/** One condition, in the words a person used to ask for it. */
+export function describeCondition(condition: Condition): string {
+  switch (condition.type) {
+    case 'present':
+      return condition.presence === 'home' ? 'someone is home' : 'nobody is home';
+    case 'solar':
+      // Daylight, not astronomy: "after sunset" is the customer's sentence for "it is dark".
+      return condition.event === 'sunset' ? 'it is dark' : 'it is light';
+    case 'time_of_day':
+      return `it is between ${condition.after} and ${condition.before}`;
+    case 'device_state':
+      return `${condition.code.split('.').pop()} is ${String(condition.value)}`;
+    default:
+      return '';
+  }
+}
+
 /** What a rule does, in one line, for the list. */
 export function describe(automation: Automation): string {
   const { trigger, actions } = automation.definition;
@@ -148,5 +172,9 @@ export function describe(automation: Automation): string {
     .map((a) => (a.type === 'set_device' ? `set ${a.code}` : 'notify'))
     .join(', ');
 
-  return `${when} → ${then}`;
+  // The condition is half the sentence. A rule that says "Every 5 min → set switch.power" and silently only
+  // runs when somebody is home is a rule nobody can debug from the list.
+  const only = (automation.definition.conditions ?? []).map(describeCondition).filter(Boolean).join(' and ');
+
+  return `${when}${only ? `, if ${only}` : ''} → ${then}`;
 }
