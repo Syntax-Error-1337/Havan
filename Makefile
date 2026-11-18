@@ -146,6 +146,7 @@ check: testdb ## fmt + clippy + tests + no secrets + routes match handlers + rea
 	python3 scripts/route-arity.py --self-test
 	python3 scripts/portal-routes.py --self-test
 	python3 scripts/portal-routes.py
+	bash scripts/no-skipped-tests.sh --sources
 	$(MAKE) contrast
 	$(MAKE) tokens
 	$(MAKE) time-serde
@@ -167,6 +168,7 @@ check-fast: ## fmt + lints + the cheap gates, no database suites (~90 s on a war
 	python3 scripts/route-arity.py --self-test
 	python3 scripts/portal-routes.py --self-test
 	python3 scripts/portal-routes.py
+	bash scripts/no-skipped-tests.sh --sources
 	$(MAKE) contrast
 	$(MAKE) tokens
 	$(MAKE) time-serde

@@ -14,6 +14,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.tsx'],
+    // Both extensions. A pure module deserves a pure test file, and `*.test.tsx` alone meant a `.test.ts` sat in the
+    // tree looking like coverage while vitest never picked it up — `client.test.ts` did exactly that until this line.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 });

@@ -16,6 +16,23 @@
 # containers. That case is covered by `HAVEN_ALLOW_SKIPS=1`, set by `make check-fast` and never by `make check`.
 set -uo pipefail
 
+# The same disease has a second shape in the frontend suites, where it is a source edit rather than a runtime decision:
+# `it.only` silently disables every other test in the file, and `it.skip` is a test nobody notices is missing. Neither
+# prints anything a log can catch, so they are checked by source.
+if [ "${1:-}" = "--sources" ]; then
+  root="$(cd "$(dirname "$0")/.." && pwd)"
+  found=$(grep -rnE "(it|test|describe)\.(only|skip|todo)\(" \
+    --include="*.test.ts" --include="*.test.tsx" --include="*.spec.ts" \
+    "$root/app/src" "$root/app/e2e" "$root/portal/src" "$root/portal/e2e" 2>/dev/null || true)
+  if [ -n "$found" ]; then
+    echo "a focused or skipped test would hide the rest of its file:" >&2
+    echo "$found" | sed 's/^/  /' >&2
+    exit 1
+  fi
+  echo "no focused or skipped tests"
+  exit 0
+fi
+
 log="${TMPDIR:-/tmp}/haven-tests.log"
 
 # `--check-only` inspects a log that already exists instead of running the suite, so this guard can be tested without
