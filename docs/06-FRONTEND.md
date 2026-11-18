@@ -152,6 +152,25 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### A switch that moved a cache nobody was looking at
+
+`useSetPoint` was optimistic from the beginning — its comment says *"a toggle that waits for the cloud feels
+broken"*. It patched one key: `['device', id]`. The screen people actually toggle from is the dashboard, whose
+tiles are drawn from the **`['home', id, 'dashboard']` aggregate**, so the switch under a thumb did not move until
+the socket echoed back. The optimistic write was correct and invisible, on the one screen it matters most.
+
+The write now covers every home-scoped cache holding devices, in both shapes they arrive in — a bare `Device[]`
+for the list and `{ devices, presence }` for the aggregate — via `patchDeviceIn()`. It returns the value untouched
+when the device is not in a cache, so nothing is written where nothing changed, and `onError` restores every
+snapshot it took.
+
+The regression test is a cache-level one in jest, not a browser one: seed the aggregate, press the switch, and the
+aggregate's device must hold the new value **before the request resolves** (the stubbed `fetch` never settles).
+A browser test was tried first and abandoned — it needs a device that is *online*, and the platform's own presence
+sweep takes an idle demo device offline within minutes, which made the test a coin flip against the seed data.
+
+### A switch that moved a cache nobody was looking at
+
 ### The states nobody screenshots
 
 `QueryError` exists because an empty state and a *failed* state look identical: measured by blocking `/dashboard`,

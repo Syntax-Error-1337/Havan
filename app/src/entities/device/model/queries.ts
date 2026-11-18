@@ -25,12 +25,70 @@ export function useDevice(id: string | undefined) {
 }
 
 /**
+ * One point, moved, in a device that is already on screen.
+ *
+ * A pure function so the optimistic write can be asserted without a router: it is the same shape for the device
+ * cache and for the list the dashboard draws its tiles from, and the two drifted apart — see `useSetPoint`.
+ */
+export function withPointValue(
+  device: Device,
+  code: string,
+  value: boolean | number | string,
+): Device {
+  return {
+    ...device,
+    points: device.points.map((p) => (p.code === code ? { ...p, value } : p)),
+  };
+}
+
+/**
+ * The same optimistic write, into whatever a home cache happens to hold.
+ *
+ * Two shapes live under `['home', …]`: the device list is a `Device[]`, and the dashboard aggregate is an object
+ * with a `devices` array. The screen the customer toggles from reads the *aggregate*, so a patch that only knew
+ * about arrays changed a cache nobody was drawing. Returns the value unchanged when the shape is unknown, so the
+ * caller can skip the write.
+ */
+export function patchDeviceIn(
+  data: unknown,
+  deviceId: string,
+  code: string,
+  value: boolean | number | string,
+): unknown {
+  const update = (device: Device) =>
+    device.id === deviceId ? withPointValue(device, code, value) : device;
+
+  if (Array.isArray(data)) {
+    const list = data as Device[];
+    if (!list.some((d) => d?.id === deviceId)) return data;
+    return list.map(update);
+  }
+  if (data && typeof data === 'object' && Array.isArray((data as { devices?: unknown }).devices)) {
+    const holder = data as { devices: Device[] };
+    if (!holder.devices.some((d) => d?.id === deviceId)) return data;
+    return { ...holder, devices: holder.devices.map(update) };
+  }
+  return data;
+}
+
+/**
  * Optimistic on purpose: a toggle that waits for the cloud feels broken. The
  * command may still settle `rejected`, and then we roll back with the device's
  * own message.
+ *
+ * The write also lands in the **device lists** — `['home', homeId, 'devices']` — not only in the single-device
+ * cache. The dashboard's tiles read from the list, so before this the switch under a customer's thumb did not
+ * move until the socket echoed back: the toggle looked broken on the one screen it is used most, and only
+ * looked right on the detail screen that hardly anybody opens.
  */
 export function useSetPoint(deviceId: string) {
   const qc = useQueryClient();
+  /**
+   * Every cache under `['home', …]` that holds devices: the plain list (`…/devices`) *and* the dashboard
+   * aggregate (`…/dashboard`), which is what the tiles are actually drawn from. Patching only the list is why
+   * the optimistic write had no visible effect.
+   */
+  const homeKey = { queryKey: ['home'] as const };
 
   return useMutation({
     mutationFn: (input: { code: string; value: boolean | number | string }) =>
@@ -40,25 +98,32 @@ export function useSetPoint(deviceId: string) {
       }),
     onMutate: async (input) => {
       await qc.cancelQueries({ queryKey: qk.device(deviceId) });
+      await qc.cancelQueries(homeKey);
+
       const previous = qc.getQueryData<Device>(qk.device(deviceId));
       if (previous) {
-        qc.setQueryData<Device>(qk.device(deviceId), {
-          ...previous,
-          points: previous.points.map((p) =>
-            p.code === input.code ? { ...p, value: input.value } : p,
-          ),
-        });
+        qc.setQueryData<Device>(qk.device(deviceId), withPointValue(previous, input.code, input.value));
       }
-      return { previous };
+
+      // Every home-scoped cache holding this device, whatever its shape.
+      const previousHomes = qc.getQueriesData(homeKey);
+      for (const [key, data] of previousHomes) {
+        const patched = patchDeviceIn(data, deviceId, input.code, input.value);
+        if (patched !== data) qc.setQueryData(key, patched);
+      }
+
+      return { previous, previousHomes };
     },
     onError: (_err, _input, ctx) => {
       if (ctx?.previous) qc.setQueryData(qk.device(deviceId), ctx.previous);
+      for (const [key, data] of ctx?.previousHomes ?? []) qc.setQueryData(key, data);
     },
     onSettled: () => {
       // The websocket settles it; a refetch here covers the socket-missed case.
       qc.invalidateQueries({ queryKey: qk.device(deviceId) });
       // The home screen shows the same points; without this it keeps a value the
       // device has already moved past (no socket, e.g. when offline).
+      void qc.invalidateQueries(homeKey);
       const homeId = qc.getQueryData<Device>(qk.device(deviceId))?.home_id;
       if (homeId) qc.invalidateQueries({ queryKey: qk.dashboard(homeId) });
     },

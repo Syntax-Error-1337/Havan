@@ -14,6 +14,13 @@ use uuid::Uuid;
 
 static CLAIM: OnceCell<Mutex<()>> = OnceCell::const_new();
 
+/// How many due rows to ask for when a test needs *its own* row to be in the answer.
+///
+/// `500` was enough until other suites started writing notifications into the same test database: the queue
+/// returned five hundred rows that were not the test's, and the assertion "the row should be claimable" failed
+/// against a platform that was working. The webhooks suite had the identical flake with `due(500)`.
+const ALL_DUE: i64 = 10_000;
+
 async fn one_claim_at_a_time() -> MutexGuard<'static, ()> {
     CLAIM
         .get_or_init(|| async { Mutex::new(()) })
@@ -82,8 +89,8 @@ async fn concurrent_workers_do_not_claim_the_same_notification() {
     let second = f.notification("claim-b").await;
 
     let (a, b) = tokio::join!(
-        f.notifications.undelivered(500),
-        f.notifications.undelivered(500)
+        f.notifications.undelivered(ALL_DUE),
+        f.notifications.undelivered(ALL_DUE)
     );
     let a = a.expect("first claim");
     let b = b.expect("second claim");
@@ -111,7 +118,11 @@ async fn concurrent_workers_do_not_claim_the_same_notification() {
     }
 
     // Leased: a third pass finds nothing of ours until the lease expires.
-    let c = f.notifications.undelivered(500).await.expect("third claim");
+    let c = f
+        .notifications
+        .undelivered(ALL_DUE)
+        .await
+        .expect("third claim");
     let mine_c: Vec<Uuid> = c
         .iter()
         .map(|d| d.id)
@@ -132,7 +143,7 @@ async fn a_failed_push_schedules_its_own_retry() {
     };
 
     let id = f.notification("claim-fail").await;
-    let claimed = f.notifications.undelivered(500).await.expect("claim");
+    let claimed = f.notifications.undelivered(ALL_DUE).await.expect("claim");
     assert!(
         claimed.iter().any(|d| d.id == id),
         "the row should be claimable"

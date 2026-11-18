@@ -47,6 +47,10 @@ test('a failed automation fetch is not "you have no rules"', async ({ page }) =>
   await expect(page.getByText('We could not load your automations')).toHaveCount(0);
 });
 
+// The optimistic-switch assertion lives in jest (`entities/device/model/setPoint.test.tsx`) rather than here:
+// it needs a device that is *online*, and the platform's own presence sweep takes an idle device offline within
+// minutes, which made this test a coin flip against the demo data.
+
 test('a device that cannot be loaded offers a way to try again', async ({ page }) => {
   await signIn(page);
 
