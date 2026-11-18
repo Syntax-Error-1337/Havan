@@ -257,6 +257,10 @@ const NOT_FETCHABLE: &[(&str, &str)] = &[
         "/vendor/team/invites/{id}",
         "DELETE withdraws an invitation; there is no GET for one",
     ),
+    (
+        "/vendor/audit.csv",
+        "GET returns text/csv, not the JSON this guard inspects",
+    ),
     // Both were invisible to this guard until its scanner learned that rustfmt splits `.route(`
     // across lines. They are GETs, but parameterised, and this guard calls literal paths — so they
     // are explained rather than fetched, on purpose, not by omission.

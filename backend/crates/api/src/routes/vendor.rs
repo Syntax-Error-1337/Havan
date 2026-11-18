@@ -2,6 +2,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use domain::catalog::Product;
 use domain::serials::SerialRepo;
@@ -39,6 +40,7 @@ pub fn router() -> Router<AppState> {
         .route("/vendor/webhooks/{id}", delete(unsubscribe_webhook))
         // Who did what. Read-only, newest first, keyset-paginated.
         .route("/vendor/audit", get(audit))
+        .route("/vendor/audit.csv", get(audit_csv))
 }
 
 #[derive(Deserialize)]
@@ -406,6 +408,90 @@ async fn analytics(
             .await
             .map_err(ApiError)?,
     ))
+}
+
+/// `GET /v1/vendor/audit.csv` — the trail as a file, with the same filters as the page.
+///
+/// An export is what an auditor actually needs: a list on a screen is not evidence you can attach to a report. The rows
+/// are the same rows the page reads, written in the same order, so the file and the screen cannot disagree.
+async fn audit_csv(
+    State(state): State<AppState>,
+    vendor: VendorAuth,
+    axum::extract::Query(q): axum::extract::Query<AuditQuery>,
+) -> ApiResult<Response> {
+    // Ten thousand rows is a range nobody reads and every spreadsheet opens. The response says when it stopped rather
+    // than handing back a file that quietly ends.
+    const MAX_ROWS: i64 = 10_000;
+
+    let (rows, truncated) = state
+        .audit
+        .export(
+            vendor.vendor_id,
+            &domain::audit::AuditFilter {
+                action: q.action,
+                actor: q.actor,
+            },
+            MAX_ROWS,
+        )
+        .await
+        .map_err(ApiError)?;
+
+    let body = to_csv(&rows);
+    Ok((
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "text/csv; charset=utf-8".to_string(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"haven-audit.csv\"".to_string(),
+            ),
+            // Readable by the portal so it can say "this file stops at 10,000" instead of implying it has everything.
+            (
+                axum::http::HeaderName::from_static("x-audit-truncated"),
+                truncated.to_string(),
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+/// The CSV, with every field quoted and inner quotes doubled.
+///
+/// Quoting everything is not laziness: an audit row carries a detail blob, and a comma or a newline in one of them is
+/// ordinary. A file that shifts a column because somebody's name had a comma is a file that lies about what happened.
+fn to_csv(rows: &[domain::audit::AuditRow]) -> String {
+    fn field(value: &str) -> String {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    }
+
+    let mut out =
+        String::from("when,actor_kind,actor,action,target_kind,target_id,ip,request_id,detail\n");
+    for row in rows {
+        let detail = serde_json::to_string(&row.detail).unwrap_or_default();
+        out.push_str(
+            &[
+                field(
+                    &row.ts
+                        .format(&time::format_description::well_known::Rfc3339)
+                        .unwrap_or_default(),
+                ),
+                field(&row.actor_kind),
+                field(row.actor_email.as_deref().unwrap_or("")),
+                field(&row.action),
+                field(&row.target_kind),
+                field(&row.target_id.map(|id| id.to_string()).unwrap_or_default()),
+                field(row.ip.as_deref().unwrap_or("")),
+                field(row.request_id.as_deref().unwrap_or("")),
+                field(&detail),
+            ]
+            .join(","),
+        );
+        out.push('\n');
+    }
+    out
 }
 
 #[derive(serde::Deserialize)]

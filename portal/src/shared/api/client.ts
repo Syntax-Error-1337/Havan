@@ -112,7 +112,10 @@ function safeParse(text: string): unknown {
  * header, and a second copy of auth is a second place to get it wrong. Saved with the name the
  * server suggests when it sends one.
  */
-export async function download(path: string, fallbackName: string): Promise<void> {
+export async function download(
+  path: string,
+  fallbackName: string,
+): Promise<{ truncated: boolean }> {
   const res = await fetch(`${BASE}${path}`, {
     headers: token ? { authorization: `Bearer ${token}` } : {},
   });
@@ -136,4 +139,7 @@ export async function download(path: string, fallbackName: string): Promise<void
   link.download = named ?? fallbackName;
   link.click();
   URL.revokeObjectURL(url);
+
+  // The server says when a file it produced was capped; the caller decides how to say so.
+  return { truncated: res.headers.get('x-audit-truncated') === 'true' };
 }

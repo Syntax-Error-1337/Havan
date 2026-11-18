@@ -89,8 +89,21 @@ Found while testing it: the page **returned early while loading**, which unmount
 into — every keystroke ended in "Reading the trail…" and a lost caret. The header and filters now stay put; only the list
 reports that it is reading.
 
-**Still open:** export. It wants a server-side CSV endpoint that honours the same filters, not a client-side dump of
-whatever happens to be loaded — the difference between an audit artefact and a screenshot of one.
+### The file (and a note on how *not* to do it)
+
+**Export CSV** asks the server for `GET /v1/vendor/audit.csv`, with the same filters, and hands the bytes to the browser.
+It deliberately does **not** build a blob from the rows on screen: what is loaded is a page, and a file named "audit" that
+silently holds fifty of four thousand rows is worse than no file at all — it is a document that looks like evidence.
+
+Every field is quoted and inner quotes are doubled, which is not laziness: a detail blob carries JSON, and a comma or a
+newline inside one is ordinary. A file that shifts a column because somebody's key name had a comma is a file that lies
+about what happened — the test creates a key literally named `shipped, "v2"` and asserts all nine columns line up.
+
+The scan stops at 10,000 rows and says so, in an `x-audit-truncated` header the portal turns into a sentence the operator
+sees. A cap nobody is told about is the same lie in a different place.
+
+Reuses `download()` from the API client rather than opening its own `fetch`: a second place that remembers the bearer
+token is a second place to forget it.
 
 ## Team — found and fixed
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { useAudit, type AuditEntry } from '../../entities/audit';
+import { download } from '../../shared/api/client';
 import { TableFrame } from '../../shared/ui/TableFrame';
 
 /**
@@ -10,6 +11,28 @@ import { TableFrame } from '../../shared/ui/TableFrame';
  * explain: publishing a product, minting or revoking a key, starting or halting a
  * rollout. Read-only on purpose — a trail you can edit from the UI is not a trail.
  */
+/**
+ * Ask the server for the file and hand the bytes to the browser.
+ *
+ * Deliberately not a blob built from `entries`: what is loaded is a page, and a file named "audit" that silently holds
+ * fifty of four thousand rows is worse than no file.
+ */
+async function exportCsv(filters: { action?: string; actor?: string }) {
+  const query = new URLSearchParams();
+  if (filters.action) query.set('action', filters.action);
+  if (filters.actor) query.set('actor', filters.actor);
+  const qs = query.toString();
+
+  try {
+    const { truncated } = await download(`/vendor/audit.csv${qs ? `?${qs}` : ''}`, 'haven-audit.csv');
+    if (truncated) {
+      window.alert('The export stops at 10,000 rows — the newest ones. Narrow the filters for the rest.');
+    }
+  } catch {
+    window.alert('The export could not be produced. Nothing was written.');
+  }
+}
+
 export function AuditPage() {
   const [action, setAction] = useState('');
   const [actor, setActor] = useState('');
@@ -63,6 +86,16 @@ export function AuditPage() {
             data-testid="audit-actor"
           />
         </label>
+        {/* The file, not a screenshot of one: the same rows the server would page, written by the server, with the
+            same filters, so the export and the screen cannot disagree. */}
+        <button
+          className="btn"
+          style={{ alignSelf: 'flex-end' }}
+          onClick={() => void exportCsv(filters)}
+          data-testid="audit-export"
+        >
+          Export CSV
+        </button>
         {narrowed ? (
           <button
             className="btn"

@@ -235,6 +235,40 @@ impl<R: AuditRepo + Send + Sync> AuditService<R> {
         })
     }
 
+    /// Every row matching the filter, newest first, up to `max`.
+    ///
+    /// An export is not a page: an auditor wants the whole range in one file, not the first fifty and a cursor. The cap
+    /// exists because "everything" on a busy vendor is unbounded — the caller is told when it was hit rather than being
+    /// handed a file that quietly stops.
+    pub async fn export(
+        &self,
+        vendor_id: Uuid,
+        filter: &AuditFilter,
+        max: i64,
+    ) -> Result<(Vec<AuditRow>, bool), AppError> {
+        const BATCH: i64 = 200;
+        let filter = filter.clean();
+        let mut rows: Vec<AuditRow> = Vec::new();
+        let mut before: Option<Uuid> = None;
+
+        loop {
+            let room = max - rows.len() as i64;
+            if room <= 0 {
+                return Ok((rows, true));
+            }
+            let batch = self
+                .repo
+                .page(vendor_id, before, room.min(BATCH), &filter)
+                .await?;
+            let short = (batch.len() as i64) < room.min(BATCH);
+            before = batch.last().map(|row| row.id);
+            rows.extend(batch);
+            if short {
+                return Ok((rows, false));
+            }
+        }
+    }
+
     /// The operator's page: every vendor, or one. Same cursor rule, so an operator paging through a
     /// busy day cannot skip an entry at a page boundary.
     pub async fn page_all(

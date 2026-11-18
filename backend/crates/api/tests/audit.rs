@@ -213,3 +213,94 @@ async fn an_action_is_recorded_once_and_only_for_its_own_vendor() {
     assert!(h.rows_for(acme).await >= 2, "the acting vendor has entries");
     assert_eq!(h.rows_for(globex).await, 0, "the other vendor has none");
 }
+
+/// The export is a file an auditor can attach to a report, so the properties that matter are the ones a spreadsheet
+/// depends on: a header row, one line per row, and a detail blob that cannot shift a column.
+#[tokio::test]
+async fn the_export_is_a_file_a_spreadsheet_can_open() {
+    let Some(h) = boot().await else {
+        eprintln!("skip: database or redis unavailable");
+        return;
+    };
+    let (vendor, email, token) = h.vendor("export").await;
+
+    // A key name carrying a comma and a quote — the two characters that break naive CSV.
+    h.create_key(&token, "shipped, \"v2\"").await;
+
+    let res = reqwest::Client::new()
+        .get(format!("{}/v1/vendor/audit.csv", h.base))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("export");
+
+    assert_eq!(res.status(), 200);
+    assert_eq!(
+        res.headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok()),
+        Some("text/csv; charset=utf-8")
+    );
+    assert_eq!(
+        res.headers()
+            .get("content-disposition")
+            .and_then(|v| v.to_str().ok()),
+        Some("attachment; filename=\"haven-audit.csv\"")
+    );
+
+    let body = res.text().await.expect("body");
+    let mut lines = body.lines();
+    assert_eq!(
+        lines.next(),
+        Some("when,actor_kind,actor,action,target_kind,target_id,ip,request_id,detail")
+    );
+
+    let rows: Vec<&str> = lines.collect();
+    assert!(
+        !rows.is_empty(),
+        "the vendor wrote a key, so there is a row"
+    );
+    // Every line has the same number of fields once quoting is respected — the property that keeps columns aligned.
+    let fields = |line: &str| -> usize {
+        let mut count = 1;
+        let mut quoted = false;
+        let mut chars = line.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '"' if quoted && matches!(chars.clone().next(), Some('"')) => {
+                    chars.next();
+                }
+                '"' => quoted = !quoted,
+                ',' if !quoted => count += 1,
+                _ => {}
+            }
+        }
+        assert!(!quoted, "unbalanced quotes in {line}");
+        count
+    };
+    for row in &rows {
+        assert_eq!(fields(row), 9, "row has the wrong column count: {row}");
+    }
+    assert!(
+        body.contains(&email),
+        "the export names the actor, so the file answers who"
+    );
+    assert!(
+        body.contains("shipped, "),
+        "the comma survived inside quotes"
+    );
+
+    // Scoped: another vendor's export is their own rows, not this one's.
+    let (other, _, other_token) = h.vendor("export-other").await;
+    let other_body = reqwest::Client::new()
+        .get(format!("{}/v1/vendor/audit.csv", h.base))
+        .bearer_auth(&other_token)
+        .send()
+        .await
+        .expect("export")
+        .text()
+        .await
+        .expect("body");
+    assert!(!other_body.contains(&email));
+    let _ = (vendor, other);
+}
