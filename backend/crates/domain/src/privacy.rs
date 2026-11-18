@@ -61,8 +61,33 @@ pub struct PurgeReport {
     pub purged: Vec<Uuid>,
 }
 
+/// The receipt for one export: when it happened and how big the answer was.
+///
+/// Not the bundle. Keeping what was exported would be a second copy of everything the person asked us to hand them,
+/// which is the opposite of the feature.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportReceipt {
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    pub bytes: i64,
+}
+
 pub trait PrivacyRepo {
     fn export(&self, user_id: Uuid) -> impl Future<Output = Result<ExportBundle, AppError>> + Send;
+
+    /// Record that an export was produced. Best effort: the download must not fail because the receipt could not be
+    /// written, and the caller logs the failure.
+    fn record_export(
+        &self,
+        user_id: Uuid,
+        bytes: i64,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Receipts for this person, newest first.
+    fn exports(
+        &self,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<Vec<ExportReceipt>, AppError>> + Send;
 
     /// Erase the person, keep the amounts. Refuses with a `409` when they still own a home that
     /// somebody else lives in, because the alternative is deciding for a stranger.

@@ -19,6 +19,7 @@ use crate::error::{ApiError, ApiResult};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/me/export", get(export))
+        .route("/me/exports", get(receipts))
         .route("/me", delete(erase))
         .route("/ops/privacy/purge", axum::routing::post(purge))
         .route("/ops/privacy/due", axum::routing::get(due))
@@ -52,8 +53,39 @@ async fn purge(
     Ok(Json(state.privacy.purge_due(500).await.map_err(ApiError)?))
 }
 
+/// `GET /v1/me/exports` — the receipts. What a subject-access request is answered with, once the file is gone.
+async fn receipts(State(state): State<AppState>, user: Auth) -> ApiResult<Json<serde_json::Value>> {
+    let receipts = state
+        .privacy
+        .exports(user.user.id)
+        .await
+        .map_err(ApiError)?;
+    Ok(Json(serde_json::json!({
+        "count": receipts.len(),
+        "exports": receipts,
+    })))
+}
+
 async fn export(State(state): State<AppState>, user: Auth) -> ApiResult<impl IntoResponse> {
     let bundle: ExportBundle = state.privacy.export(user.user.id).await.map_err(ApiError)?;
+
+    // Serialise once: the size in the receipt has to be the size of what was handed over, and serialising twice is a
+    // second chance for the two to disagree.
+    let body = serde_json::to_vec(&bundle).map_err(|e| {
+        ApiError(kernel::AppError::Internal(format!(
+            "export serialisation: {e}"
+        )))
+    })?;
+
+    // Best effort: a download that fails because its receipt could not be written would be a bad trade. The failure is
+    // logged, and the person still gets their data.
+    if let Err(e) = state
+        .privacy
+        .record_export(user.user.id, body.len() as i64)
+        .await
+    {
+        tracing::warn!(error = ?e, user = %user.user.id, "could not record the export receipt");
+    }
 
     // A date in the filename rather than an id: the person recognises the file, and a shared
     // download folder does not leak who they are to anyone scanning names.
@@ -63,11 +95,14 @@ async fn export(State(state): State<AppState>, user: Auth) -> ApiResult<impl Int
     );
 
     Ok((
-        [(
-            header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{filename}\""),
-        )],
-        Json(bundle),
+        [
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+            (header::CONTENT_TYPE, "application/json".to_string()),
+        ],
+        body,
     ))
 }
 

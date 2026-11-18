@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -9,8 +10,10 @@ import { useHomes } from '../../entities/home';
 import {
   describeErasure,
   describeExport,
+  describeReceipt,
   eraseAccount,
   fetchExport,
+  fetchExportReceipts,
   saveExport,
 } from '../../entities/privacy';
 
@@ -26,6 +29,17 @@ export function PrivacyPage() {
   const { color } = useTheme();
   const signOut = useSession((s) => s.signOut);
   const { ask, sheet } = useConfirm();
+
+  const qc = useQueryClient();
+  // The receipts, so "did I already ask for this" has an answer that is not memory. Failure is quiet: a page that
+  // cannot read its history must still let the person download their data.
+  const receipts = useQuery({
+    queryKey: ['privacy', 'exports'],
+    queryFn: fetchExportReceipts,
+    staleTime: 60_000,
+  });
+  const last = receipts.data?.exports?.[0];
+  const count = receipts.data?.count ?? 0;
 
   const [exporting, setExporting] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -57,6 +71,8 @@ export function PrivacyPage() {
       // Saying *where* it went matters on a phone: the file is not in a Downloads folder the customer
       // can browse to, it is behind whatever the share sheet did with it.
       setSaved(`${where} · ${describeExport(bundle)}`);
+      // The download wrote a receipt on the server; read it back rather than trusting that it did.
+      void qc.invalidateQueries({ queryKey: ['privacy', 'exports'] });
     } catch {
       setProblem('Your data could not be prepared just now. Nothing was changed — please try again.');
     } finally {
@@ -131,6 +147,18 @@ export function PrivacyPage() {
             {saved ? (
               <AppText variant="tiny" tone="muted" testID="export-result">
                 Saved {saved}
+              </AppText>
+            ) : null}
+            {/* The receipt. Before this, the only record that a copy had ever been produced was the person's memory. */}
+            {last ? (
+              <AppText variant="tiny" tone="muted" testID="export-receipt">
+                {count === 1
+                  ? `Last export ${describeReceipt(last)}`
+                  : `Last export ${describeReceipt(last)} · ${count} exports so far`}
+              </AppText>
+            ) : count === 0 && receipts.isSuccess ? (
+              <AppText variant="tiny" tone="muted" testID="export-receipt">
+                No export yet. The file is yours to keep — this page only records that it was produced.
               </AppText>
             ) : null}
           </Box>

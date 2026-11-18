@@ -1,6 +1,6 @@
 use domain::privacy::{
     EXPORT_NOTIFICATION_LIMIT, EXPORT_TELEMETRY_DAYS, EXPORT_TELEMETRY_MAX_ROWS, ErasureReport,
-    ExportBundle, PrivacyRepo, PurgeReport,
+    ExportBundle, ExportReceipt, PrivacyRepo, PurgeReport,
 };
 use kernel::{AppError, TenantCtx};
 use serde_json::Value;
@@ -27,6 +27,35 @@ fn db(e: sqlx::Error) -> AppError {
 }
 
 impl PrivacyRepo for PgPrivacy {
+    async fn record_export(&self, user_id: Uuid, bytes: i64) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("dsar-export")).await?;
+        sqlx::query("INSERT INTO privacy_exports (id, user_id, bytes) VALUES ($1, $2, $3)")
+            .bind(kernel::new_id())
+            .bind(user_id)
+            .bind(bytes)
+            .execute(&mut *tx)
+            .await
+            .map_err(db)?;
+        tx.commit().await.map_err(db)
+    }
+
+    async fn exports(&self, user_id: Uuid) -> Result<Vec<ExportReceipt>, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("dsar-export")).await?;
+        let rows = sqlx::query_as::<_, (time::OffsetDateTime, i64)>(
+            "SELECT created_at, bytes FROM privacy_exports WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20",
+        )
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(created_at, bytes)| ExportReceipt { created_at, bytes })
+            .collect())
+    }
+
     async fn export(&self, user_id: Uuid) -> Result<ExportBundle, AppError> {
         let mut tx = self.pg.scoped(&TenantCtx::system("dsar-export")).await?;
 

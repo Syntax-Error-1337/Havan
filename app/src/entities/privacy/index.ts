@@ -1,10 +1,15 @@
 export {
   describeErasure,
   describeExport,
+  describeReceipt,
   eraseAccount,
   exportFilename,
   fetchExport,
+  fetchExportReceipts,
+  formatBytes,
   saveExport,
   type ErasureReport,
   type ExportBundle,
+  type ExportReceipt,
+  type ExportReceipts,
 } from './api';

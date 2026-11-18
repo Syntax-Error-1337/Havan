@@ -104,6 +104,53 @@ export function fetchExport(): Promise<ExportBundle> {
   return request<ExportBundle>('/me/export');
 }
 
+export interface ExportReceipt {
+  created_at: string;
+  bytes: number;
+}
+
+export interface ExportReceipts {
+  count: number;
+  exports: ExportReceipt[];
+}
+
+/**
+ * The receipts: exports this account has already been handed.
+ *
+ * A download that leaves no trace is a download the customer cannot point at when somebody asks "did you give me my
+ * data". The server writes one row per export; this reads them back, newest first.
+ */
+export function fetchExportReceipts(): Promise<ExportReceipts> {
+  return request<ExportReceipts>('/me/exports');
+}
+
+/** A size a person can hold in their head: 1.2 MB, 640 KB. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * When the last one happened, in words.
+ *
+ * Relative for the first week ("yesterday", "3 days ago"), a date after that: a receipt from March is a date, not
+ * "247 days ago".
+ */
+export function describeReceipt(receipt: ExportReceipt, now = new Date()): string {
+  const at = new Date(receipt.created_at);
+  const days = Math.floor((now.getTime() - at.getTime()) / 86_400_000);
+  const when =
+    days <= 0
+      ? 'today'
+      : days === 1
+        ? 'yesterday'
+        : days < 7
+          ? `${days} days ago`
+          : at.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${formatBytes(receipt.bytes)}, ${when}`;
+}
+
 export function eraseAccount(): Promise<ErasureReport> {
   return request<ErasureReport>('/me', { method: 'DELETE' });
 }
