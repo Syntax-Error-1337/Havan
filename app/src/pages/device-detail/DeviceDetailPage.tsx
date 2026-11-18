@@ -9,6 +9,7 @@ import {
   Icon,
   AreaChart,
   iconForCategory,
+  QueryError,
   useConfirm,
 } from '../../shared/ui';
 import { PointControl } from '../../entities/device';
@@ -43,7 +44,7 @@ import { chartBand } from '../../entities/device/model/chart';
 export function DeviceDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { color, dark } = useTheme();
-  const { data: device, isPending, isError } = useDevice(id);
+  const { data: device, isPending, isError, refetch } = useDevice(id);
   const accent = accentFor(device?.category, color.accent, dark);
   const glow = glowFor(device?.category, color.glow);
   const { data: update } = useDeviceUpdate(id);
@@ -108,12 +109,11 @@ export function DeviceDetailPage() {
   if (isError || !device) {
     return (
       <Screen>
-        <Box p="xl" gap="sm">
-          <AppText variant="title" weight="600">
-            Device unavailable
-          </AppText>
-          <AppText tone="muted">It may have been removed, or you may be offline.</AppText>
-        </Box>
+        <QueryError
+          title="Device unavailable"
+          body="It may have been removed, or you may be offline. The rest of your home is still there."
+          onRetry={() => void refetch()}
+        />
       </Screen>
     );
   }

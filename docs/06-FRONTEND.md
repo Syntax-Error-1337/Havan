@@ -152,6 +152,30 @@ Three decisions worth knowing:
   packets go into a ref keyed by `productHash:serialTail` and are flushed on a
   timer, so the list re-renders twice a second instead of forty times.
 
+### The states nobody screenshots
+
+`QueryError` exists because an empty state and a *failed* state look identical: measured by blocking `/dashboard`,
+a home with six devices said **"No devices yet — Tap Add and we will look for devices nearby"**. Three screens
+never got the treatment, and one of them was the worst case:
+
+- **`/automations` had no `isError` at all** — just `{ data: rules, isLoading }`. A failed fetch left `rules`
+  undefined, so the screen said *"Nothing runs on its own yet"* and invited the customer to create a rule on a hub
+  it could not reach. Its header said the same thing, in the same breath as the error, so the header is now a
+  claim it can back: *"Could not load your rules"*.
+- **The device detail** said "Device unavailable — it may have been removed, or you may be offline" and offered
+  nothing to do about it. `QueryError` with `refetch`.
+- **`/homes`** printed the server's reason and no way to ask again. Same fix.
+
+`app/e2e/failures.spec.ts` now **cuts the connection at the browser** rather than mocking the app, so the failing
+request is a real one: abort `**/v1/homes/*/automations*` and the screen must show what could not be loaded, state
+that nothing has changed, *not* show the empty state, and recover when `Try again` is pressed with the route
+restored. Two lessons the tests themselves taught:
+
+- `**/automations` also matches the **page URL** — aborting it is a navigation failure, not the screen's failure
+  state. Route on the API path.
+- A `page.reload()` after registering the route landed on the dashboard; a cold `page.goto('/device/<id>')` — which
+  is what a push notification does — is both more realistic and the thing that actually fails.
+
 ### Three phone behaviours, remembered per screen
 
 The login screen had `KeyboardAvoidingView`. Every other screen with a `TextInput` — scenes, automations, settings,

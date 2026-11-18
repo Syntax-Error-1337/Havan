@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
-import { AppText, Button, Glass, Icon, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
+import { AppText, Box, Button, Glass, Icon, Screen, ScreenHeader, ScreenScroll } from '../../shared/ui';
 import { useCreateHome, useHomes } from '../../entities/home';
 import { useSession } from '../../entities/session';
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -26,7 +26,7 @@ export function HomesPage() {
   const stored = useSession((s) => s.homeId);
   const setHome = useSession((s) => s.setHome);
 
-  const { data: homes, isPending, isError, error } = useHomes();
+  const { data: homes, isPending, isError, error, refetch } = useHomes();
   // The session holds the chosen home, and it is still empty until the dashboard picks one — so a person
   // who opens the switcher first sees three rows and no "Current" on any of them, which is exactly what the
   // screen is for. Until a choice is stored, the home the app would open is the first one.
@@ -68,11 +68,14 @@ export function HomesPage() {
             Loading your homes…
           </AppText>
         ) : isError ? (
-          // The server's own reason, not a shrug: a refused token and an empty account look the same
-          // to a spinner and are completely different to a person.
-          <AppText variant="caption" style={{ color: color.danger }}>
-            {error.message}
-          </AppText>
+          // The server's own reason *and* a way to ask again: the reason alone is a dead end, and the retry
+          // is what turns "the token expired" into something the customer can act on.
+          <Box gap="sm">
+            <AppText variant="caption" style={{ color: color.danger }}>
+              {error.message}
+            </AppText>
+            <Button label="Try again" variant="ghost" onPress={() => void refetch()} />
+          </Box>
         ) : (
           (homes ?? []).map((home) => {
             const active = home.id === current;

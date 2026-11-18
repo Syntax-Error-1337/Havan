@@ -7,6 +7,7 @@ import {
   AppText,
   Button,
   ChipPicker,
+  QueryError,
   Screen,
   ScreenScroll,
   ValueField,
@@ -38,7 +39,7 @@ export function AutomationsPage() {
   const { data: homes } = useHomes();
   const homeId = homes?.[0]?.id;
 
-  const { data: rules, isLoading } = useAutomations(homeId);
+  const { data: rules, isLoading, isError, refetch } = useAutomations(homeId);
   const toggle = useToggleAutomation(homeId);
   const run = useRunAutomation();
   const { color } = useTheme();
@@ -55,10 +56,15 @@ export function AutomationsPage() {
         <Box row style={{ justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
           <Box gap="xs">
             <AppText variant="display">Automations</AppText>
+            {/* The header is a claim about the home, so it must not make one it could not check: with the
+                fetch failed it said "Nothing runs on its own yet" directly above "We could not load your
+                automations". */}
             <AppText variant="caption" tone="muted">
-              {rules?.length
-                ? `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}`
-                : 'Nothing runs on its own yet'}
+              {isError
+                ? 'Could not load your rules'
+                : rules?.length
+                  ? `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}`
+                  : 'Nothing runs on its own yet'}
             </AppText>
           </Box>
           <Button
@@ -79,7 +85,18 @@ export function AutomationsPage() {
 
         {/* Not while the form is open: an empty-state card underneath the editor that just appeared is the
           screen telling the customer two different things at once. */}
-      {!isLoading && rules?.length === 0 && !creating ? (
+      {/* Before the empty state, and deliberately: a failed fetch left `rules` undefined, so this screen told
+          the customer "Nothing runs on its own yet" and invited them to create a rule that could not be
+          created — the exact failure `QueryError` exists to prevent, on the one screen that never got it. */}
+      {isError ? (
+        <QueryError
+          title="We could not load your automations"
+          body="Nothing has changed — the rules on your hub are still running."
+          onRetry={() => void refetch()}
+        />
+      ) : null}
+
+      {!isLoading && !isError && rules?.length === 0 && !creating ? (
           <Box gap="md" p="lg" radius="md" bg="surface" border>
             <Box gap="xs">
               <AppText variant="title">No automations yet</AppText>
