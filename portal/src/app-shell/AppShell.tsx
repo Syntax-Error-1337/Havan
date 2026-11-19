@@ -1,5 +1,6 @@
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { AdminShell } from './AdminShell';
+import { useDocumentTitle } from './title';
 import { useSession } from './session';
 import { LoginPage } from '../pages/login/LoginPage';
 import { ProductsPage } from '../pages/products/ProductsPage';
@@ -23,6 +24,9 @@ import { SecurityPage } from '../pages/security/SecurityPage';
 export function AppShell() {
   const { token } = useSession();
   const location = useLocation();
+  // One call for every screen, including the console: a page that had to remember its own title would be a page that
+  // forgot it.
+  useDocumentTitle();
 
   // The console has its own token and its own shell, and is routed before the vendor gate: an
   // operator must not be asked for a vendor password to reach a screen that manages vendors.

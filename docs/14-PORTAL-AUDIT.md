@@ -168,7 +168,13 @@ same three rules, without `axe` (MPL-2.0, ADR-002):
 3. **every table header names its column** — **40 `<th>` elements across 15 pages had no `scope`**, which is what tells a
    screen reader which column a cell belongs to in a table read out of order.
 
-All 6 assertions pass now, and the portal suite is 88 with them.
+A fourth rule came later, from the same family: **the tab said "Haven — Vendor Portal" on every screen** (WCAG 2.4.2,
+page titled). Three open tabs were indistinguishable and a screen reader announced the same context after every
+navigation. `app-shell/title.ts` maps the route to a name by longest prefix — so `/products/:id/firmware` stays under
+Product, and `/admin/audit` does not read as the vendor's audit log — and the shell calls it once, for every screen
+including the console. Proved by commenting the call out: the test failed with `/ is titled "Haven — Vendor Portal"`.
+
+All 8 assertions pass now, and the portal suite is 92 with them.
 
 ## Products — the list needed nothing, the editor needed one thing
 

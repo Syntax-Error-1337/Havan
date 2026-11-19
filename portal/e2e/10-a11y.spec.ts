@@ -182,3 +182,31 @@ test('table headers name their column, and sortable ones say which way', async (
     }
   }
 });
+
+/**
+ * The tab said "Haven — Vendor Portal" on every screen.
+ *
+ * WCAG 2.4.2 is the cheapest rule on this list and the one an operator notices without knowing it has a name: three open
+ * tabs that all read the same, and a screen reader announcing the same context after every navigation. Checked by walking
+ * the real routes, because the mapping is only right if the router agrees with it.
+ */
+test('the tab names the screen, and changes when the route does', async ({ app }) => {
+  const seen = new Map<string, string>();
+
+  for (const [path, expected] of [
+    ['/', 'Products'],
+    ['/fleet', 'Fleet'],
+    ['/audit', 'Audit log'],
+    ['/team', 'Team'],
+    ['/licences', 'Licences'],
+  ]) {
+    await app.goto(path);
+    await app.waitForLoadState('networkidle');
+    const title = await app.title();
+    expect(title, `${path} is titled "${title}"`).toBe(`${expected} — Haven`);
+    seen.set(path, title);
+  }
+
+  // Distinct titles are the point: five routes, five different tabs.
+  expect(new Set(seen.values()).size).toBe(seen.size);
+});
