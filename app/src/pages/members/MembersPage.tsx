@@ -51,7 +51,7 @@ export function MembersPage() {
   const { color } = useTheme();
   const { homeId, home } = useCurrentHome();
   const { data: me } = useMe();
-  const { data: members, isPending, isError, refetch } = useMembers(homeId ?? undefined);
+  const { data: members, isPending, isError, error: membersError, refetch } = useMembers(homeId ?? undefined);
 
   const invite = useInviteMember();
   const changeRole = useSetMemberRole();
@@ -98,7 +98,7 @@ export function MembersPage() {
     <Screen>
       <ScreenHeader title="Members" />
       <ScreenScroll gap={tokens.space.lg}>
-        {isError ? <QueryError onRetry={() => void refetch()} /> : null}
+        {isError ? <QueryError error={membersError} onRetry={() => void refetch()} /> : null}
 
         <Section
           title="People"

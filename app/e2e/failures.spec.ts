@@ -37,8 +37,10 @@ test('a failed automation fetch is not "you have no rules"', async ({ page }) =>
 
   await page.goto('/automations');
   await expect(page.getByText('We could not load your automations')).toBeVisible();
-  // The sentence that matters: nothing has changed.
-  await expect(page.getByText(/rules on your hub are still running/)).toBeVisible();
+  // The sentence that matters: the connection failed, and nothing has changed. Before this the screen said the rules
+  // were still running — reassuring, and a claim nothing had verified, since the failure might have been the platform.
+  await expect(page.getByText(/could not reach the hub/)).toBeVisible();
+  await expect(page.getByText(/nothing has changed/i)).toBeVisible();
   // And the empty state must not be there to invite a rule that cannot be saved.
   await expect(page.getByText('Nothing runs on its own yet')).toHaveCount(0);
 
@@ -50,6 +52,26 @@ test('a failed automation fetch is not "you have no rules"', async ({ page }) =>
 // The optimistic-switch assertion lives in jest (`entities/device/model/setPoint.test.tsx`) rather than here:
 // it needs a device that is *online*, and the platform's own presence sweep takes an idle device offline within
 // minutes, which made this test a coin flip against the demo data.
+
+test('a refusal from the platform is repeated, and offers no retry that cannot work', async ({ page }) => {
+  await signIn(page);
+
+  // The platform answered, and it said something: "Request failed (403)" would be the client's own placeholder, and
+  // "the app could not reach the hub" would be a lie about a request that arrived.
+  await page.route('**/v1/homes/*/automations*', (route) =>
+    route.fulfill({
+      status: 403,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'forbidden', message: 'only an admin can see these rules' } }),
+    }),
+  );
+
+  await page.goto('/automations');
+  await expect(page.getByText('only an admin can see these rules')).toBeVisible();
+  await expect(page.getByText(/could not reach the hub/)).toHaveCount(0);
+  // A refusal the platform will repeat does not get a Try again button.
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+});
 
 test('a device that cannot be loaded offers a way to try again', async ({ page }) => {
   await signIn(page);

@@ -38,7 +38,7 @@ import { useHomes } from '../../entities/home';
  * matters: a list where everything is styled equally is a list nobody scans.
  */
 export function AlertsPage() {
-  const { data: alerts, isPending, isError, isFetching, refetch } = useNotifications();
+  const { data: alerts, isPending, isError, error, isFetching, refetch } = useNotifications();
   const { color } = useTheme();
   const markRead = useMarkRead();
   const markAll = useMarkAllRead();
@@ -113,7 +113,7 @@ export function AlertsPage() {
         {isError ? (
           <QueryError
             title="We could not load your alerts"
-            body="Nothing has changed — the app could not reach the hub."
+            error={error}
             onRetry={() => void refetch()}
             testID="alerts-unreachable"
           />

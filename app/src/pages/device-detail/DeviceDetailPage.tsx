@@ -49,7 +49,7 @@ export function DeviceDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { color, dark } = useTheme();
   const toast = useToast();
-  const { data: device, isPending, isError, refetch } = useDevice(id);
+  const { data: device, isPending, isError, error, refetch } = useDevice(id);
   const accent = accentFor(device?.category, color.accent, dark);
   const glow = glowFor(device?.category, color.glow);
   const { data: update } = useDeviceUpdate(id);
@@ -116,7 +116,7 @@ export function DeviceDetailPage() {
       <Screen>
         <QueryError
           title="Device unavailable"
-          body="It may have been removed, or you may be offline. The rest of your home is still there."
+          error={error}
           onRetry={() => void refetch()}
         />
       </Screen>

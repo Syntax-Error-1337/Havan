@@ -3,6 +3,7 @@ import { Pressable } from 'react-native';
 import { AppText } from './Box';
 import { Box } from './Box';
 import { useTheme } from '../../app-shell/theme';
+import { describeFailure } from '../api/errors';
 
 /**
  * "We could not ask" is not "there is nothing".
@@ -18,16 +19,30 @@ import { useTheme } from '../../app-shell/theme';
  */
 export function QueryError({
   title = 'We could not load this',
-  body = 'Nothing has changed — the app could not reach the hub.',
+  body,
+  error,
   onRetry,
   testID = 'query-error',
 }: {
   title?: string;
+  /** Overrides the derived sentence. A screen that knows something more specific than the status should say it. */
   body?: string;
+  /**
+   * The failure itself. Given one, the sentence is derived from it — the platform's own words when it answered, and the
+   * connection when it did not — instead of every screen blaming the network for a 403.
+   */
+  error?: unknown;
   onRetry?: () => void;
   testID?: string;
 }) {
   const { color } = useTheme();
+  const failure = error === undefined ? null : describeFailure(error);
+  const sentence =
+    body ??
+    failure?.body ??
+    'Nothing has changed — the app could not reach the hub.';
+  // A retry offered for a refusal the platform will repeat is a button that teaches the customer to press it forever.
+  const retry = failure?.permanent ? undefined : onRetry;
 
   return (
     <Box p="xl" gap="md" center testID={testID}>
@@ -35,10 +50,10 @@ export function QueryError({
         {title}
       </AppText>
       <AppText tone="muted" style={{ textAlign: 'center' }}>
-        {body}
+        {sentence}
       </AppText>
-      {onRetry ? (
-        <Pressable onPress={onRetry} accessibilityRole="button" hitSlop={10}>
+      {retry ? (
+        <Pressable onPress={retry} accessibilityRole="button" hitSlop={10}>
           <AppText variant="body" style={{ color: color.accentInk }}>
             Try again
           </AppText>

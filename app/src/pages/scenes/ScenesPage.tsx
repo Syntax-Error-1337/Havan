@@ -46,7 +46,7 @@ export function ScenesPage() {
   // no scenes and no devices, on a home that has four of each.
   const { homeId } = useCurrentHome();
   const { color } = useTheme();
-  const { data: scenes, isPending, isError, refetch } = useScenes(homeId ?? undefined);
+  const { data: scenes, isPending, isError, error, refetch } = useScenes(homeId ?? undefined);
   const { data: devices } = useDevices(homeId ?? undefined);
   const activate = useActivateScene(homeId ?? undefined);
   const { ask, sheet } = useConfirm();
@@ -142,7 +142,7 @@ export function ScenesPage() {
         {isError ? (
           <QueryError
             title="We could not load your scenes"
-            body="Your scenes are still there — the app could not reach the hub."
+            error={error}
             onRetry={() => void refetch()}
             testID="scenes-unreachable"
           />

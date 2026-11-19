@@ -47,7 +47,7 @@ export function AutomationsPage() {
   const { data: homes } = useHomes();
   const homeId = homes?.[0]?.id;
 
-  const { data: rules, isLoading, isError, refetch } = useAutomations(homeId);
+  const { data: rules, isLoading, isError, error, refetch } = useAutomations(homeId);
   // Only for the one-line description: "turn Porch light on" instead of "set switch.power".
   const { data: homeDevices } = useDevices(homeId);
   const toggle = useToggleAutomation(homeId);
@@ -109,7 +109,7 @@ export function AutomationsPage() {
       {isError ? (
         <QueryError
           title="We could not load your automations"
-          body="Nothing has changed — the rules on your hub are still running."
+          error={error}
           onRetry={() => void refetch()}
         />
       ) : null}

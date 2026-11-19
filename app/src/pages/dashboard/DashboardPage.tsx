@@ -112,6 +112,7 @@ export function DashboardPage() {
     refetch,
     isRefetching,
     isError: dashboardFailed,
+    error: dashboardError,
   } = useDashboard(homeId ?? null);
   const tails = useDashboardTail(homeId ?? null, tailCursors);
 
@@ -685,7 +686,9 @@ export function DashboardPage() {
                empty state invites re-pairing hardware that is already on the wall. */
             <QueryError
               title="We could not load this home"
-              body="Your devices are still there — the app could not reach the hub. Nothing has changed."
+              // The sentence comes from the failure: a home somebody else deleted and a train tunnel used to read the
+              // same, and only one of them is worth waiting out.
+              error={dashboardError}
               onRetry={() => refetch()}
               testID="home-unreachable"
             />
