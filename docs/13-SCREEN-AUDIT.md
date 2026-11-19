@@ -111,6 +111,23 @@ and leaving.
 
 ---
 
+## Two chips that were the wrong shape
+
+Reported from a phone, and both were the same mistake in different clothes: a shape chosen for one line that had to hold
+two, and a scroller whose content began against the screen edge.
+
+- **Scene chips were stadiums around two lines.** A 999 pt radius on a 66 pt card puts the curves through the second line's
+  baselines — legible at 390 pt, and worse at any larger accessibility text size. They are **22 pt cards** now, minimum
+  64 tall and 132 wide so the names do not wobble in width, and "+ New" is the same height so the row has one baseline
+  instead of a small pill beside tall ones. (`widgets/scene-strip/SceneStrip.tsx`)
+- **The room row started at the edge of the screen.** Chips now scroll inside the page's own 16 pt gutter on both sides, so
+  the first chip is not flush against the edge and the last can be scrolled fully into view. The same treatment went on the
+  dashboard's room filter, which had the identical defect. (`pages/device-detail`, `pages/dashboard`)
+
+The remaining peek — the next chip half-visible at the right edge — is the affordance, not a defect: a row that fits
+exactly looks like a set of options, and a row that shows a sliver says there is more. Screenshots:
+`docs/screenshots/scenes-strip-rounded-cards.png`, `docs/screenshots/room-row-inset.png`.
+
 ## The pattern behind the list
 
 Three kinds of gap, in order of how much they cost:

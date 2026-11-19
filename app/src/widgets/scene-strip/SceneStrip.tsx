@@ -58,8 +58,21 @@ export function SceneStrip({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: tokens.space.lg, gap: tokens.space.sm }}
       >
-        <Pressable onPress={() => router.push('/scenes')} accessibilityRole="button">
-          <Box px="lg" py="md" radius="pill" bg="surface" border>
+        {/* The same height as a scene card, because a shorter control beside taller ones reads as the odd one out rather
+            than as the way to add another. */}
+        <Pressable
+          onPress={() => router.push('/scenes')}
+          accessibilityRole="button"
+          accessibilityLabel="New scene"
+        >
+          <Box
+            px="lg"
+            py="md"
+            radius="card"
+            bg="surface"
+            border
+            style={{ minHeight: 64, minWidth: 96, justifyContent: 'center', alignItems: 'center' }}
+          >
             <AppText variant="caption" tone="accent">
               + New
             </AppText>
@@ -79,13 +92,16 @@ export function SceneStrip({
               accessibilityRole="button"
               accessibilityLabel={`Run ${scene.name}`}
             >
+              {/* A scene chip holds two lines, and a stadium around two lines is a lozenge whose curves run through the
+                  second one — measured on a phone at 66 pt tall, and worse at larger accessibility text sizes. A 22-pt
+                  card radius holds them, and the row reads as cards rather than as one long control. */}
               <Box
                 px="lg"
                 py="md"
-                radius="pill"
+                radius="card"
                 bg="elevated"
                 border
-                style={{ opacity: busy ? 0.6 : 1 }}
+                style={{ minHeight: 64, minWidth: 132, justifyContent: 'center', opacity: busy ? 0.6 : 1 }}
               >
                 <AppText weight="600">{busy ? 'Running…' : scene.name}</AppText>
                 <AppText variant="caption" tone="muted">

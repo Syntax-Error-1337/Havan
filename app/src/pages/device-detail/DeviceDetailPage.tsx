@@ -370,7 +370,15 @@ export function DeviceDetailPage() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: tokens.space.sm, paddingVertical: 2 }}
+            // The insets are the screen's own gutter, on both sides: without them the first chip starts against the edge
+            // and the last one is cut mid-word by it, which reads as a clipped control rather than a row you can swipe.
+            // The negative margins let that inset live inside the ScrollView instead of shrinking the row.
+            style={{ marginHorizontal: -tokens.space.lg }}
+            contentContainerStyle={{
+              gap: tokens.space.sm,
+              paddingHorizontal: tokens.space.lg,
+              paddingVertical: 2,
+            }}
           >
             {[{ id: null as string | null, name: 'Unassigned' }, ...(rooms ?? [])].map((room) => {
               const active = (device.room_id ?? null) === room.id;

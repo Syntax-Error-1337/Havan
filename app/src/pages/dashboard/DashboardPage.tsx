@@ -557,7 +557,14 @@ export function DashboardPage() {
               ) : null}
 
               {filterable && query.trim().length > 0 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  // The room filter gets the screen's gutter inside the scroll, so the first chip is not against the edge
+                  // and the last one can be scrolled fully into view instead of staying half-cut.
+                  style={{ marginHorizontal: -tokens.space.lg }}
+                  contentContainerStyle={{ gap: 8, paddingHorizontal: tokens.space.lg }}
+                >
                   {categories.length > 1 ? (
                     <>
                       <Chip label="All" selected={category === null} onPress={() => setCategory(null)} />
