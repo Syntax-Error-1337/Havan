@@ -28,6 +28,10 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | No skipped tests | `make check` (inside it) | `scripts/no-skipped-tests.sh` runs the suite and fails if any test printed a skip. Seven tests were reporting "TEST_DATABASE_URL not set" with the database up — a row-level-security policy, a pool-level `set_config`, a missing owner row and a shared MQTT client id, all folded into the same `Option` and turned into green |
 | Response headers | `cargo test -p api --test headers` | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and a `default-src 'none'` CSP on a success, on a `401`, and on both probes — and no `HSTS`, because this service does not terminate TLS |
 
+`make verify` runs the live ones in the order they make sense — the customer journey, the vendor surface, both client
+suites, and the fault drill last because it stops the containers. It is the release checklist as one command, and its
+last run was **34 / 25 / 11 / 82 / 20, all green** on this tree.
+
 Two of these are worth running twice: `make chaos` because it stops containers, and
 `make load` because a first run after a long idle can time out on a cold cache.
 

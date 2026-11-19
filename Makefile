@@ -190,6 +190,18 @@ audit: ## dependency advisories: shipped code must be clean, tooling must be cle
 vendor-smoke: ## live pass over vendor two-factor, SSO, invoices, webhooks and support bundle
 	python3 scripts/vendor-smoke.py
 
+.PHONY: verify
+verify: ## the live checks, in the order they make sense — e2e, vendor smoke, chaos last
+	@echo "== the customer journey (34 assertions)"
+	./scripts/e2e.sh
+	@echo "== the vendor surface (25 assertions)"
+	python3 scripts/vendor-smoke.py
+	@echo "== the client suites"
+	cd app && npx playwright test --reporter=line
+	cd portal && npx playwright test --reporter=line
+	@echo "== degradation (stops and starts the containers; runs last for that reason)"
+	bash scripts/chaos.sh all
+
 .PHONY: conformance
 # A vendor runs this before asking us to certify a product; we run it before we say yes. It drives
 # a real device through the app's contract, so it is the only check that can answer "does this
