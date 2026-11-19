@@ -13,6 +13,7 @@ import {
 } from '../../entities/ota';
 import { ApiError } from '../../shared/api/client';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * Rollouts. The table answers one question — "is my fleet up to date?" — and
@@ -36,7 +37,7 @@ export function CampaignsPage() {
   const { data: firmware } = useFirmware(productId || undefined);
 
   if (isPending) return <p className="muted">Loading rollouts…</p>;
-  if (error) return <p className="error">{error.message}</p>;
+  if (error) return <p className="error">{describeError(error)}</p>;
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();

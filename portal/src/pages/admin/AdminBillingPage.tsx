@@ -9,6 +9,7 @@ import {
 import { currentPeriod } from '../../entities/invoice';
 import { adminDownload } from '../../shared/api/admin';
 import { useMutation } from '@tanstack/react-query';
+import { describeError } from '../../shared/api/errors';
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -41,7 +42,7 @@ export function AdminBillingPage() {
   } | null>(null);
 
   if (isPending) return <p className="muted">Loading vendors…</p>;
-  if (error) return <p className="error">{error.message}</p>;
+  if (error) return <p className="error">{describeError(error)}</p>;
 
   const selected = vendorId || vendors[0]?.id || '';
 

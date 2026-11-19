@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 
 import { useFleet, useFleetStats, type FleetFilter } from '../../entities/fleet';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * The fleet: every device the vendor has shipped, and what it is doing.
@@ -73,7 +74,7 @@ export function FleetPage() {
   if (error) {
     return (
       <div className="card">
-        <p className="error">{error.message}</p>
+        <p className="error">{describeError(error)}</p>
         <button onClick={() => void refetch()}>Try again</button>
       </div>
     );

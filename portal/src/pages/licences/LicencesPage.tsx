@@ -1,5 +1,6 @@
 import { formatMoney, useLicences } from '../../entities/licence';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * What the vendor bought, what they have spent, and the devices behind it.
@@ -12,7 +13,7 @@ export function LicencesPage() {
   const { data, isPending, error } = useLicences();
 
   if (isPending) return <p className="muted">Loading licences…</p>;
-  if (error) return <p className="error">{error.message}</p>;
+  if (error) return <p className="error">{describeError(error)}</p>;
 
   const { summary, activations } = data;
   const short = summary.remaining < 0;

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useAudit, type AuditEntry } from '../../entities/audit';
 import { download } from '../../shared/api/client';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * The audit trail.
@@ -113,7 +114,7 @@ export function AuditPage() {
 
       {error ? (
         <div className="card">
-          <p className="error">{error.message}</p>
+          <p className="error">{describeError(error)}</p>
           <button onClick={() => void refetch()}>Try again</button>
         </div>
       ) : null}

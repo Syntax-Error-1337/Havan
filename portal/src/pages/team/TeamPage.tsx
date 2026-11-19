@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useInvite, useRemoveMember, useRevokeInvite, useTeam, type Role } from '../../entities/team';
 import { TableFrame } from '../../shared/ui/TableFrame';
 import { storedToken } from '../../shared/api/client';
+import { describeError } from '../../shared/api/errors';
 
 const ROLES: Array<Exclude<Role, 'owner'>> = ['admin', 'developer', 'viewer'];
 
@@ -38,7 +39,7 @@ export function TeamPage() {
   };
 
   if (isPending) return <p className="muted">Loading team…</p>;
-  if (error) return <p className="error">{error.message}</p>;
+  if (error) return <p className="error">{describeError(error)}</p>;
 
   return (
     <>

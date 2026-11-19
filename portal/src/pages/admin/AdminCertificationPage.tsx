@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useCertificationQueue, useDecideCertification } from '../../entities/admin';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * The queue we owe vendors an answer to.
@@ -16,7 +17,7 @@ export function AdminCertificationPage() {
   const [copied, setCopied] = useState<string | null>(null);
 
   if (isPending) return <p className="muted">Loading the queue…</p>;
-  if (error) return <p className="error">{error.message}</p>;
+  if (error) return <p className="error">{describeError(error)}</p>;
 
   return (
     <>

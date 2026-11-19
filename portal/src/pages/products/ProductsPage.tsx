@@ -9,6 +9,7 @@ import {
 } from '../../entities/product';
 import { ProductTable } from '../../widgets/product-table/ProductTable';
 import { ApiError } from '../../shared/api/client';
+import { describeError } from '../../shared/api/errors';
 
 const BLANK: ThingModel = {
   schema_version: 1,
@@ -70,7 +71,7 @@ export function ProductsPage() {
   if (error) {
     return (
       <div className="card">
-        <p className="error">{error.message}</p>
+        <p className="error">{describeError(error)}</p>
       </div>
     );
   }

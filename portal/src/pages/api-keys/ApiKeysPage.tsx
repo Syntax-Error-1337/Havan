@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { keyState, useApiKeys, useCreateApiKey, useRevokeApiKey } from '../../entities/api-key';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * API keys for a vendor's own tooling.
@@ -39,7 +40,7 @@ export function ApiKeysPage() {
   };
 
   if (isPending) return <p className="muted">Loading keys…</p>;
-  if (error) return <p className="error">{error.message}</p>;
+  if (error) return <p className="error">{describeError(error)}</p>;
 
   return (
     <>

@@ -8,6 +8,7 @@ import {
   type Webhook,
 } from '../../entities/webhook';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * Where a vendor's ERP waits for us to tell it something happened.
@@ -38,7 +39,7 @@ export function WebhooksPage() {
     );
 
   if (isPending) return <p className="muted">Loading subscriptions…</p>;
-  if (error) return <p className="error">{error.message}</p>;
+  if (error) return <p className="error">{describeError(error)}</p>;
 
   return (
     <>

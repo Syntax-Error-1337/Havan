@@ -181,6 +181,22 @@ none` for buttons and links to the stylesheet made it fail on both projects, whi
 The sweep covers **every screen**, not a sample: 16 routes including the operator console, because a screen left out of a
 sweep is a screen the sweep cannot vouch for. All 10 assertions pass now, and the portal suite is 92 with them.
 
+## What a vendor reads when a screen does not load
+
+Every page printed `error.message`. That is right when the server answered — its sentences are written for a person
+("that invitation has already been used") — and wrong when it did not: a dropped connection surfaced as
+`TypeError: Failed to fetch`, which tells a vendor nothing about whether their click was applied.
+
+`describeError` draws the distinction that matters: *did the platform answer, or did the question not arrive?* The
+server's own sentence is repeated when there is one, its placeholders (`Request failed (502)`) are replaced with something
+actionable, a 404 says the row may have been removed by somebody else, and **"nothing was changed" is only said about a
+request that never reached the server**. Fourteen pages use it; the remaining `error.message` uses are inside forms, where
+the server's sentence is exactly what belongs beside the input.
+
+Verified by intercepting the network rather than by reading the code: aborting the fleet request renders *"The portal could
+not reach the platform. Check your connection — nothing was changed."* with a **Try again**; a 403 renders the server's
+`only an owner can view the fleet` and not `Request failed (403)`. Both are now `e2e/11-failures.spec.ts`.
+
 ## Products — the list needed nothing, the editor needed one thing
 
 The list is honest about the rule it enforces ("3 products · a product must be published before a customer can pair

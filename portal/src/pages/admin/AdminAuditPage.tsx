@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useAuditPage } from '../../entities/admin';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 function when(ts: string): string {
   const at = new Date(ts);
@@ -27,7 +28,7 @@ export function AdminAuditPage() {
         in the same millisecond cannot hide one of them at a page boundary.
       </p>
 
-      {error ? <p className="error">{error.message}</p> : null}
+      {error ? <p className="error">{describeError(error)}</p> : null}
       {isPending ? <p className="muted">Loading audit…</p> : null}
 
       {data ? (

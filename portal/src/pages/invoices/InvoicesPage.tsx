@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { formatMoney } from '../../entities/licence';
 import { currentPeriod, useInvoice, type InvoiceLine } from '../../entities/invoice';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * What a vendor owes this month, and what we sent them for the months already issued.
@@ -56,7 +57,7 @@ export function InvoicesPage() {
       {isPending ? (
         <p className="muted">Loading…</p>
       ) : error ? (
-        <p className="error">{error.message}</p>
+        <p className="error">{describeError(error)}</p>
       ) : (
         <>
           <div className="card row spread" style={{ marginBottom: 20 }}>

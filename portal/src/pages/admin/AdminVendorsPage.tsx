@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { useCreateVendor, usePatchVendor, useVendors, type VendorRow } from '../../entities/admin';
 import { TableFrame } from '../../shared/ui/TableFrame';
+import { describeError } from '../../shared/api/errors';
 
 /**
  * The operator's book of business: who sells here, what they have live, and the one switch that
@@ -32,7 +33,7 @@ export function AdminVendorsPage() {
   };
 
   if (isPending) return <p className="muted">Loading vendors…</p>;
-  if (error) return <p className="error">{error.message}</p>;
+  if (error) return <p className="error">{describeError(error)}</p>;
 
   const suspended = vendors.filter((v) => v.status === 'suspended').length;
 
