@@ -39,7 +39,7 @@ and leaving.
 | --- | --- |
 | Rename, room move, ranges, chart, remove — present, and now with confirmation | done |
 | **No identity block**: serial, product, vendor, firmware version and last-seen time are all in the payload and none are on screen. A support call cannot start with "what is this device" | **P1** |
-| No "identify" action for a device you cannot see (blink, beep), and no undo after remove — both need something the platform does not have: an `identify` data point the firmware would answer, and a restore verb on the server. Recorded rather than faked with a toggle that blinks a light for two seconds | blocked |
+| ~~No "identify" action and no undo after remove~~ — **both done**. `identify` is a named action on the wire (`POST /devices/{id}/identify`, `op: "action"`), the app offers *Make it blink* and reports what the device did — `applied`, or "no answer yet", which is the true sentence about a firmware that has never heard of it. Remove records a release (`0048`) and the toast offers **Undo** for ten minutes, enforced by the server | done |
 | Remove is immediate after confirm, with no undo | P2 |
 
 ### Add a device (`/add-device`)
@@ -75,7 +75,7 @@ and leaving.
 | Finding | Priority |
 | --- | --- |
 | Account, home name, time zone, location, devices, members, at-home, rooms, appearance, about | — |
-| **No Notifications section** — *done, without quiet hours*: `GET /notifications/tokens` (count + platform, never the delivery address) and `DELETE /notifications/tokens`, surfaced as "Phones receiving alerts" and a confirmed "Turn off alerts everywhere". Quiet hours still needs server-side enforcement before it can be offered honestly | **P1** |
+| **No Notifications section** — *done, including quiet hours*: `GET /notifications/tokens` (count + platform, never the delivery address) and `DELETE /notifications/tokens`, surfaced as "Phones receiving alerts" and a confirmed "Turn off alerts everywhere". Quiet hours (`GET/PUT /notifications/quiet-hours`, `0049`) are **enforced in the push queue**: a held alert stays queued and goes out when the window ends, and the row shows what the server holds rather than what a local toggle believes | done |
 | **No Security section** — *sessions and second factor done on the server*: `GET /me/sessions` and `POST /auth/logout-others` are surfaced as "Signed-in devices" plus a confirmed, destructive "Sign out other devices"; `GET/POST/DELETE /me/totp` and `POST /me/totp/confirm` give the customer a real second factor (`second_factor_required` on sign-in, replayed codes refused, seed sealed with `HAVEN_VAULT_KEY`), and Settings → Security carries it: Off / Set up / On, the secret and `otpauth://` link as copyable text, a six-digit confirm, and a confirmed "Turn off". Sign-in asks for the code as a *step*, not an error. There is no QR: a QR needs a renderer this app does not carry, and the seed plus the link are what an authenticator actually needs | **P1** — done |
 | Devices row is inert while Members navigates; two rows of the same family behave differently | **P1** — one line |
 | About — *done*: licences and copy-diagnostics were already there; **Contact support** and **Service status** are now platform data (`app_theme.support_email` / `status_url`), set in the operator console and drawn only when set. Status links must be `https://` — the app hands them to the system browser | **P2 — done** |
@@ -163,4 +163,4 @@ Three kinds of gap, in order of how much they cost:
 | About | `Licences` (generated from the installed tree by `scripts/gen-licences.mjs`, 31 packages, all MIT) and `Copy diagnostics` — ids, counts, versions, timezone; never a token. |
 | Demo data | `scripts/demo-fresh.sh` moves `last_seen_at`, `online` **and every point's `updated_at`**. The first version moved only the device row and the tiles still said "Silent for 1d": the app takes the *oldest* reading age across a device and its points, so the point's timestamp is the one that decides. |
 
-Still blocked, and not faked: "identify" needs a data point the firmware answers, and remove has no undo because the server has no restore verb.
+Closed since the first pass: "identify" is a named device action the platform can send and the app can honestly report on, and remove has a ten-minute undo backed by a recorded release. What remains unverified is the thing no test here can reach: that a given ESP-12E firmware implements `identify` — the board has been offline throughout, and the app says "no answer" rather than pretending otherwise.

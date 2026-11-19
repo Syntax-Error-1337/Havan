@@ -32,6 +32,104 @@ pub fn router() -> Router<AppState> {
                 .delete(forget_all_tokens),
         )
         .route("/notifications/tokens/{token}", delete(remove_token))
+        .route(
+            "/notifications/quiet-hours",
+            get(quiet_hours).put(set_quiet_hours),
+        )
+}
+
+/// `GET /v1/notifications/quiet-hours` — the window in which pushes are held.
+async fn quiet_hours(
+    State(state): State<AppState>,
+    auth: Auth,
+) -> ApiResult<Json<domain::notification::QuietHours>> {
+    Ok(Json(
+        state
+            .notifications
+            .quiet_hours(auth.user.id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+/// `PUT /v1/notifications/quiet-hours` — set or clear it.
+///
+/// Refuses three things the app could otherwise store happily and the platform could not honour: a time that is not
+/// `HH:MM`, an end equal to the start (all day, or never — ambiguous), and a zone Postgres does not know, which would
+/// silently never match and quietly turn quiet hours off.
+async fn set_quiet_hours(
+    State(state): State<AppState>,
+    auth: Auth,
+    Json(body): Json<domain::notification::QuietHours>,
+) -> ApiResult<Json<domain::notification::QuietHours>> {
+    if let (Some(from), Some(to)) = (&body.from, &body.to) {
+        let from = parse_clock(from)?;
+        let to = parse_clock(to)?;
+        if from == to {
+            return Err(ApiError(kernel::AppError::validation(
+                "quiet hours need two different times — the same time is either all day or never",
+            )));
+        }
+        let timezone = body
+            .timezone
+            .as_deref()
+            .ok_or_else(|| ApiError(kernel::AppError::validation("quiet hours need a timezone")))?;
+        if !state
+            .notifications
+            .timezone_exists(timezone)
+            .await
+            .map_err(ApiError)?
+        {
+            return Err(ApiError(kernel::AppError::validation(format!(
+                "unknown timezone '{timezone}'"
+            ))));
+        }
+    } else if body.from.is_some() || body.to.is_some() || body.timezone.is_some() {
+        return Err(ApiError(kernel::AppError::validation(
+            "quiet hours need a start, an end and a timezone, or none of them",
+        )));
+    }
+
+    state
+        .notifications
+        .set_quiet_hours(auth.user.id, &body)
+        .await
+        .map_err(ApiError)?;
+
+    // Answer with what was stored, read back: a client that sent 9:5 and got 09:05 back learns the format it will see.
+    Ok(Json(
+        state
+            .notifications
+            .quiet_hours(auth.user.id)
+            .await
+            .map_err(ApiError)?,
+    ))
+}
+
+/// `HH:MM`, 24-hour. Not `9:5`, not `09:05:00` — one shape, so the value the app reads back is the value it sent.
+fn parse_clock(value: &str) -> ApiResult<(u8, u8)> {
+    let (hour, minute) = value.split_once(':').ok_or_else(|| {
+        ApiError(kernel::AppError::validation(
+            "a time looks like HH:MM, 24-hour",
+        ))
+    })?;
+    if hour.len() != 2 || minute.len() != 2 {
+        return Err(ApiError(kernel::AppError::validation(
+            "a time looks like HH:MM, 24-hour — two digits each",
+        )));
+    }
+    let hour: u8 = hour
+        .parse()
+        .map_err(|_| ApiError(kernel::AppError::validation("bad hour")))?;
+    let minute: u8 = minute
+        .parse()
+        .map_err(|_| ApiError(kernel::AppError::validation("bad minute")))?;
+    if hour > 23 || minute > 59 {
+        return Err(ApiError(kernel::AppError::validation(
+            "that is not a time of day",
+        )));
+    }
+    Ok((hour, minute))
 }
 
 #[derive(Deserialize)]

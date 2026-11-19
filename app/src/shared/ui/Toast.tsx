@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, Platform, View } from 'react-native';
+import { Animated, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme, tokens } from '../../app-shell/theme';
@@ -9,12 +9,25 @@ import { useReducedMotion } from '../lib/useReducedMotion';
 
 type Tone = 'done' | 'failed';
 
-type ToastState = { id: number; message: string; tone: Tone } | null;
+/** An action the customer can take while the message is still on screen — an undo, in practice. */
+export type ToastAction = { label: string; onPress: () => void };
 
-const ToastContext = createContext<(message: string, tone?: Tone) => void>(() => undefined);
+type ToastState = { id: number; message: string; tone: Tone; action?: ToastAction } | null;
+
+const ToastContext = createContext<(message: string, tone?: Tone, action?: ToastAction) => void>(
+  () => undefined,
+);
 
 /** Long enough to read a short sentence at a glance, short enough not to sit over the next thing you do. */
 const VISIBLE_MS = 2600;
+
+/**
+ * Longer when there is something to press.
+ *
+ * 2.6 s is right for "Room renamed"; it is not enough time to read a sentence, decide whether it was a mistake, and reach
+ * a button. This is the one toast whose whole purpose is to be acted on.
+ */
+const ACTIONABLE_MS = 8000;
 
 /**
  * One line, above the tab bar, that says what just happened.
@@ -32,9 +45,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ToastState>(null);
   const next = useRef(0);
 
-  const show = useCallback((message: string, tone: Tone = 'done') => {
+  const show = useCallback((message: string, tone: Tone = 'done', action?: ToastAction) => {
     next.current += 1;
-    setState({ id: next.current, message, tone });
+    setState({ id: next.current, message, tone, action });
   }, []);
 
   const value = useMemo(() => show, [show]);
@@ -60,7 +73,7 @@ function Toast({ state, onDone }: { state: ToastState; onDone: () => void }) {
 
   useEffect(() => {
     if (!state) return;
-    const timer = setTimeout(onDone, VISIBLE_MS);
+    const timer = setTimeout(onDone, state.action ? ACTIONABLE_MS : VISIBLE_MS);
     if (reduced) {
       fade.setValue(1);
       lift.setValue(0);
@@ -79,7 +92,9 @@ function Toast({ state, onDone }: { state: ToastState; onDone: () => void }) {
 
   return (
     <View
-      pointerEvents="none"
+      // `box-none` keeps the screen usable around the pill while letting the one control inside it receive the tap;
+      // a toast with an undo that cannot be pressed is a sentence with a lie in it.
+      pointerEvents={state.action ? 'box-none' : 'none'}
       // Above the tab bar, not over it: a message that covers the control you are about to press is a message in the
       // way. `bottom` includes the home-indicator inset so the pill never sits under the bar.
       style={{
@@ -134,6 +149,25 @@ function Toast({ state, onDone }: { state: ToastState; onDone: () => void }) {
           <AppText variant="caption" tone={failure ? 'danger' : undefined} weight="600">
             {state.message}
           </AppText>
+          {state.action ? (
+            <Pressable
+              onPress={state.action.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={state.action.label}
+              // 44 points of height even though the pill is shorter than that: the target is the box, not the lettering.
+              hitSlop={0}
+              style={{
+                minHeight: tokens.touch.min,
+                justifyContent: 'center',
+                paddingHorizontal: tokens.space.sm,
+              }}
+              testID="toast-action"
+            >
+              <AppText variant="caption" tone="accent" weight="700">
+                {state.action.label}
+              </AppText>
+            </Pressable>
+          ) : null}
         </View>
       </Animated.View>
     </View>

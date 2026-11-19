@@ -34,3 +34,4 @@ export {
   type Range,
 } from './model/history';
 export { describeUpdate, useDeviceUpdate, type DeviceUpdate } from './model/updates';
+export { outcomeNotice, isRetrying } from './model/notices';

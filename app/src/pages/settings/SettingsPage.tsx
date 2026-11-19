@@ -43,7 +43,12 @@ import {
 } from '../../entities/home';
 import { deviceTimeZone } from '../../shared/lib/timeZone';
 import { useMe, useSession, useSessions, useSignOutOthers, useTotp } from '../../entities/session';
-import { usePushTokens, useTurnOffAlerts } from '../../entities/notification';
+import {
+  usePushTokens,
+  useQuietHours,
+  useSetQuietHours,
+  useTurnOffAlerts,
+} from '../../entities/notification';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
 import licences from '../../shared/config/licences.json';
@@ -72,6 +77,10 @@ export function SettingsPage() {
   const totp = useTotp();
   const { data: pushTokens } = usePushTokens();
   const turnOffAlerts = useTurnOffAlerts();
+  const quietHours = useQuietHours();
+  const setQuietHours = useSetQuietHours();
+  const [quietDraft, setQuietDraft] = useState<{ from: string; to: string } | null>(null);
+  const [quietError, setQuietError] = useState<string | null>(null);
   const signOutOthers = useSignOutOthers();
 
   /**
@@ -375,6 +384,128 @@ export function SettingsPage() {
           title="Alerts"
           footnote="Turning alerts off stops the push to your phones. The alert list in the app keeps filling."
         >
+          {/* Quiet hours, which the platform now enforces. The row says what the server holds, not what a local toggle
+              believes: a switch whose position disagrees with 03:00 is the reason this was not built earlier. */}
+          <Row
+            title="Quiet hours"
+            subtitle={
+              quietHours.data?.from
+                ? `Pushes are held until ${quietHours.data.to} — alerts still appear in the app`
+                : undefined
+            }
+            value={
+              quietHours.data?.from && quietHours.data.to
+                ? `${quietHours.data.from} – ${quietHours.data.to}`
+                : 'Off'
+            }
+            onPress={() => {
+              setQuietError(null);
+              setQuietDraft(
+                quietDraft
+                  ? null
+                  : {
+                      from: quietHours.data?.from ?? '22:00',
+                      to: quietHours.data?.to ?? '07:00',
+                    },
+              );
+            }}
+            testID="quiet-hours"
+          />
+          {quietDraft ? (
+            <Box gap="sm" style={{ paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.md }}>
+              <AppText variant="caption" tone="muted">
+                Times are in this home's timezone. Alerts keep arriving in the app; only the push is held.
+              </AppText>
+              <Box row gap="sm" style={{ alignItems: 'center' }}>
+                {(['from', 'to'] as const).map((edge) => (
+                  <Box key={edge} style={{ flex: 1 }} gap="xs">
+                    <AppText variant="caption" tone="muted">
+                      {edge === 'from' ? 'From' : 'Until'}
+                    </AppText>
+                    <TextInput
+                      value={quietDraft[edge]}
+                      onChangeText={(text) => setQuietDraft({ ...quietDraft, [edge]: text })}
+                      placeholder="22:00"
+                      placeholderTextColor={color.placeholder}
+                      keyboardType="numbers-and-punctuation"
+                      maxLength={5}
+                      accessibilityLabel={edge === 'from' ? 'Quiet hours start' : 'Quiet hours end'}
+                      testID={`quiet-${edge}`}
+                      style={{
+                        minHeight: tokens.touch.min,
+                        borderRadius: tokens.radius.md,
+                        borderWidth: 0.5,
+                        borderColor: quietError ? color.danger : color.cardEdge,
+                        paddingHorizontal: tokens.space.md,
+                        color: color.text,
+                        backgroundColor: color.card,
+                        fontSize: 16,
+                      }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+              {quietError ? (
+                <AppText variant="caption" tone="danger">
+                  {quietError}
+                </AppText>
+              ) : null}
+              <Box row gap="sm">
+                <Button
+                  label={setQuietHours.isPending ? 'Saving…' : 'Save'}
+                  onPress={() => {
+                    const bad = (v: string) => !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v.trim());
+                    if (bad(quietDraft.from) || bad(quietDraft.to)) {
+                      setQuietError('Use HH:MM, 24-hour — for example 22:00.');
+                      return;
+                    }
+                    if (quietDraft.from === quietDraft.to) {
+                      setQuietError('The start and the end have to be different times.');
+                      return;
+                    }
+                    setQuietError(null);
+                    setQuietHours.mutate(
+                      {
+                        from: quietDraft.from.trim(),
+                        to: quietDraft.to.trim(),
+                        timezone: home?.timezone ?? 'UTC',
+                      },
+                      {
+                        onSuccess: () => {
+                          setQuietDraft(null);
+                          toast(`Quiet from ${quietDraft.from} to ${quietDraft.to}`);
+                        },
+                        onError: (error: unknown) =>
+                          setQuietError(
+                            error instanceof Error ? error.message : 'That could not be saved',
+                          ),
+                      },
+                    );
+                  }}
+                  disabled={setQuietHours.isPending}
+                  testID="quiet-save"
+                />
+                {quietHours.data?.from ? (
+                  <Button
+                    label="Turn off"
+                    variant="ghost"
+                    onPress={() =>
+                      setQuietHours.mutate(
+                        { from: null, to: null, timezone: null },
+                        {
+                          onSuccess: () => {
+                            setQuietDraft(null);
+                            toast('Quiet hours off — alerts are pushed again');
+                          },
+                        },
+                      )
+                    }
+                    testID="quiet-off"
+                  />
+                ) : null}
+              </Box>
+            </Box>
+          ) : null}
           <Row
             title="Phones receiving alerts"
             subtitle={pushTokens?.count === 0 ? 'Alerts appear in the app only' : undefined}

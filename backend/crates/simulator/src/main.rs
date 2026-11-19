@@ -90,6 +90,16 @@ async fn main() -> anyhow::Result<()> {
                 }
                 DeviceEvent::Command(command) => {
                     let ts = kernel::now_s();
+                    // `identify` has no state to apply — the device announces itself and says it did. Without this the
+                    // action would be acked by the generic path and the log would claim a blink that never happened,
+                    // which is exactly the kind of ack the app cannot tell from a real one.
+                    if haven_sdk::is_action(&command) {
+                        tracing::info!(cmd = %command.id, action = ?command.action, "announced itself");
+                        client
+                            .publish_ack(&acknowledgement(&command, &points, ts))
+                            .await?;
+                        continue;
+                    }
                     match points.apply(&command) {
                         Ok(()) => {
                             let report = StateReport::from_points(&points, FIRMWARE);

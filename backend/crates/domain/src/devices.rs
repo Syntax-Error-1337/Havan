@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use kernel::AppError;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::homes::{HomeRepo, HomeService, Role};
@@ -60,12 +61,18 @@ pub struct Command {
 }
 
 /// Everything the transport needs to put a command on the wire.
+///
+/// A command is one of two things, and the wire envelope has always had both fields: a data-point set (`dp` + `value`)
+/// or a named action (`action`). Only the first was ever filled in, which is why `identify` was in the API docs and in
+/// the app's wishlist without existing anywhere.
 #[derive(Debug, Clone)]
 pub struct Publishable {
     pub vendor_id: Uuid,
     pub home_id: Uuid,
-    pub dp: String,
-    pub value: PointValue,
+    pub dp: Option<String>,
+    pub value: Option<PointValue>,
+    /// A named device action — `identify`, `calibrate`. Not a point: it has no value and no last-known state.
+    pub action: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -306,11 +313,58 @@ pub trait DeviceRepo {
         device_id: Uuid,
         user_id: Uuid,
     ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Write down what a removal took away, so it can be given back.
+    fn record_release(
+        &self,
+        release: &Release,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// The most recent removal of this device, if it has not been undone.
+    fn latest_release(
+        &self,
+        device_id: Uuid,
+    ) -> impl Future<Output = Result<Option<Release>, AppError>> + Send;
+
+    /// Put a released device back into the home and room it came from.
+    fn restore(
+        &self,
+        device_id: Uuid,
+        home_id: Uuid,
+        room_id: Option<Uuid>,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+}
+
+/// What a removal took away.
+///
+/// The device row already survives a removal — it is `released`, not deleted — so the only things needed to put it back
+/// are the home and the room it came from, who removed it, and when. `restored_at` is the stamp that makes a release
+/// single-use: the same row cannot be replayed to drag a device out of a home it has since been paired into.
+#[derive(Debug, Clone)]
+pub struct Release {
+    pub id: Uuid,
+    pub device_id: Uuid,
+    pub vendor_id: Uuid,
+    pub home_id: Uuid,
+    pub room_id: Option<Uuid>,
+    pub released_by: Uuid,
+    pub released_at: OffsetDateTime,
+    pub restored_at: Option<OffsetDateTime>,
 }
 
 /// Commands live next to devices because they are authorised the same way:
 /// by the membership of the home the device belongs to.
 pub trait CommandRepo {
+    /// Record a named action (`identify`) — no point, no value, no last-known state.
+    fn insert_action_command(
+        &self,
+        device_id: Uuid,
+        user_id: Uuid,
+        action: &str,
+        idempotency_key: Option<&str>,
+    ) -> impl Future<Output = Result<Command, AppError>> + Send;
+
     fn insert_command(
         &self,
         device_id: Uuid,
@@ -508,6 +562,7 @@ where
     /// the customer's telemetry keep their foreign keys; the customer loses
     /// access because the device no longer belongs to their home.
     pub async fn unclaim(&self, device_id: Uuid, user_id: Uuid) -> Result<(), AppError> {
+        let device = self.get(device_id, user_id).await?;
         let home = self
             .homes
             .require(self.device_home(device_id, user_id).await?, user_id)
@@ -515,7 +570,69 @@ where
         if home.role < Role::Admin {
             return Err(AppError::forbidden("only an admin can remove a device"));
         }
+
+        // Write the release down *before* the removal, and only if it is recorded: a removal nobody can undo is a
+        // removal the customer is not told they can undo. If the record cannot be written the request fails here,
+        // while the device is still in the home — the safe direction.
+        self.devices
+            .record_release(&Release {
+                id: kernel::new_id(),
+                device_id,
+                vendor_id: device.vendor_id,
+                home_id: home.id,
+                room_id: device.room_id,
+                released_by: user_id,
+                released_at: OffsetDateTime::now_utc(),
+                restored_at: None,
+            })
+            .await?;
+
         self.devices.unclaim(device_id, user_id).await
+    }
+
+    /// Put a removed device back into the home and room it came from.
+    ///
+    /// The window is the whole design: long enough to catch a mis-tap ("I meant the one next to it"), short enough that a
+    /// device taken away deliberately and paired into another home is not dragged back out of it by a stale undo. After
+    /// it, the device has to be paired again — which is what the removal always meant.
+    pub async fn restore(
+        &self,
+        device_id: Uuid,
+        user_id: Uuid,
+        window: std::time::Duration,
+    ) -> Result<Uuid, AppError> {
+        let Some(release) = self.devices.latest_release(device_id).await? else {
+            return Err(AppError::not_found(
+                "that device was not removed from a home",
+            ));
+        };
+
+        if release.restored_at.is_some() {
+            return Err(AppError::code(
+                kernel::ErrorCode::Conflict,
+                "that device is already back in its home",
+            ));
+        }
+
+        let age = OffsetDateTime::now_utc() - release.released_at;
+        if age > time::Duration::try_from(window).unwrap_or(time::Duration::ZERO) {
+            return Err(AppError::code(
+                kernel::ErrorCode::Conflict,
+                "too late to undo that removal — pair the device again to add it back",
+            ));
+        }
+
+        // The same door as removal, in reverse: an admin of the home it came out of, and nothing else. A released device
+        // belongs to no home, so this is the only authority that can name one.
+        let home = self.homes.require(release.home_id, user_id).await?;
+        if home.role < Role::Admin {
+            return Err(AppError::forbidden("only an admin can restore a device"));
+        }
+
+        self.devices
+            .restore(device_id, release.home_id, release.room_id, user_id)
+            .await?;
+        Ok(release.home_id)
     }
 
     async fn device_home(&self, device_id: Uuid, user_id: Uuid) -> Result<Uuid, AppError> {
@@ -585,8 +702,44 @@ where
         let publish = command.created.then(|| Publishable {
             vendor_id: device.vendor_id,
             home_id,
-            dp: point.dp.clone(),
-            value,
+            dp: Some(point.dp.clone()),
+            value: Some(value),
+            action: None,
+        });
+
+        Ok(CommandOutcome { command, publish })
+    }
+
+    /// Ask a device to announce itself — `identify`: blink, beep, whatever the hardware can do.
+    ///
+    /// This is a named action rather than a data point, because there is no state to keep: nobody wants to know that a
+    /// device *is* identifying, they want it to do it now. The wire envelope has carried an `action` field since the first
+    /// version; nothing filled it in until here.
+    ///
+    /// Whether the device answers is the device's business, and the app says so: the command settles `applied`,
+    /// `rejected` or `timeout` like any other, and "it did not answer" is a true sentence about a firmware that has never
+    /// heard of `identify`.
+    pub async fn identify(
+        &self,
+        device_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<CommandOutcome, AppError> {
+        let device = self.get(device_id, user_id).await?;
+        let home_id = device
+            .home_id
+            .ok_or_else(|| AppError::validation("this device is not in a home"))?;
+
+        let command = self
+            .commands
+            .insert_action_command(device_id, user_id, "identify", None)
+            .await?;
+
+        let publish = command.created.then(|| Publishable {
+            vendor_id: device.vendor_id,
+            home_id,
+            dp: None,
+            value: None,
+            action: Some("identify".into()),
         });
 
         Ok(CommandOutcome { command, publish })
@@ -786,6 +939,7 @@ mod tests {
     #[derive(Default)]
     struct FakeDevices {
         devices: Mutex<Vec<Device>>,
+        releases: Mutex<Vec<Release>>,
     }
 
     impl DeviceRepo for FakeDevices {
@@ -866,6 +1020,46 @@ mod tests {
         async fn unclaim(&self, id: Uuid, _user: Uuid) -> Result<(), AppError> {
             if let Some(d) = self.devices.lock().unwrap().iter_mut().find(|d| d.id == id) {
                 d.home_id = None;
+            }
+            Ok(())
+        }
+
+        async fn record_release(&self, release: &Release) -> Result<(), AppError> {
+            self.releases.lock().unwrap().push(release.clone());
+            Ok(())
+        }
+
+        async fn latest_release(&self, id: Uuid) -> Result<Option<Release>, AppError> {
+            Ok(self
+                .releases
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.device_id == id)
+                .max_by_key(|r| r.released_at)
+                .cloned())
+        }
+
+        async fn restore(
+            &self,
+            id: Uuid,
+            home_id: Uuid,
+            _room_id: Option<Uuid>,
+            _user: Uuid,
+        ) -> Result<(), AppError> {
+            if let Some(d) = self.devices.lock().unwrap().iter_mut().find(|d| d.id == id) {
+                d.home_id = Some(home_id);
+            }
+            for release in self
+                .releases
+                .lock()
+                .unwrap()
+                .iter_mut()
+                .filter(|r| r.device_id == id)
+            {
+                if release.restored_at.is_none() {
+                    release.restored_at = Some(OffsetDateTime::now_utc());
+                }
             }
             Ok(())
         }

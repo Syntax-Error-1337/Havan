@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -25,9 +26,11 @@ import {
   describeUpdate,
   expectedReportWords,
   freshness,
+  outcomeNotice,
   quietAfterWords,
   relative,
   silenceWords,
+  useCommandOutcome,
   useDevice,
   useDeviceUpdate,
   useHistory,
@@ -41,6 +44,8 @@ import type { DevicePoint } from '../../entities/device';
 import { canManage, useHomes, useRooms } from '../../entities/home';
 import { useTheme, tokens } from '../../app-shell/theme';
 import { useToast } from '../../shared/ui/Toast';
+import { request } from '../../shared/api/client';
+import { qk } from '../../shared/api/keys';
 import { useInlineEdit } from '../../shared/lib/useInlineEdit';
 import { reading, valueWithUnit } from '../../shared/ui/units';
 import { chartBand } from '../../entities/device/model/chart';
@@ -63,6 +68,62 @@ export function DeviceDetailPage() {
   const setRoom = useSetRoom();
   const rename = useRenameDevice();
   const remove = useRemoveDevice();
+  // The undo acts after this screen has unmounted, so it goes through the client rather than a mutation owned here.
+  const queryClient = useQueryClient();
+
+  /**
+   * Asking a device to announce itself.
+   *
+   * The platform cannot make a device blink — the device has to. So this is a command, it settles like one, and the
+   * sentence afterwards is about what the *device* did: "it answered" only when the ack came back, "no answer" when it
+   * did not. A feature that claimed a blink on a `202` would be lying about firmware it has never met.
+   */
+  const [identifyCommand, setIdentifyCommand] = useState<string | null>(null);
+  const identify = useMutation({
+    mutationFn: (deviceId: string) =>
+      request<{ command_id: string; status: string }>(`/devices/${deviceId}/identify`, {
+        method: 'POST',
+      }),
+    onSuccess: (result) => {
+      setIdentifyCommand(result.command_id);
+      toast(`Asking ${device?.name ?? 'the device'} to blink…`);
+    },
+    onError: (error) =>
+      toast(error instanceof Error ? error.message : 'That request did not go through', 'failed'),
+  });
+  const identifyOutcome = useCommandOutcome(id ?? '', identifyCommand);
+
+  // The poll stops after ten tries; if the device has still said nothing by then, the silence needs a sentence of its
+  // own. Without this the last thing on screen is "Asking…" and the customer is left to guess whether it worked.
+  const latestIdentify = useRef<string | undefined>(undefined);
+  latestIdentify.current = identifyOutcome.data?.status;
+  useEffect(() => {
+    if (!identifyCommand) return;
+    const timer = setTimeout(() => {
+      const status = latestIdentify.current;
+      if (status === 'applied' || status === 'rejected' || status === 'timeout' || status === 'unreachable') {
+        return;
+      }
+      toast('No answer yet — the device may be asleep or offline', 'failed');
+      setIdentifyCommand(null);
+    }, 13_000);
+    return () => clearTimeout(timer);
+  }, [identifyCommand, toast]);
+
+  useEffect(() => {
+    const status = identifyOutcome.data?.status;
+    if (!status) return;
+    if (status === 'applied') {
+      toast(`${device?.name ?? 'The device'} answered — it should be blinking now`);
+      setIdentifyCommand(null);
+      return;
+    }
+    const notice = outcomeNotice(status);
+    if (notice) {
+      toast(notice, 'failed');
+      setIdentifyCommand(null);
+    }
+  }, [identifyOutcome.data?.status, device?.name, toast]);
   const router = useRouter();
   const { ask, sheet } = useConfirm();
 
@@ -77,17 +138,53 @@ export function DeviceDetailPage() {
     ask({
       title: `Remove ${device.name}?`,
       message:
-        'It leaves this home and stops appearing in the app. To use it again, pair it again. Its licence stays with the platform and its history is kept.',
+        'It leaves this home and stops appearing in the app. You can put it back for ten minutes; after that, pair it again. Its licence stays with the platform and its history is kept.',
       confirmLabel: 'Remove',
       cancelLabel: 'Keep it',
       destructive: true,
-      onConfirm: () =>
+      onConfirm: () => {
+        const name = device.name;
+        const deviceId = device.id;
         remove.mutate(
-          { deviceId: device.id, homeId },
-          // Back to the home it is no longer in: leaving the customer on a page about a device they just
-          // removed is how an app feels broken.
-          { onSuccess: () => router.replace('/') },
-        ),
+          { deviceId, homeId },
+          {
+            onSuccess: () => {
+              // Back to the home it is no longer in: leaving the customer on a page about a device they just
+              // removed is how an app feels broken.
+              router.replace('/');
+              // The undo lives in the toast because that is where the customer is looking, and because the server's
+              // ten-minute window makes it a real offer rather than a gesture. The message names the device: several
+              // of them are called "Light".
+              toast(`Removed ${name}`, 'done', {
+                label: 'Undo',
+                // Not a mutation from this screen: by the time Undo is pressed this component has unmounted (we
+                // navigated away), and a React Query callback owned by an unmounted observer is never called — the
+                // request would still go out and the customer would be left with a toast that never changes. The
+                // request is made directly and the caches are invalidated through the client we captured above, which
+                // outlives the screen.
+                onPress: () => {
+                  void request<{ home_id: string }>(`/devices/${deviceId}/restore`, {
+                    method: 'POST',
+                  })
+                    .then((result) => {
+                      void queryClient.invalidateQueries({
+                        queryKey: qk.devices(result.home_id),
+                      });
+                      queryClient.invalidateQueries({ queryKey: qk.dashboard(result.home_id) });
+                      toast(`${name} is back in its home`);
+                    })
+                    .catch((error: unknown) =>
+                      toast(
+                        error instanceof Error ? error.message : 'That removal could not be undone',
+                        'failed',
+                      ),
+                    );
+                },
+              });
+            },
+          },
+        );
+      },
     });
   };
 
@@ -346,6 +443,16 @@ export function DeviceDetailPage() {
           <Row title="Serial" value={device.serial || '—'} />
           <Row title="Product" value={device.product_key || '—'} />
           <Row title="Firmware" value={device.fw_version ?? 'Not reported'} />
+          {/* The question this answers is "which one is this?" — asked while standing in front of four identical
+              bulbs. It cannot be answered by the app alone: the platform sends the request and the device has to
+              make itself known, which is why the answer afterwards is about the device and not about the press. */}
+          <Row
+            title={identify.isPending ? 'Asking…' : 'Make it blink'}
+            subtitle="Ask this device to announce itself"
+            onPress={() => identify.mutate(device.id)}
+            disabled={identify.isPending}
+            testID="identify-device"
+          />
           <Row
             title="Last reported"
             value={device.last_seen_at ? relative(device.last_seen_at) : 'Never'}
@@ -434,7 +541,7 @@ export function DeviceDetailPage() {
             <Pressable
               onPress={confirmRemove}
               accessibilityRole="button"
-              accessibilityHint="The device leaves this home and must be paired again to come back"
+              accessibilityHint="The device leaves this home. It can be put back for ten minutes, after that it must be paired again"
               testID="remove-device"
               disabled={remove.isPending}
               style={{ alignSelf: 'center', paddingVertical: tokens.space.sm, minHeight: tokens.touch.min, justifyContent: 'center' }}

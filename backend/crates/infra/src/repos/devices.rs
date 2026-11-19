@@ -563,6 +563,121 @@ impl DeviceRepo for PgDevices {
         }
         Ok(())
     }
+
+    async fn record_release(&self, release: &domain::devices::Release) -> Result<(), AppError> {
+        let mut tx = self
+            .pg
+            .scoped(&kernel::TenantCtx::system("device-release"))
+            .await?;
+        sqlx::query(
+            r#"INSERT INTO device_releases (id, device_id, vendor_id, home_id, room_id, released_by, released_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
+        )
+        .bind(release.id)
+        .bind(release.device_id)
+        .bind(release.vendor_id)
+        .bind(release.home_id)
+        .bind(release.room_id)
+        .bind(release.released_by)
+        .bind(release.released_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
+    async fn latest_release(
+        &self,
+        device_id: Uuid,
+    ) -> Result<Option<domain::devices::Release>, AppError> {
+        let mut tx = self
+            .pg
+            .scoped(&kernel::TenantCtx::system("device-release"))
+            .await?;
+        let row = sqlx::query_as::<
+            _,
+            (
+                Uuid,
+                Uuid,
+                Uuid,
+                Uuid,
+                Option<Uuid>,
+                Uuid,
+                time::OffsetDateTime,
+                Option<time::OffsetDateTime>,
+            ),
+        >(
+            r#"SELECT id, device_id, vendor_id, home_id, room_id, released_by, released_at, restored_at
+                 FROM device_releases
+                WHERE device_id = $1
+                ORDER BY released_at DESC
+                LIMIT 1"#,
+        )
+        .bind(device_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        Ok(row.map(|r| domain::devices::Release {
+            id: r.0,
+            device_id: r.1,
+            vendor_id: r.2,
+            home_id: r.3,
+            room_id: r.4,
+            released_by: r.5,
+            released_at: r.6,
+            restored_at: r.7,
+        }))
+    }
+
+    async fn restore(
+        &self,
+        device_id: Uuid,
+        home_id: Uuid,
+        room_id: Option<Uuid>,
+        user_id: Uuid,
+    ) -> Result<(), AppError> {
+        let _ = user_id;
+        let mut tx = self
+            .pg
+            .scoped(&kernel::TenantCtx::system("device-restore"))
+            .await?;
+
+        // Both writes or neither: a device back in a home whose release still reads "not undone" would offer the undo
+        // again, and a second press would move it out of wherever it has been paired since.
+        let restored = sqlx::query(
+            r#"UPDATE devices SET home_id = $2, room_id = $3, state = 'claimed'
+                WHERE id = $1 AND home_id IS NULL"#,
+        )
+        .bind(device_id)
+        .bind(home_id)
+        .bind(room_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?
+        .rows_affected();
+
+        if restored == 0 {
+            return Err(AppError::code(
+                kernel::ErrorCode::Conflict,
+                "that device is in a home already",
+            ));
+        }
+
+        sqlx::query(
+            r#"UPDATE device_releases SET restored_at = now()
+                WHERE device_id = $1 AND restored_at IS NULL"#,
+        )
+        .bind(device_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -643,6 +758,74 @@ impl CommandRepo for PgDevices {
         })
     }
 
+    async fn insert_action_command(
+        &self,
+        device_id: Uuid,
+        user_id: Uuid,
+        action: &str,
+        idempotency_key: Option<&str>,
+    ) -> Result<Command, AppError> {
+        let mut tx = self.pg.scoped(&ctx_for(user_id)).await?;
+
+        if let Some(key) = idempotency_key {
+            let existing: Option<(Uuid, String)> = sqlx::query_as(
+                "SELECT id, status FROM commands WHERE device_id = $1 AND idempotency_key = $2",
+            )
+            .bind(device_id)
+            .bind(key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db)?;
+
+            if let Some((id, status)) = existing {
+                tx.commit().await.map_err(db)?;
+                return Ok(Command {
+                    id,
+                    device_id,
+                    point_code: action.to_string(),
+                    op: "action".into(),
+                    status,
+                    created: false,
+                });
+            }
+        }
+
+        let vendor_id: Uuid = sqlx::query_scalar("SELECT vendor_id FROM devices WHERE id = $1")
+            .bind(device_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db)?
+            .ok_or_else(|| AppError::not_found("device"))?;
+
+        let id = kernel::new_id();
+        sqlx::query(
+            r#"INSERT INTO commands
+                 (id, vendor_id, device_id, point_id, op, payload, status,
+                  idempotency_key, requested_by, requested_at, dispatched_at)
+               VALUES ($1, $2, $3, NULL, 'action', $4, 'queued', $5, $6, now(), now())"#,
+        )
+        .bind(id)
+        .bind(vendor_id)
+        .bind(device_id)
+        .bind(serde_json::json!({ "action": action }))
+        .bind(idempotency_key)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+
+        tx.commit().await.map_err(db)?;
+
+        Ok(Command {
+            id,
+            device_id,
+            point_code: action.to_string(),
+            op: "action".into(),
+            status: "queued".into(),
+            created: true,
+        })
+    }
+
     async fn find_command(
         &self,
         command_id: Uuid,
@@ -650,7 +833,9 @@ impl CommandRepo for PgDevices {
     ) -> Result<Option<Command>, AppError> {
         let mut tx = self.pg.scoped(&ctx_for(user_id)).await?;
         let row = sqlx::query_as::<_, (Uuid, Uuid, String, String)>(
-            r#"SELECT c.id, c.device_id, COALESCE(dp.code, ''), c.status
+            // An action command has no point; its name is in the payload, and a status screen that answered "" for it
+            // would be describing a command nobody can recognise.
+            r#"SELECT c.id, c.device_id, COALESCE(dp.code, c.payload->>'action', ''), c.status
                FROM commands c LEFT JOIN device_points dp ON dp.id = c.point_id
                WHERE c.id = $1"#,
         )

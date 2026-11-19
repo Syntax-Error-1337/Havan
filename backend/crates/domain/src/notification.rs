@@ -8,7 +8,7 @@
 use std::future::Future;
 
 use kernel::AppError;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize)]
@@ -25,7 +25,45 @@ pub struct Notification {
     pub read_at: Option<time::OffsetDateTime>,
 }
 
+/// A window in which a person does not want to be pushed.
+///
+/// Wall-clock, in the person's own zone, because that is the only thing anybody means by "not after ten". `None` for both
+/// ends means off — the absence of a preference, not a preference for silence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct QuietHours {
+    /// `HH:MM`, 24-hour, in `timezone`.
+    pub from: Option<String>,
+    pub to: Option<String>,
+    /// IANA name (`Asia/Kolkata`). Postgres validates it; the app suggests the home's zone.
+    pub timezone: Option<String>,
+}
+
+impl QuietHours {
+    pub fn enabled(&self) -> bool {
+        self.from.is_some() && self.to.is_some()
+    }
+}
+
 pub trait NotificationRepo {
+    /// The person's quiet window, or an empty one when they have never set it.
+    fn quiet_hours(
+        &self,
+        user_id: Uuid,
+    ) -> impl Future<Output = Result<QuietHours, AppError>> + Send;
+
+    /// Replace the quiet window. `None` on both ends turns it off.
+    fn set_quiet_hours(
+        &self,
+        user_id: Uuid,
+        hours: &QuietHours,
+    ) -> impl Future<Output = Result<(), AppError>> + Send;
+
+    /// Does the scheduler know this zone? The database is the authority — it is the one that has to evaluate it.
+    fn timezone_exists(
+        &self,
+        timezone: &str,
+    ) -> impl Future<Output = Result<bool, AppError>> + Send;
+
     /// Newest first. `unread_only` is a second query rather than a filter on the
     /// client: a badge needs the count, not the rows.
     fn list(

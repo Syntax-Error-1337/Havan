@@ -38,6 +38,42 @@ export function usePushTokens() {
   });
 }
 
+export type QuietHours = { from: string | null; to: string | null; timezone: string | null };
+
+/**
+ * The window in which pushes are held.
+ *
+ * Read back from the server rather than kept in the app: the server is the thing that enforces it, and a setting whose
+ * position depends on local state eventually disagrees with what happens at 03:00.
+ */
+export function useQuietHours() {
+  return useQuery({
+    queryKey: qk.quietHours,
+    queryFn: () => request<QuietHours>('/notifications/quiet-hours'),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Set or clear the window.
+ *
+ * The server refuses a time it cannot parse, a window with no width, and a zone Postgres does not know — all three would
+ * otherwise look like a setting and behave like nothing.
+ */
+export function useSetQuietHours() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (hours: Partial<QuietHours>) =>
+      request<QuietHours>('/notifications/quiet-hours', {
+        method: 'PUT',
+        body: JSON.stringify(hours),
+      }),
+    onSuccess: (saved) => {
+      qc.setQueryData(qk.quietHours, saved);
+    },
+  });
+}
+
 /**
  * Turn alerts off on every phone.
  *

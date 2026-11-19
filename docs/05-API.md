@@ -102,7 +102,8 @@ themselves is two places for a white label to become unreadable.
 | GET | `/devices?home_id=` | current values included |
 | GET | `/devices/{id}` | points, product, firmware |
 | PATCH | `/devices/{id}` | name, room |
-| DELETE | `/devices/{id}` | unclaim, keeps history 30 d |
+| DELETE | `/devices/{id}` | unclaim, keeps history 30 d; records a release you can undo |
+| POST | `/devices/{id}/restore` | put back a device removed by mistake → `{home_id}`; 404 no removal, 409 already back or past the 10-minute window, 403 not an admin |
 | POST | `/devices/{id}/commands` | `{point, value}` or `{action}` → `202 {command_id}` |
 | GET | `/devices/{id}/commands/{cid}` | settled state |
 | GET | `/devices/{id}/history?point=&from=&to=&bucket=` | Timescale aggregates |
@@ -241,6 +242,7 @@ client that gets `null` should say "no reading yet" rather than substitute the d
 | GET | `/notifications/unread-count` | `{unread}` — a badge needs a count, not 50 rows |
 | POST | `/notifications/{id}/read` | `{changed}`; `false` means it was already read |
 | POST | `/notifications/read-all` | `{cleared}` |
+| GET/PUT | `/notifications/quiet-hours` | `{from, to, timezone}` — `HH:MM` and an IANA zone, or `{}` to clear; 422 on a malformed time, an equal start and end, or a zone Postgres does not know. Enforced in the push queue, so a held alert is delivered when the window ends |
 
 `notifications` has no vendor column and no RLS: the only thing keeping one
 person's alerts apart is the `user_id` predicate, so it is never optional.

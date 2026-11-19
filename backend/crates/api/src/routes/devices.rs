@@ -16,6 +16,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/devices", get(list))
         .route("/devices/{id}", get(one).patch(update).delete(remove))
+        .route("/devices/{id}/restore", post(restore))
+        .route("/devices/{id}/identify", post(identify))
         .route("/devices/{id}/updates", get(updates))
         .route("/devices/{id}/commands", post(command))
         .route("/devices/{id}/commands/{command_id}", get(command_status))
@@ -138,6 +140,54 @@ async fn remove(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `POST /v1/devices/{id}/identify` — make the device announce itself.
+///
+/// `202` for the same reason a set command is: the platform recorded the request and put it on the wire, and only the
+/// device's ack settles it. A device whose firmware has never heard of `identify` will settle `timeout`, which the app
+/// reports in those words rather than pretending the light blinked.
+async fn identify(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
+    let outcome = state
+        .devices
+        .identify(id, auth.user.id)
+        .await
+        .map_err(ApiError)?;
+    publish_command(&state, id, &outcome).await?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({
+            "command_id": outcome.command.id,
+            "status": outcome.command.status,
+        })),
+    ))
+}
+
+/// How long a removal can be undone.
+///
+/// Ten minutes: long enough for "I meant the one next to it", short enough that a device removed on purpose and paired
+/// into another home is not dragged back out of it by a stale undo.
+const RESTORE_WINDOW: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// `POST /v1/devices/{id}/restore` — put back a device removed by mistake.
+///
+/// Answers `{ home_id }` rather than `204` because the caller needs to know where the device went: the app navigates back
+/// to the home it came from, and a released device is in no home, so that id cannot be looked up after the fact.
+async fn restore(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let home_id = state
+        .devices
+        .restore(id, auth.user.id, RESTORE_WINDOW)
+        .await
+        .map_err(ApiError)?;
+    Ok(Json(serde_json::json!({ "home_id": home_id })))
+}
+
 #[derive(Deserialize)]
 struct CommandBody {
     code: String,
@@ -171,10 +221,16 @@ pub(crate) async fn publish_command(
         v: protocol::WIRE_VERSION,
         id: outcome.command.id,
         ts: kernel::now_s(),
-        op: protocol::envelope::CommandOp::Set,
-        dp: Some(publishable.dp.clone()),
-        value: Some(to_dp_value(publishable.value.clone())),
-        action: None,
+        // An action is not a set with a missing value: the envelope distinguishes them, and a device that reads `op`
+        // before `dp` (the SDK does) would otherwise look for a point that nobody sent.
+        op: if publishable.action.is_some() {
+            protocol::envelope::CommandOp::Action
+        } else {
+            protocol::envelope::CommandOp::Set
+        },
+        dp: publishable.dp.clone(),
+        value: publishable.value.clone().map(to_dp_value),
+        action: publishable.action.clone(),
     };
 
     let payload = serde_json::to_vec(&msg)

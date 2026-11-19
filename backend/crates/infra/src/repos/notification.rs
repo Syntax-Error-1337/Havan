@@ -187,6 +187,61 @@ impl NotificationRepo for PgNotifications {
 
         Ok(affected > 0)
     }
+
+    async fn quiet_hours(
+        &self,
+        user_id: Uuid,
+    ) -> Result<domain::notification::QuietHours, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("quiet-hours")).await?;
+        let row: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+            r#"SELECT to_char(quiet_from, 'HH24:MI'), to_char(quiet_to, 'HH24:MI'), quiet_tz
+                 FROM users WHERE id = $1"#,
+        )
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+
+        let (from, to, timezone) = row.ok_or_else(|| AppError::not_found("user"))?;
+        Ok(domain::notification::QuietHours { from, to, timezone })
+    }
+
+    async fn set_quiet_hours(
+        &self,
+        user_id: Uuid,
+        hours: &domain::notification::QuietHours,
+    ) -> Result<(), AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("quiet-hours")).await?;
+        // `::time` on a string that is not a time raises 22007, which is the caller's fault and must not surface as a
+        // 500 — the route validates the shape first, so this cast only sees well-formed values.
+        sqlx::query(
+            r#"UPDATE users
+                  SET quiet_from = $2::time, quiet_to = $3::time, quiet_tz = $4
+                WHERE id = $1"#,
+        )
+        .bind(user_id)
+        .bind(hours.from.as_deref())
+        .bind(hours.to.as_deref())
+        .bind(hours.timezone.as_deref())
+        .execute(&mut *tx)
+        .await
+        .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(())
+    }
+
+    async fn timezone_exists(&self, timezone: &str) -> Result<bool, AppError> {
+        let mut tx = self.pg.scoped(&TenantCtx::system("quiet-hours")).await?;
+        let found: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM pg_timezone_names WHERE name = $1")
+                .bind(timezone)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(db)?;
+        tx.commit().await.map_err(db)?;
+        Ok(found.is_some())
+    }
 }
 
 impl PushRepo for PgNotifications {
@@ -206,6 +261,26 @@ impl PushRepo for PgNotifications {
                     WHERE delivered_at IS NULL
                       AND delivery_attempts < $2
                       AND next_attempt_at <= now()
+                      -- Quiet hours, enforced here rather than in the sender: a held notification must stay *queued*
+                      -- (so it goes out when the window ends) and must not consume a delivery attempt. Skipping it in
+                      -- Rust would have done neither — the sweep claims rows by bumping `next_attempt_at`.
+                      AND NOT EXISTS (
+                            SELECT 1 FROM users u
+                             WHERE u.id = notifications.user_id
+                               AND u.quiet_from IS NOT NULL
+                               AND u.quiet_to IS NOT NULL
+                               AND u.quiet_tz IS NOT NULL
+                               -- Local wall clock in the person's own zone. A window that wraps midnight (22:00 to
+                               -- 07:00) is the normal case, not the exception, so it is the branch that gets the OR.
+                               AND CASE
+                                     WHEN u.quiet_from < u.quiet_to THEN
+                                          (now() AT TIME ZONE u.quiet_tz)::time >= u.quiet_from
+                                          AND (now() AT TIME ZONE u.quiet_tz)::time < u.quiet_to
+                                     ELSE
+                                          (now() AT TIME ZONE u.quiet_tz)::time >= u.quiet_from
+                                          OR (now() AT TIME ZONE u.quiet_tz)::time < u.quiet_to
+                                   END
+                      )
                     ORDER BY created_at
                     LIMIT $1
                     FOR UPDATE SKIP LOCKED
