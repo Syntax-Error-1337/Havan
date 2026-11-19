@@ -59,7 +59,15 @@ export function Confirm({
   const { color, dark } = useTheme();
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onCancel}>
+    // The dialog needs a name, or a screen reader announces "dialog" and nothing else. React Native Web already gives it
+    // `role="dialog"` and `aria-modal`, moves focus in, and closes on Escape — the name is the part it cannot invent.
+    <Modal
+      transparent
+      animationType="fade"
+      visible
+      onRequestClose={onCancel}
+      aria-label={title}
+    >
       <View
         style={{
           flex: 1,

@@ -234,3 +234,49 @@ test('nothing falls off the side of the screen at 200% zoom', async ({ page }) =
   }
   expect(findings.join('\n'), 'controls off screen at 200% zoom').toBe('');
 });
+
+/**
+ * The fourth rule: a sheet is a dialog with a name, and Escape closes it.
+ *
+ * The first three rules only look at what is on the screen. This one looks at what happens when something is *over* the
+ * screen, because that is where a keyboard or screen-reader user is most often stranded: a modal that does not take
+ * focus leaves them tabbing through the dashboard behind it, and one with no name is announced as "dialog" and nothing
+ * else.
+ *
+ * React Native Web supplies `role="dialog"`, `aria-modal`, the focus move and Escape handling. It cannot supply the name,
+ * so that is what this checks — measured on the home sheet, which is the sheet every owner opens.
+ */
+test('a sheet is a named dialog, takes focus, and closes on Escape', async ({ page }) => {
+  await signIn(page);
+  await page.goto('/homes');
+  await page.waitForLoadState('networkidle');
+  await page.getByText('Edit', { exact: true }).first().click({ force: true });
+  await page.waitForTimeout(600);
+
+  const sheet = page.locator('[aria-modal="true"]');
+  await expect(sheet).toHaveCount(1);
+
+  const shape = await page.evaluate(() => {
+    const modal = document.querySelector('[aria-modal="true"]') as HTMLElement | null;
+    const active = document.activeElement as HTMLElement | null;
+    const labelledBy = modal?.getAttribute('aria-labelledby');
+    const referenced = labelledBy
+      ? labelledBy
+          .split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent ?? '')
+          .join(' ')
+      : '';
+    return {
+      role: modal?.getAttribute('role') ?? null,
+      name: [(modal?.getAttribute('aria-label') ?? ''), referenced].join(' ').trim(),
+      focusInside: modal ? modal.contains(active) : false,
+    };
+  });
+
+  expect(shape.role, 'an overlay with no dialog role').toBe('dialog');
+  expect(shape.name.length, 'the dialog has no accessible name').toBeGreaterThan(0);
+  expect(shape.focusInside, 'focus did not move into the sheet').toBe(true);
+
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+});

@@ -56,7 +56,12 @@ export function RenameSceneSheet({
   };
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+    <Modal
+      // Named for a screen reader: React Native Web supplies role="dialog", aria-modal, the focus move and
+      // Escape. It cannot invent a name, and a dialog with no name is announced as "dialog" and nothing more.
+      transparent animationType="fade" visible onRequestClose={onClose}
+      aria-label="Rename scene"
+    >
       <View
         style={{
           flex: 1,

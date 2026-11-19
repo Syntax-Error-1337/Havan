@@ -61,7 +61,15 @@ export function ActionSheet({
   const { color } = useTheme();
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onCancel}>
+    // Named, or a screen reader says "dialog" and stops. When a sheet has no title the first action names the choice it
+    // is offering, which is what a person would say out loud if they were reading it to somebody.
+    <Modal
+      transparent
+      animationType="fade"
+      visible
+      onRequestClose={onCancel}
+      aria-label={title ?? items[0]?.label ?? 'Choose an action'}
+    >
       <Pressable
         // Tapping the wash is a cancel, the same as every sheet on the platform: a person who opened this
         // by accident should not have to find a button to undo one tap.
