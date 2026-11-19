@@ -15,7 +15,26 @@ import { expect, test } from './fixtures';
  *   3. a table column header says which column it heads and which way it sorts, so "Sort by status" is not a mystery.
  */
 
-const PAGES = ['/', '/fleet', '/licences', '/invoices', '/team', '/webhooks', '/security', '/api-keys', '/audit'];
+// Every screen a vendor or an operator can reach, not a sample: the rules are cheap enough to run on all of them, and a
+// screen left out of the sweep is a screen the sweep cannot vouch for.
+const PAGES = [
+  '/',
+  '/fleet',
+  '/analytics',
+  '/audit',
+  '/campaigns',
+  '/api-keys',
+  '/support',
+  '/licences',
+  '/team',
+  '/invoices',
+  '/webhooks',
+  '/security',
+  '/admin',
+  '/admin/vendors',
+  '/admin/certification',
+  '/admin/audit',
+];
 
 /** Every interactive element without a name, per page. */
 test('every control has an accessible name', async ({ app }) => {
@@ -209,4 +228,42 @@ test('the tab names the screen, and changes when the route does', async ({ app }
 
   // Distinct titles are the point: five routes, five different tabs.
   expect(new Set(seen.values()).size).toBe(seen.size);
+});
+
+/**
+ * Keyboard focus must be visible (WCAG 2.4.7).
+ *
+ * The stylesheet styles `.input`, `.table-frame` and `.row-disclosure` focus states — but a rule that is written per
+ * component is a rule the next component can forget, and "outline: none" is the most common way a design system quietly
+ * becomes unusable without a mouse. This walks the tab order on the page a support engineer uses most and asks the
+ * browser what it is actually painting on the focused element.
+ */
+test('every stop in the tab order shows where the keyboard is', async ({ app }) => {
+  await app.goto('/fleet');
+  await app.waitForLoadState('networkidle');
+
+  const found: string[] = [];
+  for (let step = 0; step < 12; step += 1) {
+    await app.keyboard.press('Tab');
+    const stop = await app.evaluate(() => {
+      const element = document.activeElement as HTMLElement | null;
+      if (!element || element === document.body) return null;
+      const style = getComputedStyle(element);
+      const outline =
+        style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0
+          ? `${style.outlineStyle} ${style.outlineWidth}`
+          : '';
+      const shadow = style.boxShadow !== 'none' ? style.boxShadow : '';
+      return {
+        tag: element.tagName.toLowerCase(),
+        label: (element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 30),
+        visible: Boolean(outline || shadow),
+        indicator: outline || shadow,
+      };
+    });
+    if (!stop) continue;
+    if (!stop.visible) found.push(`${stop.tag} "${stop.label}"`);
+  }
+
+  expect(found, 'focused controls with nothing drawn around them').toEqual([]);
 });

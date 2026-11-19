@@ -174,7 +174,12 @@ navigation. `app-shell/title.ts` maps the route to a name by longest prefix — 
 Product, and `/admin/audit` does not read as the vendor's audit log — and the shell calls it once, for every screen
 including the console. Proved by commenting the call out: the test failed with `/ is titled "Haven — Vendor Portal"`.
 
-All 8 assertions pass now, and the portal suite is 92 with them.
+A fifth rule asks the browser what it is painting on the focused element (WCAG 2.4.7), walking twelve stops in the tab
+order on the fleet — the page a support engineer lives in. It passes, and it can fail: appending `outline: none; box-shadow:
+none` for buttons and links to the stylesheet made it fail on both projects, which is the point of writing it.
+
+The sweep covers **every screen**, not a sample: 16 routes including the operator console, because a screen left out of a
+sweep is a screen the sweep cannot vouch for. All 10 assertions pass now, and the portal suite is 92 with them.
 
 ## Products — the list needed nothing, the editor needed one thing
 
