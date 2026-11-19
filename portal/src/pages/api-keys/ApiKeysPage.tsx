@@ -120,12 +120,12 @@ export function ApiKeysPage() {
   <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Prefix</th>
-                  <th>Created</th>
-                  <th>Last used</th>
-                  <th>State</th>
-                  <th>Actions</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Prefix</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Last used</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>

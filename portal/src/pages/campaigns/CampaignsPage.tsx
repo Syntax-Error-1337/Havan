@@ -170,13 +170,13 @@ export function CampaignsPage() {
   <table className="table">
               <thead>
                 <tr>
-                  <th>Product</th>
+                  <th scope="col">Product</th>
                   {/* The cell holds a percentage of the fleet, not the name of a rollout — the header said one thing and
                       the column another. */}
-                  <th title="Share of the product's fleet this rollout covers">Target</th>
-                  <th>State</th>
-                  <th>Progress</th>
-                  <th>Actions</th>
+                  <th scope="col" title="Share of the product's fleet this rollout covers">Target</th>
+                  <th scope="col">State</th>
+                  <th scope="col">Progress</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>

@@ -192,10 +192,10 @@ export function SecurityPage() {
           <table className="table" data-testid="sso-members">
           <thead>
             <tr>
-              <th>Member</th>
-              <th>Role</th>
-              <th>Identity</th>
-              <th>Subject</th>
+              <th scope="col">Member</th>
+              <th scope="col">Role</th>
+              <th scope="col">Identity</th>
+              <th scope="col">Subject</th>
             </tr>
           </thead>
           <tbody>

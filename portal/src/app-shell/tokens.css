@@ -172,7 +172,9 @@ button {
 
 .badge--cert-certified {
   background: color-mix(in oklab, var(--ok, #1f7a4d) 18%, transparent);
-  color: var(--ok, #1f7a4d);
+  /* Darker than the tint's own hue: the badge measured 3.35:1 as `var(--ok)` on that background, below AA. A badge is
+     text, and a status a vendor cannot read is a status that is not there. */
+  color: color-mix(in oklab, var(--ok, #1f7a4d) 55%, #000);
 }
 .badge--cert-submitted {
   background: color-mix(in oklab, var(--warn, #8a5a00) 18%, transparent);

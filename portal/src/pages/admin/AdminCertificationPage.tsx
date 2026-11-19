@@ -30,11 +30,11 @@ export function AdminCertificationPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Product</th>
-              <th>Vendor</th>
-              <th>Asked</th>
-              <th>Note</th>
-              <th />
+              <th scope="col">Product</th>
+              <th scope="col">Vendor</th>
+              <th scope="col">Asked</th>
+              <th scope="col">Note</th>
+              <th scope="col" />
             </tr>
           </thead>
           <tbody>

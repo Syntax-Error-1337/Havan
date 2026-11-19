@@ -117,19 +117,19 @@ export function AdminVendorsPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Vendor</th>
-              <th>Status</th>
-              <th style={{ textAlign: 'right' }}>Products</th>
-              <th style={{ textAlign: 'right' }}>Devices</th>
+              <th scope="col">Vendor</th>
+              <th scope="col">Status</th>
+              <th scope="col" style={{ textAlign: 'right' }}>Products</th>
+              <th scope="col" style={{ textAlign: 'right' }}>Devices</th>
               {/* Two different ceilings, and the old headers named neither: "Licences 0 / 0" is activated
                   of granted, and "Quota" is a device cap that refuses the *next* activation. */}
-              <th style={{ textAlign: 'right' }} title="Devices activated / licences granted">
+              <th scope="col" style={{ textAlign: 'right' }} title="Devices activated / licences granted">
                 Activated
               </th>
-              <th style={{ textAlign: 'right' }} title="Device cap; the next activation is refused at the cap">
+              <th scope="col" style={{ textAlign: 'right' }} title="Device cap; the next activation is refused at the cap">
                 Device cap
               </th>
-              <th>
+              <th scope="col">
                 <span className="muted">Actions</span>
               </th>
             </tr>

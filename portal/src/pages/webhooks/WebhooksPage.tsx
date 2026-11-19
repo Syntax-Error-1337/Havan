@@ -110,11 +110,11 @@ export function WebhooksPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Endpoint</th>
-              <th>Events</th>
-              <th>Created</th>
-              <th>Last delivery</th>
-              <th />
+              <th scope="col">Endpoint</th>
+              <th scope="col">Events</th>
+              <th scope="col">Created</th>
+              <th scope="col">Last delivery</th>
+              <th scope="col" />
             </tr>
           </thead>
           <tbody>

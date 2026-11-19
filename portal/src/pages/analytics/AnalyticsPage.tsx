@@ -46,9 +46,9 @@ export function AnalyticsPage() {
   <table className="table">
             <thead>
               <tr>
-                <th>Product</th>
-                <th>Devices</th>
-                <th>Online</th>
+                <th scope="col">Product</th>
+                <th scope="col">Devices</th>
+                <th scope="col">Online</th>
               </tr>
             </thead>
             <tbody>
@@ -74,8 +74,8 @@ export function AnalyticsPage() {
   <table className="table">
             <thead>
               <tr>
-                <th>Version</th>
-                <th>Devices</th>
+                <th scope="col">Version</th>
+                <th scope="col">Devices</th>
               </tr>
             </thead>
             <tbody>

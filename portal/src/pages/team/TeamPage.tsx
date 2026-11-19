@@ -97,11 +97,11 @@ export function TeamPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Last login</th>
-              <th />
+              <th scope="col">Name</th>
+              <th scope="col">Email</th>
+              <th scope="col">Role</th>
+              <th scope="col">Last login</th>
+              <th scope="col" />
             </tr>
           </thead>
           <tbody>
@@ -159,10 +159,10 @@ export function TeamPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Expires</th>
-                <th />
+                <th scope="col">Email</th>
+                <th scope="col">Role</th>
+                <th scope="col">Expires</th>
+                <th scope="col" />
               </tr>
             </thead>
             <tbody>

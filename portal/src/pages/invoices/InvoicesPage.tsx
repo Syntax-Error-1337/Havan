@@ -96,10 +96,10 @@ export function InvoicesPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Serial</th>
-                  <th>Product</th>
-                  <th>Activated</th>
-                  <th style={{ textAlign: 'right' }}>Unit price</th>
+                  <th scope="col">Serial</th>
+                  <th scope="col">Product</th>
+                  <th scope="col">Activated</th>
+                  <th scope="col" style={{ textAlign: 'right' }}>Unit price</th>
                 </tr>
               </thead>
               <tbody>
@@ -135,10 +135,10 @@ export function InvoicesPage() {
               {invoice.lines.length > 0 ? (
                 <tfoot>
                   <tr>
-                    <th colSpan={3} style={{ textAlign: 'right' }}>
+                    <th scope="col" colSpan={3} style={{ textAlign: 'right' }}>
                       Total · {invoice.quantity} {invoice.quantity === 1 ? 'device' : 'devices'}
                     </th>
-                    <th style={{ textAlign: 'right' }}>
+                    <th scope="col" style={{ textAlign: 'right' }}>
                       {formatMoney(invoice.amount_cents, invoice.currency)}
                     </th>
                   </tr>

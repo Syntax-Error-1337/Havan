@@ -47,11 +47,11 @@ export function AdminAuditPage() {
             <table className="table" data-testid="audit-table">
               <thead>
                 <tr>
-                  <th>When</th>
-                  <th>Action</th>
-                  <th>Actor</th>
-                  <th>Target</th>
-                  <th>Detail</th>
+                  <th scope="col">When</th>
+                  <th scope="col">Action</th>
+                  <th scope="col">Actor</th>
+                  <th scope="col">Target</th>
+                  <th scope="col">Detail</th>
                 </tr>
               </thead>
               <tbody>

@@ -141,11 +141,11 @@ export function AuditPage() {
   <table className="table">
             <thead>
               <tr>
-                <th className="nowrap">When</th>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Who</th>
-                <th className="nowrap">From</th>
+                <th scope="col" className="nowrap">When</th>
+                <th scope="col">Action</th>
+                <th scope="col">Target</th>
+                <th scope="col">Who</th>
+                <th scope="col" className="nowrap">From</th>
               </tr>
             </thead>
             <tbody>

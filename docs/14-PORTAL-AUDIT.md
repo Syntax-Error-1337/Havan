@@ -155,6 +155,21 @@ depends on it, and it is the only fabricated row this audit added.
 The rest of the screen is unusually good: the progress cell leads with failures rather than a percentage ("3 failed",
 "108 failed"), a halted campaign says *stopped*, not *done*, and a started rollout that matched nobody says so.
 
+## Accessibility — measured, and two real defects
+
+The app got three hand-written rules and 31 touch-target violations fixed; the portal had none, which is the worse half of
+the omission — a vendor is an employee on a mandated display, using this all day. `portal/e2e/10-a11y.spec.ts` adds the
+same three rules, without `axe` (MPL-2.0, ADR-002):
+
+1. **every control has an accessible name** — passed everywhere, first run;
+2. **body text meets WCAG AA against the colour it is actually painted on**, computed from rendered pixels, not from the
+   palette: one failure, the **"certified" badge at 3.35:1** against its own 18 % tint. Green-on-green is the classic
+   case a token check misses and a rendered check catches. The badge text is now mixed 55 % toward black; 4.9:1;
+3. **every table header names its column** — **40 `<th>` elements across 15 pages had no `scope`**, which is what tells a
+   screen reader which column a cell belongs to in a table read out of order.
+
+All 6 assertions pass now, and the portal suite is 88 with them.
+
 ## Products — the list needed nothing, the editor needed one thing
 
 The list is honest about the rule it enforces ("3 products · a product must be published before a customer can pair

@@ -168,10 +168,10 @@ export function FirmwarePage() {
   <table className="table">
               <thead>
                 <tr>
-                  <th>Version</th>
-                  <th>Size</th>
-                  <th>Digest</th>
-                  <th>Registered</th>
+                  <th scope="col">Version</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Digest</th>
+                  <th scope="col">Registered</th>
                 </tr>
               </thead>
               <tbody>

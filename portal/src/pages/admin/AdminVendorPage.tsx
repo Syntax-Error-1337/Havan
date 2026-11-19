@@ -106,10 +106,10 @@ export function AdminVendorPage() {
         <table className="table">
           <thead>
             <tr>
-              <th>Serial</th>
-              <th>Product</th>
-              <th>Activated</th>
-              <th style={{ textAlign: 'right' }}>Unit price</th>
+              <th scope="col">Serial</th>
+              <th scope="col">Product</th>
+              <th scope="col">Activated</th>
+              <th scope="col" style={{ textAlign: 'right' }}>Unit price</th>
             </tr>
           </thead>
           <tbody>

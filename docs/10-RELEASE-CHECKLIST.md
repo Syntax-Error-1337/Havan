@@ -18,6 +18,7 @@ and an ESP32 finishes them in an order, instead of re-deriving what was meant.
 | App | `cd app && npx tsc --noEmit && npm test` | 112 tests, 20 suites (the script passes `--forceExit`; see the note below) |
 | Palette contrast | `make contrast` (inside `make check`) | every text pair ≥ 4.5:1, every glyph and category accent ≥ 3:1, in both appearances |
 | Portal unit | `cd portal && npx tsc --noEmit && npm test` | 63 tests |
+| Portal accessibility | inside the portal e2e run (`e2e/10-a11y.spec.ts`) | three hand-written rules, no `axe` (MPL): every control has an accessible name, body text meets WCAG AA against the colour it is painted on, and every table header has `scope="col"` with `aria-sort` when sortable |
 | Portal end-to-end | `cd portal && npm run test:e2e` (+ `:phone`) | 40 tests per project (80 total) against a real API: sign-in, products, fleet, money, team, integrations, security, the operator console, 420 px layout |
 | Vendor surfaces | `make vendor-smoke` | 25 assertions live: two-factor enrol → confirm → enforced sign-in → disabled, webhook shown once then removed, SSO refused while nobody is bound, an empty invoice period that is a document and not an error |
 | Conformance | `make conformance VENDOR=<uuid> PRODUCT=<uuid>` | 7/7: a real device claims, connects, reports, is commanded, acks, reconnects, and an unknown serial is handled the way the product declares |

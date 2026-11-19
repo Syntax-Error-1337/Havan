@@ -158,13 +158,13 @@ export function FleetPage() {
                   filter={filter}
                   onSort={sortBy}
                 />
-                <th>Product</th>
+                <th scope="col">Product</th>
                 <SortableHeader label="Name" column="name" filter={filter} onSort={sortBy} />
                 {/* Two facts that were one cell. "offline" and "unbound" are different problems: a device that is
                     offline in a customer's house is a support call, and one that is offline in stock is not. */}
-                <th>Connection</th>
-                <th>Binding</th>
-                <th>Firmware</th>
+                <th scope="col">Connection</th>
+                <th scope="col">Binding</th>
+                <th scope="col">Firmware</th>
                 <SortableHeader
                   label="Last seen"
                   column="last_seen"
@@ -353,8 +353,7 @@ function SortableHeader({
     : (filter.sort ?? 'created') === 'created' || (filter.sort ?? 'created') === 'last_seen';
 
   return (
-    <th
-      className={className}
+    <th scope="col"       className={className}
       aria-sort={active ? (descending ? 'descending' : 'ascending') : 'none'}
     >
       <button
